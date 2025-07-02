@@ -16,8 +16,8 @@ final class CoinManager {
         self.coinService = coinService
     }
 
-    func getTopCoins(limit: Int = 100, convert: String = "USD") -> AnyPublisher<[Coin], NetworkError> {
-        return coinService.fetchTopCoins(limit: limit, convert: convert)
+    func getTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1) -> AnyPublisher<[Coin], NetworkError> {
+        return coinService.fetchTopCoins(limit: limit, convert: convert, start: start)
             .map { coins in
                 // Do any data transformation here
                 return coins
@@ -28,5 +28,4 @@ final class CoinManager {
     func getCoinLogos(forIDs ids: [Int]) -> AnyPublisher<[Int: String], Never> {
         return coinService.fetchCoinLogos(forIDs: ids)
        }
-    
 }

@@ -13,8 +13,8 @@ final class CoinService {
     private let baseURL = "https://pro-api.coinmarketcap.com/v1"
     private let apiKey = "f0e06275-928f-4732-8d8e-4834c56bf0b0"
 
-    func fetchTopCoins(limit: Int = 100, convert: String = "USD") -> AnyPublisher<[Coin], NetworkError> {
-        let endpoint = "\(baseURL)/cryptocurrency/listings/latest?limit=\(limit)&convert=\(convert)"
+    func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1) -> AnyPublisher<[Coin], NetworkError> {
+        let endpoint = "\(baseURL)/cryptocurrency/listings/latest?limit=\(limit)&convert=\(convert)&start=\(start)"
 
         guard let url = URL(string: endpoint) else {
             return Fail(error: .badURL).eraseToAnyPublisher()
@@ -50,6 +50,7 @@ final class CoinService {
             }
             .eraseToAnyPublisher()
     }
+    
     func fetchCoinLogos(forIDs ids: [Int]) -> AnyPublisher<[Int: String], Never> {
             let idString = ids.map { String($0) }.joined(separator: ",")
             guard let url = URL(string: "\(baseURL)/cryptocurrency/info?id=\(idString)") else {

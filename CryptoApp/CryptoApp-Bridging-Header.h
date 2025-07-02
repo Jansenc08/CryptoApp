@@ -9,3 +9,4 @@
 #import "GFBodyLabel.h"
 #import "CoinImageView.h"
 #import "TabBarController.h"
+#import "LoadingView.h"

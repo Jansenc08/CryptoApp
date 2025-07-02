@@ -19,7 +19,7 @@ final class CoinListVC: UIViewController {
         configureDataSource()
 
         bindViewModel()
-        viewModel.fetchCoins() // fetch default (USD)
+        viewModel.fetchCoins() // fetch first 20 coins (USD)
     }
 
     private func configureView() {
@@ -33,6 +33,7 @@ final class CoinListVC: UIViewController {
 
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.delegate = self
 
         collectionView.register(CoinCell.self, forCellWithReuseIdentifier: CoinCell.reuseID())
 
@@ -46,7 +47,6 @@ final class CoinListVC: UIViewController {
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
-    
     
     private func configureDataSource() {
         dataSource = UICollectionViewDiffableDataSource<CoinSection, Coin>(collectionView: collectionView) { [weak self] collectionView, indexPath, coin in
@@ -68,7 +68,6 @@ final class CoinListVC: UIViewController {
         collectionView.dataSource = dataSource
     }
 
-
     private func bindViewModel() {
         viewModel.$coins
             .receive(on: DispatchQueue.main)
@@ -78,7 +77,6 @@ final class CoinListVC: UIViewController {
                 snapshot.appendItems(coins)
                 self?.dataSource.apply(snapshot, animatingDifferences: true)
             }
-
             .store(in: &cancellables)
 
         viewModel.$errorMessage
@@ -86,6 +84,18 @@ final class CoinListVC: UIViewController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
                 self?.presentAlert(title: "Error", message: error)
+            }
+            .store(in: &cancellables)
+        
+        // Handle loading more state
+        viewModel.$isLoadingMore
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isLoadingMore in
+                if isLoadingMore {
+                    LoadingView.show(in: self?.view ?? UIView())
+                } else {
+                    LoadingView.dismiss(from: self?.view ?? UIView())
+                }
             }
             .store(in: &cancellables)
     }
@@ -104,5 +114,19 @@ final class CoinListVC: UIViewController {
                 }
             }
         }.resume()
+    }
+}
+
+// MARK: - UICollectionViewDelegate
+extension CoinListVC: UICollectionViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let offsetY = scrollView.contentOffset.y
+        let contentHeight = scrollView.contentSize.height
+        let height = scrollView.frame.size.height
+        
+        // Trigger loading more when scrolled to 80% of content
+        if offsetY > contentHeight - height * 1.2 {
+            viewModel.loadMoreCoins()
+        }
     }
 }
