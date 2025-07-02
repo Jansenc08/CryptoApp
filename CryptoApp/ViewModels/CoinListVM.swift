@@ -47,7 +47,7 @@ final class CoinListVM: ObservableObject {
                 }
             } receiveValue: { [weak self] coins in
                 self?.coins = coins
-                self?.canLoadMore = coins.count == self?.itemsPerPage
+                self?.canLoadMore = coins.count == self?.itemsPerPage && coins.count < 100
                 let ids = coins.map { $0.id }
                 self?.fetchCoinLogos(forIDs: ids)
             }
@@ -56,35 +56,43 @@ final class CoinListVM: ObservableObject {
     
     func loadMoreCoins(convert: String = "USD") {
         guard canLoadMore && !isLoadingMore && !isLoading else { return }
-        
+
+        //Stop if already loaded 100 coins
+        if coins.count >= 100 {
+            canLoadMore = false
+            return
+        }
+
         currentPage += 1
         isLoadingMore = true
         errorMessage = nil
-        
-        // Calculate the starting point for the next page
+
         let start = (currentPage - 1) * itemsPerPage + 1
-        
+
         coinManager.getTopCoins(limit: itemsPerPage, convert: convert, start: start)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 self?.isLoadingMore = false
                 if case let .failure(error) = completion {
                     self?.errorMessage = error.localizedDescription
-                    self?.currentPage -= 1 // Reset page on error
+                    self?.currentPage -= 1
                 }
             } receiveValue: { [weak self] newCoins in
                 guard let self = self else { return }
-                
-                // Append new coins to existing ones
+
                 self.coins.append(contentsOf: newCoins)
-                self.canLoadMore = newCoins.count == self.itemsPerPage
-                
-                // Fetch logos for new coins
+
+                // ✅ Cap total to 100 coins max
+                if self.coins.count >= 100 || newCoins.count < self.itemsPerPage {
+                    self.canLoadMore = false
+                }
+
                 let newIds = newCoins.map { $0.id }
                 self.fetchCoinLogos(forIDs: newIds)
             }
             .store(in: &cancellables)
     }
+
 
     private func fetchCoinLogos(forIDs ids: [Int]) {
         coinManager.getCoinLogos(forIDs: ids)
