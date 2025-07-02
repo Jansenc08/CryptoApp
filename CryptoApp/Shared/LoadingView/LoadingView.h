@@ -5,8 +5,11 @@
 //  Created by Jansen Castillo on 2/7/25.
 //
 
-#ifndef LoadingView_h
-#define LoadingView_h
+#import <UIKit/UIKit.h>
 
+@interface LoadingView : UIView
 
-#endif /* LoadingView_h */
++ (instancetype)showInView:(UIView *)parentView NS_SWIFT_NAME(show(in:));
++ (void)dismissFromView:(UIView *)parentView NS_SWIFT_NAME(dismiss(from:));
+
+@end
