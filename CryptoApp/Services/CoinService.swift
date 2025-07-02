@@ -50,4 +50,39 @@ final class CoinService {
             }
             .eraseToAnyPublisher()
     }
+    func fetchCoinLogos(forIDs ids: [Int]) -> AnyPublisher<[Int: String], Never> {
+            let idString = ids.map { String($0) }.joined(separator: ",")
+            guard let url = URL(string: "\(baseURL)/cryptocurrency/info?id=\(idString)") else {
+                return Just([:]).eraseToAnyPublisher()
+            }
+
+            var request = URLRequest(url: url)
+            request.setValue(apiKey, forHTTPHeaderField: "X-CMC_PRO_API_KEY")
+            request.httpMethod = "GET"
+
+            return URLSession.shared.dataTaskPublisher(for: request)
+                .tryMap { output -> [Int: String] in
+                    guard let response = output.response as? HTTPURLResponse,
+                          response.statusCode == 200 else {
+                        return [:]
+                    }
+                    let json = try JSONSerialization.jsonObject(with: output.data) as? [String: Any]
+                    guard let dataDict = json?["data"] as? [String: Any] else {
+                        return [:]
+                    }
+
+                    var result: [Int: String] = [:]
+                    for (key, value) in dataDict {
+                        if let id = Int(key),
+                           let info = value as? [String: Any],
+                           let logo = info["logo"] as? String {
+                            result[id] = logo
+                        }
+                    }
+                    return result
+                }
+                .replaceError(with: [:])
+                .receive(on: DispatchQueue.main)
+                .eraseToAnyPublisher()
+        }
 }

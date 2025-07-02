@@ -29,3 +29,23 @@ struct Coin: Decodable {
     }
 }
 
+extension Coin {
+    var priceString: String {
+        if let price = quote?["USD"]?.price {
+            return String(format: "$%.2f", price)
+        } else {
+            return "N/A"
+        }
+    }
+}
+
+
+extension Coin: Hashable {
+    static func == (lhs: Coin, rhs: Coin) -> Bool {
+        return lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+}

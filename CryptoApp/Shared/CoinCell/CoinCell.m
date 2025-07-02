@@ -25,29 +25,38 @@
 
 - (void)configureUI {
     self.rankLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:14 weight:UIFontWeightMedium];
+    self.coinImageView = [[CoinImageView alloc] init];
+    [self.contentView addSubview:self.coinImageView];
     self.nameLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:16 weight:UIFontWeightSemibold];
     self.symbolLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:14 weight:UIFontWeightRegular];
     self.priceLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:14 weight:UIFontWeightMedium];
 
     [self.contentView addSubview:self.rankLabel];
+    [self.contentView addSubview:self.coinImageView];
     [self.contentView addSubview:self.nameLabel];
     [self.contentView addSubview:self.symbolLabel];
     [self.contentView addSubview:self.priceLabel];
 
     [NSLayoutConstraint activateConstraints:@[
-        // Rank label on the far left
+        // Rank label
         [self.rankLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
         [self.rankLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+        
+        // Coin image next to rank
+        [self.coinImageView.leadingAnchor constraintEqualToAnchor:self.rankLabel.trailingAnchor constant:8],
+        [self.coinImageView.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+        [self.coinImageView.widthAnchor constraintEqualToConstant:32],
+        [self.coinImageView.heightAnchor constraintEqualToConstant:32],
 
-        // Name label to the right of rank
-        [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.rankLabel.trailingAnchor constant:12],
+        // Name label after image
+        [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.coinImageView.trailingAnchor constant:12],
         [self.nameLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
 
         [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
         [self.symbolLabel.topAnchor constraintEqualToAnchor:self.nameLabel.bottomAnchor constant:4],
         [self.symbolLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
 
-        // Price label aligned to right
+        // Price aligned right
         [self.priceLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
         [self.priceLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor]
     ]];

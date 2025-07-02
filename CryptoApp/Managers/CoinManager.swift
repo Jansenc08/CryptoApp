@@ -24,4 +24,9 @@ final class CoinManager {
             }
             .eraseToAnyPublisher()
     }
+    
+    func getCoinLogos(forIDs ids: [Int]) -> AnyPublisher<[Int: String], Never> {
+        return coinService.fetchCoinLogos(forIDs: ids)
+       }
+    
 }

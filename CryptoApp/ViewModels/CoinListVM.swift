@@ -11,23 +11,21 @@ import Combine
 final class CoinListVM: ObservableObject {
     
     @Published var coins: [Coin] = []
+    @Published var coinLogos: [Int: String] = [:]
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
-    
-    
+
     private let coinManager: CoinManager
     private var cancellables = Set<AnyCancellable>()
     
-
     init(coinManager: CoinManager = CoinManager()) {
         self.coinManager = coinManager
     }
-
     
     func fetchCoins(convert: String = "USD") {
         isLoading = true
         errorMessage = nil
-        
+
         coinManager.getTopCoins(convert: convert)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
@@ -37,12 +35,18 @@ final class CoinListVM: ObservableObject {
                 }
             } receiveValue: { [weak self] coins in
                 self?.coins = coins
+                let ids = coins.map { $0.id }
+                self?.fetchCoinLogos(forIDs: ids)
+            }
+            .store(in: &cancellables)
+    }
 
-                // 🧪 Debug: Check cmcRank for each coin
-                for coin in coins {
-                    print("🧪 \(coin.name) rank: \(coin.cmcRank)")
-                }
+    private func fetchCoinLogos(forIDs ids: [Int]) {
+        coinManager.getCoinLogos(forIDs: ids)
+            .sink { [weak self] logos in
+                self?.coinLogos = logos
             }
             .store(in: &cancellables)
     }
 }
+

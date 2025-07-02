@@ -5,8 +5,11 @@
 //  Created by Jansen Castillo on 1/7/25.
 //
 
-#ifndef CoinImageView_h
-#define CoinImageView_h
+#import <UIKit/UIKit.h>
 
+@interface CoinImageView : UIImageView
 
-#endif /* CoinImageView_h */
+- (void)setPlaceholder;
+
+@end
+
