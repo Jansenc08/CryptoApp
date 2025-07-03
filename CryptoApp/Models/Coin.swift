@@ -37,12 +37,26 @@ extension Coin {
             return "N/A"
         }
     }
+    
     var percentChange24hString: String {
         if let change = quote?["USD"]?.percentChange24h {
             return String(format: "%.2f%%", change)
         } else {
             return "N/A"
         }
+    }
+    
+    var percentChange24hValue: Double {
+        return quote?["USD"]?.percentChange24h ?? 0.0
+    }
+    
+    var isPositiveChange: Bool {
+        return percentChange24hValue >= 0
+    }
+    
+    var sparklineData: [Double] {
+        // Generate sample sparkline data based on the 24h percentage change
+        return SparklineView.generateSampleData(for: percentChange24hValue, points: 20)
     }
 
     var marketSupplyString: String {
@@ -53,7 +67,6 @@ extension Coin {
         }
     }
 }
-
 
 extension Coin: Hashable {
     static func == (lhs: Coin, rhs: Coin) -> Bool {
@@ -84,4 +97,3 @@ extension Double {
         }
     }
 }
-

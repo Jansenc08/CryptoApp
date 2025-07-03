@@ -28,7 +28,7 @@ final class CoinListVM: ObservableObject {
         self.coinManager = coinManager
     }
     
-    func fetchCoins(convert: String = "USD") {
+    func fetchCoins(convert: String = "USD", onFinish: (() -> Void)? = nil) {
         // Reset pagination for fresh fetch
         currentPage = 1
         canLoadMore = true
@@ -45,6 +45,7 @@ final class CoinListVM: ObservableObject {
                     self?.errorMessage = error.localizedDescription
                     self?.canLoadMore = false
                 }
+                onFinish?()
             } receiveValue: { [weak self] coins in
                 self?.coins = coins
                 self?.canLoadMore = coins.count == self?.itemsPerPage && coins.count < 100

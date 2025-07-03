@@ -13,6 +13,7 @@ final class CoinListVC: UIViewController {
     var dataSource: UICollectionViewDiffableDataSource<CoinSection, Coin>!
     
     let imageCache = NSCache<NSString, UIImage>()
+    let refreshControl = UIRefreshControl()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -41,6 +42,10 @@ final class CoinListVC: UIViewController {
 
         collectionView.backgroundColor = .systemBackground
         view.addSubview(collectionView)
+        
+        // Add Pull to refresh
+        refreshControl.addTarget(self, action: #selector(handleRefresh), for: .valueChanged)
+        collectionView.refreshControl = refreshControl
 
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -50,13 +55,30 @@ final class CoinListVC: UIViewController {
         ])
     }
     
+    @objc func handleRefresh() {
+        viewModel.fetchCoins {
+            self.refreshControl.endRefreshing()
+        }
+    }
+    
     private func configureDataSource() {
         dataSource = UICollectionViewDiffableDataSource<CoinSection, Coin>(collectionView: collectionView) { [weak self] collectionView, indexPath, coin in
             guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: CoinCell.reuseID(), for: indexPath) as? CoinCell else {
                 return UICollectionViewCell()
             }
 
-            cell.configure(withRank: coin.cmcRank, name: coin.name, price: coin.priceString, market: coin.marketSupplyString, percentChange24h: coin.percentChange24hString)
+            // Convert sparkline data to NSNumber array for Objective-C
+            let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            
+            cell.configure(
+                withRank: coin.cmcRank,
+                name: coin.name,
+                price: coin.priceString,
+                market: coin.marketSupplyString,
+                percentChange24h: coin.percentChange24hString,
+                sparklineData: sparklineNumbers,
+                isPositiveChange: coin.isPositiveChange
+            )
 
             if let urlString = self?.viewModel.coinLogos[coin.id] {
                 cell.coinImageView.downloadImage(fromURL: urlString)
@@ -80,6 +102,7 @@ final class CoinListVC: UIViewController {
                 self?.dataSource.apply(snapshot, animatingDifferences: true)
             }
             .store(in: &cancellables)
+        
         // Ensures that when logos arrive, the ui gets refreshed to apply them into cells.
         viewModel.$coinLogos
             .receive(on: DispatchQueue.main)
@@ -109,13 +132,11 @@ final class CoinListVC: UIViewController {
             .store(in: &cancellables)
     }
 
-
     private func showAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Dismiss", style: .default))
         present(alert, animated: true)
     }
-    
 }
 
 extension CoinListVC: UICollectionViewDelegate {
