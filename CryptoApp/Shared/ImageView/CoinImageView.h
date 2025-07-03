@@ -10,6 +10,7 @@
 @interface CoinImageView : UIImageView
 
 - (void)setPlaceholder;
+- (void)downloadImageFromURL:(NSString *)urlString;
 
 @end
 

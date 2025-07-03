@@ -73,5 +73,11 @@
     self.priceLabel.text = price;
 }
 
+// Resets her image when cells are reused by the collection view.
+// Avoids image flickering / wrong images showing
+- (void)prepareForReuse {
+    [super prepareForReuse];
+    [self.coinImageView setPlaceholder];
+}
 
 @end

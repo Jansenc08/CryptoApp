@@ -11,6 +11,8 @@ final class CoinListVC: UIViewController {
     let viewModel = CoinListVM()
     var cancellables = Set<AnyCancellable>()
     var dataSource: UICollectionViewDiffableDataSource<CoinSection, Coin>!
+    
+    let imageCache = NSCache<NSString, UIImage>()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -56,8 +58,8 @@ final class CoinListVC: UIViewController {
 
             cell.configure(withRank: coin.cmcRank, name: coin.name, symbol: coin.symbol, price: coin.priceString)
 
-            if let urlString = self?.viewModel.coinLogos[coin.id], let url = URL(string: urlString) {
-                self?.loadImage(from: url, into: cell.coinImageView)
+            if let urlString = self?.viewModel.coinLogos[coin.id] {
+                cell.coinImageView.downloadImage(fromURL: urlString)
             } else {
                 cell.coinImageView.setPlaceholder()
             }
@@ -78,16 +80,23 @@ final class CoinListVC: UIViewController {
                 self?.dataSource.apply(snapshot, animatingDifferences: true)
             }
             .store(in: &cancellables)
+        // Ensures that when logos arrive, the ui gets refreshed to apply them into cells.
+        viewModel.$coinLogos
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // Force reload of visible cells to update images
+                self?.collectionView.reloadData()
+            }
+            .store(in: &cancellables)
 
         viewModel.$errorMessage
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
-                self?.presentAlert(title: "Error", message: error)
+                self?.showAlert(title: "Error", message: error)
             }
             .store(in: &cancellables)
-        
-        // Handle loading more state
+
         viewModel.$isLoadingMore
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoadingMore in
@@ -100,24 +109,15 @@ final class CoinListVC: UIViewController {
             .store(in: &cancellables)
     }
 
-    private func presentAlert(title: String, message: String) {
+
+    private func showAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Dismiss", style: .default))
         present(alert, animated: true)
     }
     
-    private func loadImage(from url: URL, into imageView: UIImageView) {
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            if let data = data, let image = UIImage(data: data) {
-                DispatchQueue.main.async {
-                    imageView.image = image
-                }
-            }
-        }.resume()
-    }
 }
 
-// MARK: - UICollectionViewDelegate
 extension CoinListVC: UICollectionViewDelegate {
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let offsetY = scrollView.contentOffset.y
