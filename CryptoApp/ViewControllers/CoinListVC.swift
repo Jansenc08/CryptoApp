@@ -56,7 +56,7 @@ final class CoinListVC: UIViewController {
                 return UICollectionViewCell()
             }
 
-            cell.configure(withRank: coin.cmcRank, name: coin.name, symbol: coin.symbol, price: coin.priceString)
+            cell.configure(withRank: coin.cmcRank, name: coin.name, price: coin.priceString, market: coin.marketSupplyString, percentChange24h: coin.percentChange24hString)
 
             if let urlString = self?.viewModel.coinLogos[coin.id] {
                 cell.coinImageView.downloadImage(fromURL: urlString)
@@ -129,4 +129,8 @@ extension CoinListVC: UICollectionViewDelegate {
             viewModel.loadMoreCoins()
         }
     }
+}
+
+#Preview {
+    CoinListVC()
 }

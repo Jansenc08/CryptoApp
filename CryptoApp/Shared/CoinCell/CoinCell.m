@@ -28,14 +28,17 @@
     self.coinImageView = [[CoinImageView alloc] init];
     [self.contentView addSubview:self.coinImageView];
     self.nameLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:16 weight:UIFontWeightSemibold];
-    self.symbolLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:14 weight:UIFontWeightRegular];
     self.priceLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:14 weight:UIFontWeightMedium];
+    self.percentChangeLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:14 weight:UIFontWeightMedium];
+    self.marketSupply = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:14 weight:UIFontWeightMedium];
 
     [self.contentView addSubview:self.rankLabel];
     [self.contentView addSubview:self.coinImageView];
     [self.contentView addSubview:self.nameLabel];
-    [self.contentView addSubview:self.symbolLabel];
     [self.contentView addSubview:self.priceLabel];
+    [self.contentView addSubview:self.marketSupply];
+    [self.contentView addSubview:self.percentChangeLabel];
+
 
     [NSLayoutConstraint activateConstraints:@[
         // Rank label
@@ -52,25 +55,33 @@
         [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.coinImageView.trailingAnchor constant:12],
         [self.nameLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
 
-        [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
-        [self.symbolLabel.topAnchor constraintEqualToAnchor:self.nameLabel.bottomAnchor constant:4],
-        [self.symbolLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
+        [self.marketSupply.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
+        [self.marketSupply.topAnchor constraintEqualToAnchor:self.nameLabel.bottomAnchor constant:4],
+        [self.marketSupply.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
 
-        // Price aligned right
-        [self.priceLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
-        [self.priceLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor]
+        // Price label: right-aligned & centered vertically
+        [self.priceLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-80],
+        [self.priceLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+
+        // Percent change label: beside price & vertically aligned
+        [self.percentChangeLabel.leadingAnchor constraintEqualToAnchor:self.priceLabel.trailingAnchor constant:8],
+        [self.percentChangeLabel.centerYAnchor constraintEqualToAnchor:self.priceLabel.centerYAnchor],
+        [self.percentChangeLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.contentView.trailingAnchor constant:-12],
+
     ]];
 }
 
 
 - (void)configureWithRank:(NSInteger)rank
                      name:(NSString *)name
-                   symbol:(NSString *)symbol
-                    price:(NSString *)price {
+                    price:(NSString *)price
+                    market:(NSString *)market
+         percentChange24h:(NSString *)percentChange24h{
     self.rankLabel.text = [NSString stringWithFormat:@"%ld", (long)rank];
     self.nameLabel.text = name;
-    self.symbolLabel.text = symbol;
     self.priceLabel.text = price;
+    self.marketSupply.text = market;
+    self.percentChangeLabel.text = percentChange24h;
 }
 
 // Resets her image when cells are reused by the collection view.

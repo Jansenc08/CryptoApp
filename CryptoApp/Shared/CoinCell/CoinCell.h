@@ -16,15 +16,18 @@ NS_ASSUME_NONNULL_BEGIN
 @interface CoinCell : UICollectionViewCell
 
 @property (nonatomic, strong) GFBodyLabel * rankLabel;
-@property (nonatomic, strong) CoinImageView * coinImageView;
 @property (nonatomic, strong) GFBodyLabel * nameLabel;
-@property (nonatomic, strong) GFBodyLabel * symbolLabel;
 @property (nonatomic, strong) GFBodyLabel * priceLabel;
+@property (nonatomic, strong) GFBodyLabel * marketSupply;
+@property (nonatomic, strong) CoinImageView * coinImageView;
+@property (nonatomic, strong) GFBodyLabel * percentChangeLabel;
+
 
 - (void)configureWithRank:(NSInteger)rank
                      name:(NSString *)name
-                   symbol:(NSString *)symbol
-                    price:(NSString *)price;
+                    price:(NSString *)price
+                   market:(NSString *)market
+         percentChange24h:(NSString *)percentChange24h;
 
 + (NSString * _Nonnull)reuseID;
 

@@ -13,6 +13,5 @@
 - (instancetype)initWithTextAlignment:(NSTextAlignment)textAlignment
                              fontSize:(CGFloat)fontSize
                                weight:(UIFontWeight)weight;
-
 @end
 
