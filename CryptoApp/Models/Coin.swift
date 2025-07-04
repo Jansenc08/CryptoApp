@@ -14,7 +14,7 @@ struct Coin: Decodable {
     let infiniteSupply: Bool?
     let cmcRank: Int
     let lastUpdated: String?
-    let quote: [String: Quote]?
+    var quote: [String: Quote]?
 
     enum CodingKeys: String, CodingKey {
         case id, name, symbol, slug, tags, quote

@@ -14,7 +14,10 @@ final class CoinListVC: UIViewController {
 
     let imageCache = NSCache<NSString, UIImage>()
     let refreshControl = UIRefreshControl()
-
+    
+    var autoRefreshTimer: Timer?
+    let autoRefreshInterval: TimeInterval = 5 // refresh rate
+    
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
@@ -28,13 +31,14 @@ final class CoinListVC: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         viewModel.fetchCoins() // Always fetch fresh data
+        startAutoRefresh()
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        // Track screen view (e.g. analytics)
-        print("CoinListVC appeared")
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopAutoRefresh()
     }
+
 
     // MARK: - Setup
 
@@ -142,6 +146,43 @@ final class CoinListVC: UIViewController {
         alert.addAction(UIAlertAction(title: "Dismiss", style: .default))
         present(alert, animated: true)
     }
+    
+    private func startAutoRefresh() {
+        stopAutoRefresh() // clear existing
+
+        autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: autoRefreshInterval, repeats: true) { [weak self] _ in
+            self?.refreshVisibleCells()
+        }
+    }
+
+    private func stopAutoRefresh() {
+        autoRefreshTimer?.invalidate()
+        autoRefreshTimer = nil
+    }
+    
+    private func refreshVisibleCells() {
+        guard !viewModel.isLoading else { return }
+
+        viewModel.fetchPriceUpdates { [weak self] in
+            guard let self = self else { return }
+
+            for indexPath in self.collectionView.indexPathsForVisibleItems {
+                guard let coin = self.viewModel.coins[safe: indexPath.item],
+                      let cell = self.collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
+
+                let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+
+                cell.updatePriceData(
+                    withPrice: coin.priceString,
+                    percentChange24h: coin.percentChange24hString,
+                    sparklineData: sparklineNumbers,
+                    isPositiveChange: coin.isPositiveChange
+                )
+            }
+        }
+    }
+
+
 }
 
 // MARK: - Scroll Pagination

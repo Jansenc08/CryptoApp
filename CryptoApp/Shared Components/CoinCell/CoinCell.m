@@ -121,6 +121,20 @@
     [self.sparklineView configureWith:doubleArray isPositive:isPositiveChange];
 }
 
+- (void)updatePriceDataWithPrice:(NSString *)price
+              percentChange24h:(NSString *)percentChange24h
+                 sparklineData:(NSArray<NSNumber *> *)sparklineData
+             isPositiveChange:(BOOL)isPositiveChange {
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.priceLabel.text = price;
+        self.percentChangeLabel.text = percentChange24h;
+        self.percentChangeLabel.textColor = isPositiveChange ? [UIColor systemGreenColor] : [UIColor systemRedColor];
+        [self.sparklineView configureWith:sparklineData isPositive:isPositiveChange];
+    });
+}
+
+
 // Resets the image when cells are reused by the collection view.
 // Avoids image flickering / wrong images showing
 - (void)prepareForReuse {

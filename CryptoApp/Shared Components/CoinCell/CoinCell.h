@@ -41,6 +41,12 @@ NS_ASSUME_NONNULL_BEGIN
              sparklineData:(NSArray<NSNumber *> *)sparklineData
             isPositiveChange:(BOOL)isPositiveChange;
 
+- (void)updatePriceDataWithPrice:(NSString *)price
+              percentChange24h:(NSString *)percentChange24h
+                 sparklineData:(NSArray<NSNumber *> *)sparklineData
+             isPositiveChange:(BOOL)isPositiveChange;
+
+
 
 // reuse method returning reuse identifier
 // + indicates this is a class mehtod

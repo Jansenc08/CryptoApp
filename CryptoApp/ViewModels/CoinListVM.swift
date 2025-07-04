@@ -105,4 +105,29 @@ final class CoinListVM: ObservableObject {
             }
             .store(in: &cancellables)
     }
+    
+    func fetchPriceUpdates(completion: @escaping () -> Void) {
+        let ids = coins.map { $0.id }
+
+        coinManager.getQuotes(for: ids)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] completionResult in
+                if case .failure(let error) = completionResult {
+                    self?.errorMessage = error.localizedDescription
+                }
+                completion()
+            } receiveValue: { [weak self] updatedQuotes in
+                guard let self = self else { return }
+
+                for i in 0..<self.coins.count {
+                    let id = self.coins[i].id
+                    if let updated = updatedQuotes[id] {
+                        self.coins[i].quote?["USD"] = updated
+                    }
+                }
+                completion()
+            }
+            .store(in: &cancellables)
+    }
+
 }

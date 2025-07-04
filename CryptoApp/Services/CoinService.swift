@@ -91,4 +91,51 @@ final class CoinService {
                 .receive(on: DispatchQueue.main)
                 .eraseToAnyPublisher()
         }
+    
+    func fetchQuotes(for ids: [Int], convert: String) -> AnyPublisher<[Int: Quote], NetworkError> {
+        let idString = ids.map { String($0) }.joined(separator: ",")
+        let endpoint = "\(baseURL)/cryptocurrency/quotes/latest?id=\(idString)&convert=\(convert)"
+
+        guard let url = URL(string: endpoint) else {
+            return Fail(error: .badURL).eraseToAnyPublisher()
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-CMC_PRO_API_KEY")
+
+        return URLSession.shared.dataTaskPublisher(for: request)
+            .tryMap { output -> [Int: Quote] in
+                guard let response = output.response as? HTTPURLResponse, response.statusCode == 200 else {
+                    throw NetworkError.invalidResponse
+                }
+
+                let json = try JSONSerialization.jsonObject(with: output.data) as? [String: Any]
+                guard let dataDict = json?["data"] as? [String: Any] else {
+                    throw NetworkError.decodingError
+                }
+
+                var result: [Int: Quote] = [:]
+                for (key, coinData) in dataDict {
+                    guard
+                        let id = Int(key),
+                        let coinDict = coinData as? [String: Any],
+                        let quoteDict = coinDict["quote"] as? [String: Any],
+                        let usdQuote = quoteDict[convert] as? [String: Any],
+                        let quoteData = try? JSONSerialization.data(withJSONObject: usdQuote),
+                        let quote = try? JSONDecoder().decode(Quote.self, from: quoteData)
+                    else {
+                        continue
+                    }
+
+                    result[id] = quote
+                }
+
+                return result
+            }
+            .mapError { error in
+                (error as? NetworkError) ?? .unknown(error)
+            }
+            .eraseToAnyPublisher()
+    }
+
 }
