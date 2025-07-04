@@ -27,66 +27,66 @@
 }
 
 - (void)configureUI {
+    // Init labels and views
     self.rankLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:9 weight:UIFontWeightMedium];
     self.coinImageView = [[CoinImageView alloc] init];
     self.nameLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:12 weight:UIFontWeightSemibold];
+    self.marketSupply = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentLeft fontSize:10 weight:UIFontWeightMedium];
     self.priceLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:12 weight:UIFontWeightMedium];
-    self.sparklineView = [[SparklineView alloc] init];
     self.percentChangeLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:12 weight:UIFontWeightMedium];
-    self.marketSupply = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:10 weight:UIFontWeightMedium];
+    self.sparklineView = [[SparklineView alloc] init];
 
-    [self.contentView addSubview:self.rankLabel];
-    [self.contentView addSubview:self.coinImageView];
-    [self.contentView addSubview:self.nameLabel];
-    [self.contentView addSubview:self.priceLabel];
-    [self.contentView addSubview:self.marketSupply];
-    [self.contentView addSubview:self.sparklineView];
-    [self.contentView addSubview:self.percentChangeLabel];
+    // Init vertical left and right stacks
+    UIStackView *nameStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.nameLabel, self.marketSupply]];
+    nameStack.axis = UILayoutConstraintAxisVertical; //stacked top to bottom
+    nameStack.spacing = 2;
 
-    // Set translatesAutoresizingMaskIntoConstraints to NO for all views
-    self.rankLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.coinImageView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.priceLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.marketSupply.translatesAutoresizingMaskIntoConstraints = NO;
-    self.sparklineView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.percentChangeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.leftStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.rankLabel, self.coinImageView, nameStack]];
+    self.leftStack.axis = UILayoutConstraintAxisHorizontal; // Stackview arranges subviews ina horizontal line (side by side)
+    self.leftStack.alignment = UIStackViewAlignmentCenter; // Sets the alignment of views perpendicular to the axis.
+    self.leftStack.spacing = 20;
     
     
+    // Adjust pricelabel down
+    // Wraps pricelabel in a vertical stack and pushes it down using a spacer
+    UIView *spacer = [[UIView alloc] init];
+    [spacer.heightAnchor constraintEqualToConstant:15].active = YES;
+
+    UIStackView *priceWrapper = [[UIStackView alloc] initWithArrangedSubviews:@[spacer, self.priceLabel]];
+    priceWrapper.axis = UILayoutConstraintAxisVertical;
+    priceWrapper.spacing = 0;
+
+    UIStackView *priceAndSparklineStack = [[UIStackView alloc] initWithArrangedSubviews:@[priceWrapper, self.sparklineView]];
+    priceAndSparklineStack.axis = UILayoutConstraintAxisHorizontal;
+    priceAndSparklineStack.alignment = UIStackViewAlignmentCenter;
+    priceAndSparklineStack.spacing = 50;
+
+    self.rightStack = [[UIStackView alloc] initWithArrangedSubviews:@[priceAndSparklineStack, self.percentChangeLabel]];
+    self.rightStack.axis = UILayoutConstraintAxisVertical;
+    self.rightStack.alignment = UIStackViewAlignmentTrailing;
+    self.rightStack.spacing = 4;
+    
+    // Main horizontal layout
+    self.mainStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.leftStack, self.rightStack]];
+    self.mainStack.axis = UILayoutConstraintAxisHorizontal;
+    self.mainStack.alignment = UIStackViewAlignmentCenter;
+    self.mainStack.distribution = UIStackViewDistributionEqualSpacing;
+    self.mainStack.spacing = 12;
+    self.mainStack.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [self.contentView addSubview:self.mainStack]; // Then added to the cell
+
+    // Constraints (Pins the mainStack to all sides of the cell with padding.)
     [NSLayoutConstraint activateConstraints:@[
-        // Rank label
-        [self.rankLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
-        [self.rankLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
-        
-        // Coin image next to rank
-        [self.coinImageView.leadingAnchor constraintEqualToAnchor:self.rankLabel.trailingAnchor constant:8],
-        [self.coinImageView.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+        [self.mainStack.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.mainStack.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
+        [self.mainStack.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
+        [self.mainStack.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8],
+
         [self.coinImageView.widthAnchor constraintEqualToConstant:32],
         [self.coinImageView.heightAnchor constraintEqualToConstant:32],
-        
-        // Name label after image
-        [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.coinImageView.trailingAnchor constant:12],
-        [self.nameLabel.bottomAnchor constraintEqualToAnchor:self.contentView.centerYAnchor constant:-2],
-
-        // Market supply below name
-        [self.marketSupply.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
-        [self.marketSupply.topAnchor constraintEqualToAnchor:self.nameLabel.bottomAnchor constant:2],
-        [self.marketSupply.topAnchor constraintEqualToAnchor:self.contentView.centerYAnchor constant:2],
-
-        // Price label: right-aligned, centerY aligned to the combined stack
-        [self.priceLabel.trailingAnchor constraintEqualToAnchor:self.sparklineView.leadingAnchor constant:-45],
-        [self.priceLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
-
-        // Sparkline view: right of price, top of stack
-        [self.sparklineView.topAnchor constraintEqualToAnchor:self.contentView.centerYAnchor constant:-16],
-        [self.sparklineView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
         [self.sparklineView.widthAnchor constraintEqualToConstant:60],
         [self.sparklineView.heightAnchor constraintEqualToConstant:20],
-
-        // Percent change label: below sparkline
-        [self.percentChangeLabel.topAnchor constraintEqualToAnchor:self.sparklineView.bottomAnchor constant:2],
-        [self.percentChangeLabel.trailingAnchor constraintEqualToAnchor:self.sparklineView.trailingAnchor],
-        [self.percentChangeLabel.bottomAnchor constraintLessThanOrEqualToAnchor:self.contentView.bottomAnchor constant:-8],
     ]];
 }
 

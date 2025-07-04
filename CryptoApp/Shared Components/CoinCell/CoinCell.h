@@ -25,6 +25,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) CoinImageView *coinImageView;
 @property (nonatomic, strong) SparklineView *sparklineView;
 @property (nonatomic, strong) GFBodyLabel *percentChangeLabel;
+@property (nonatomic, strong) UIStackView *leftStack;
+@property (nonatomic, strong) UIStackView *rightStack;
+@property (nonatomic, strong) UIStackView *mainStack;
+
 
 // Set up Cell data
 // - indicates this is a instance method

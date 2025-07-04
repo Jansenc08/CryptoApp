@@ -10,6 +10,7 @@
 
 @interface GFBodyLabel : UILabel
 
+// Custom Initializer 
 - (instancetype)initWithTextAlignment:(NSTextAlignment)textAlignment
                              fontSize:(CGFloat)fontSize
                                weight:(UIFontWeight)weight;

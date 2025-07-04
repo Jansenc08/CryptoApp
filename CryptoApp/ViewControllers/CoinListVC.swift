@@ -112,13 +112,13 @@ final class CoinListVC: UIViewController {
     private func bindViewModel() {
         viewModel.$coins
             .receive(on: DispatchQueue.main) // ensures UI updates happens on the main thread
-            .sink { [weak self] coins in
+            .sink { [weak self] coins in // Creates a combine subscription
                 var snapshot = NSDiffableDataSourceSnapshot<CoinSection, Coin>()
                 snapshot.appendSections([.main])
                 snapshot.appendItems(coins)
                 self?.dataSource.apply(snapshot, animatingDifferences: true)
             }
-            .store(in: &cancellables)
+            .store(in: &cancellables) // Keeps this subscription alive
 
         viewModel.$coinLogos
             .receive(on: DispatchQueue.main)

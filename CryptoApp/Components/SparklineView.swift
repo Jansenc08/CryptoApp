@@ -38,6 +38,7 @@ class SparklineView: UIView {
         configure(with: doubleArray, isPositive: isPositive)
     }
     
+    // This is where the UIBezierPath plots the sparkline based on the values
     override func draw(_ rect: CGRect) {
         super.draw(rect)
         
@@ -124,20 +125,24 @@ extension SparklineView {
     // This simulates historical price movement leading to the current change
     static func generateSampleData(for percentChange: Double, points: Int = 20) -> [Double] {
         var dataPoints: [Double] = []
-        let baseValue = 100.0
+        let baseValue = 100.0 // Every graph starts from a base price of 100.0.
+        
         
         // Generate realistic price movement
         var currentValue = baseValue
         dataPoints.append(currentValue)
         
         // Create a trend that leads to the final percentage change
+        // If percentChange is +5%, target is 105.0
+        // If it's -2%, target is 98.0
         let targetValue = baseValue + (baseValue * percentChange / 100.0)
         let totalChange = targetValue - baseValue
         
         for i in 1..<points {
+            //progress gives a smooth transition from base to target.
             let progress = Double(i) / Double(points - 1)
             
-            // Add some randomness to make it look realistic
+            // randomFactor adds slight zig-zag noise to look like a real chart.
             let randomFactor = Double.random(in: -0.02...0.02)
             let trendValue = baseValue + (totalChange * progress) + (baseValue * randomFactor)
             
@@ -146,6 +151,7 @@ extension SparklineView {
             let noise = Double.random(in: -volatility...volatility)
             currentValue = trendValue + noise
             
+            // Ensures the last point accurately reflects the 24h % change.
             dataPoints.append(currentValue)
         }
         

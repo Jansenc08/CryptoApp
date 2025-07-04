@@ -25,8 +25,10 @@ final class CoinService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         // Runs Network call on the background thread automatically
+        // This runs in the background automatically (on a background thread).
         // Combine wraps this in a publisher so it becomes part of reactive chain
         return URLSession.shared.dataTaskPublisher(for: request)
+            //Background thread (network/data parsing)
             .tryMap { output in
                 guard let response = output.response as? HTTPURLResponse,
                       response.statusCode == 200 else {
@@ -40,6 +42,7 @@ final class CoinService {
                 return decoder
             }())
             .map { $0.data }
+            .receive(on: DispatchQueue.main) // Switches to main thread
             .mapError { error in
                 print("❌ Decoding failed with error: \(error)")
                 if let error = error as? NetworkError {
