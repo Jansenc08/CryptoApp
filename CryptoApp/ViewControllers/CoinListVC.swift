@@ -2,7 +2,7 @@ import UIKit
 import Combine
 
 final class CoinListVC: UIViewController {
-    
+
     enum CoinSection {
         case main
     }
@@ -11,19 +11,32 @@ final class CoinListVC: UIViewController {
     let viewModel = CoinListVM()
     var cancellables = Set<AnyCancellable>()
     var dataSource: UICollectionViewDiffableDataSource<CoinSection, Coin>!
-    
+
     let imageCache = NSCache<NSString, UIImage>()
     let refreshControl = UIRefreshControl()
+
+    // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         configureView()
         configureCollectionView()
         configureDataSource()
-
         bindViewModel()
-        viewModel.fetchCoins() // fetch first 20 coins (USD)
     }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        viewModel.fetchCoins() // Always fetch fresh data
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Track screen view (e.g. analytics)
+        print("CoinListVC appeared")
+    }
+
+    // MARK: - Setup
 
     private func configureView() {
         view.backgroundColor = .systemBackground
@@ -38,12 +51,12 @@ final class CoinListVC: UIViewController {
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         collectionView.delegate = self
 
+        // Used so the CollectionView knows what identifier to associate with custom cell class
         collectionView.register(CoinCell.self, forCellWithReuseIdentifier: CoinCell.reuseID())
-
         collectionView.backgroundColor = .systemBackground
         view.addSubview(collectionView)
-        
-        // Add Pull to refresh
+
+        // Pull to refresh
         refreshControl.addTarget(self, action: #selector(handleRefresh), for: .valueChanged)
         collectionView.refreshControl = refreshControl
 
@@ -54,22 +67,21 @@ final class CoinListVC: UIViewController {
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
-    
+
     @objc func handleRefresh() {
         viewModel.fetchCoins {
             self.refreshControl.endRefreshing()
         }
     }
-    
+
     private func configureDataSource() {
         dataSource = UICollectionViewDiffableDataSource<CoinSection, Coin>(collectionView: collectionView) { [weak self] collectionView, indexPath, coin in
             guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: CoinCell.reuseID(), for: indexPath) as? CoinCell else {
                 return UICollectionViewCell()
             }
 
-            // Convert sparkline data to NSNumber array for Objective-C
             let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
-            
+
             cell.configure(
                 withRank: coin.cmcRank,
                 name: coin.name,
@@ -88,13 +100,18 @@ final class CoinListVC: UIViewController {
 
             return cell
         }
-        
+
         collectionView.dataSource = dataSource
     }
 
+    // Combine handles threading
+    // Combines listens for changes to ui updates such as coins. (since they are @Published)
+    // even if data comes from the background thread, it sends it back on the main thread
+    // handles async-queue switching
+    // Combine uses GCD queues 
     private func bindViewModel() {
         viewModel.$coins
-            .receive(on: DispatchQueue.main)
+            .receive(on: DispatchQueue.main) // ensures UI updates happens on the main thread
             .sink { [weak self] coins in
                 var snapshot = NSDiffableDataSourceSnapshot<CoinSection, Coin>()
                 snapshot.appendSections([.main])
@@ -102,12 +119,10 @@ final class CoinListVC: UIViewController {
                 self?.dataSource.apply(snapshot, animatingDifferences: true)
             }
             .store(in: &cancellables)
-        
-        // Ensures that when logos arrive, the ui gets refreshed to apply them into cells.
+
         viewModel.$coinLogos
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                // Force reload of visible cells to update images
                 self?.collectionView.reloadData()
             }
             .store(in: &cancellables)
@@ -139,18 +154,21 @@ final class CoinListVC: UIViewController {
     }
 }
 
+// MARK: - Scroll Pagination
+
 extension CoinListVC: UICollectionViewDelegate {
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let offsetY = scrollView.contentOffset.y
         let contentHeight = scrollView.contentSize.height
         let height = scrollView.frame.size.height
-        
-        // Trigger loading more when scrolled to 80% of content
+
         if offsetY > contentHeight - height * 1.2 {
             viewModel.loadMoreCoins()
         }
     }
 }
+
+// MARK: - Preview
 
 #Preview {
     CoinListVC()

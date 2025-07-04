@@ -24,6 +24,8 @@ final class CoinService {
         request.setValue(apiKey, forHTTPHeaderField: "X-CMC_PRO_API_KEY")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
+        // Runs Network call on the background thread automatically
+        // Combine wraps this in a publisher so it becomes part of reactive chain
         return URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { output in
                 guard let response = output.response as? HTTPURLResponse,

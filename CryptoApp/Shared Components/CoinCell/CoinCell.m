@@ -9,9 +9,11 @@
 #import "CoinCell.h"
 #import "GFBodyLabel.h"
 #import "CryptoApp-Swift.h" // Import the Swift classes
+// This class defines method bodies and implementation logic 
 
 @implementation CoinCell
 
+// Returns the identifer for registering and dequeuing the cell
 + (NSString *)reuseID {
     return @"CoinCell";
 }

@@ -38,6 +38,8 @@ final class CoinListVM: ObservableObject {
         errorMessage = nil
 
         coinManager.getTopCoins(limit: itemsPerPage, convert: convert)
+        // Handles threading transition. After doing all the work, the result is sent back to the main thread for UI Updates
+        // .sink is a way for COmbine to subscribe to results
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 self?.isLoading = false
