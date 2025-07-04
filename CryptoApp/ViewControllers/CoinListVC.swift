@@ -135,16 +135,6 @@ final class CoinListVC: UIViewController {
             }
             .store(in: &cancellables)
 
-        viewModel.$isLoadingMore
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isLoadingMore in
-                if isLoadingMore {
-                    LoadingView.show(in: self?.view ?? UIView())
-                } else {
-                    LoadingView.dismiss(from: self?.view ?? UIView())
-                }
-            }
-            .store(in: &cancellables)
     }
 
     private func showAlert(title: String, message: String) {
