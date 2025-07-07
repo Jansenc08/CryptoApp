@@ -10,3 +10,4 @@
 #import "CoinImageView.h"
 #import "TabBarController.h"
 #import "LoadingView.h"
+#import "SegmentView.h"

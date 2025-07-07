@@ -16,7 +16,7 @@ final class CoinListVC: UIViewController {
     let refreshControl = UIRefreshControl()
     
     var autoRefreshTimer: Timer?
-    let autoRefreshInterval: TimeInterval = 5 // refresh rate
+    let autoRefreshInterval: TimeInterval = 5 // refresh rate in seconds
     
     // MARK: - Lifecycle
 
@@ -181,13 +181,21 @@ final class CoinListVC: UIViewController {
             }
         }
     }
-
-
 }
 
 // MARK: - Scroll Pagination
 
 extension CoinListVC: UICollectionViewDelegate {
+    
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let selectedCoin = viewModel.coins[indexPath.item]
+        let detailsVC = CoinDetailsVC(coin: selectedCoin)
+        navigationController?.pushViewController(detailsVC, animated: true)
+        
+        collectionView.deselectItem(at: indexPath, animated: true)
+
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let offsetY = scrollView.contentOffset.y
         let contentHeight = scrollView.contentSize.height
@@ -198,6 +206,7 @@ extension CoinListVC: UICollectionViewDelegate {
         }
     }
 }
+
 
 // MARK: - Preview
 

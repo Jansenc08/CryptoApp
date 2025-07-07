@@ -12,6 +12,8 @@ final class CoinService {
 
     private let baseURL = "https://pro-api.coinmarketcap.com/v1"
     private let apiKey = "f0e06275-928f-4732-8d8e-4834c56bf0b0"
+    private let coinGeckoBaseURL = "https://api.coingecko.com/api/v3" // CoinGecko Base URL
+
 
     func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1) -> AnyPublisher<[Coin], NetworkError> {
         let endpoint = "\(baseURL)/cryptocurrency/listings/latest?limit=\(limit)&convert=\(convert)&start=\(start)"
@@ -137,5 +139,47 @@ final class CoinService {
             }
             .eraseToAnyPublisher()
     }
+    
+    
+    func fetchCoinGeckoChartData(for coinId: String, currency: String, days: String) -> AnyPublisher<[Double], NetworkError> {
+        let endpoint = "\(coinGeckoBaseURL)/coins/\(coinId)/market_chart?vs_currency=\(currency)&days=\(days)"
 
+        guard let url = URL(string: endpoint) else {
+            return Fail(error: .badURL).eraseToAnyPublisher()
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET" // No API key needed for CoinGecko public endpoints
+
+        return URLSession.shared.dataTaskPublisher(for: request)
+            .tryMap { output in
+                guard let response = output.response as? HTTPURLResponse,
+                      response.statusCode == 200 else {
+                    // Attempt to decode CoinGecko specific error message
+                    if let errorResponse = try? JSONSerialization.jsonObject(with: output.data, options: []) as? [String: Any],
+                       let errorMessage = errorResponse["error"] as? String {
+                        throw NetworkError.badURL
+                    }
+                    throw NetworkError.invalidResponse
+                }
+                return output.data
+            }
+            .decode(type: CoinGeckoChartResponse.self, decoder: JSONDecoder())
+            .map { response in
+                // CoinGecko returns prices as [[timestamp, price]]. We only want the price.
+                return response.prices.map { $0[1] }
+            }
+            .receive(on: DispatchQueue.main)
+            .mapError { error in
+                print("❌ CoinGecko Chart fetch failed with error: \(error)")
+                if let error = error as? NetworkError {
+                    return error
+                } else if error is DecodingError {
+                    return .decodingError
+                } else {
+                    return .unknown(error)
+                }
+            }
+            .eraseToAnyPublisher()
+    }
 }
