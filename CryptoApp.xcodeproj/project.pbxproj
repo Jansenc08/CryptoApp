@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		977F770D2E1B72100043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F770C2E1B72100043D04C /* DGCharts */; };
+		977F77182E1B74960043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F77172E1B74960043D04C /* DGCharts */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		97CA70B82E0BAEEB00E42811 /* CryptoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CryptoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,16 +41,26 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				977F77182E1B74960043D04C /* DGCharts in Frameworks */,
+				977F770D2E1B72100043D04C /* DGCharts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		977F77162E1B74960043D04C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		97CA70AF2E0BAEEB00E42811 = {
 			isa = PBXGroup;
 			children = (
 				97CA70BA2E0BAEEB00E42811 /* CryptoApp */,
+				977F77162E1B74960043D04C /* Frameworks */,
 				97CA70B92E0BAEEB00E42811 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -107,6 +122,7 @@
 			mainGroup = 97CA70AF2E0BAEEB00E42811;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 97CA70B92E0BAEEB00E42811 /* Products */;
@@ -341,6 +357,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/danielgindi/Charts.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		977F770C2E1B72100043D04C /* DGCharts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */;
+			productName = DGCharts;
+		};
+		977F77172E1B74960043D04C /* DGCharts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */;
+			productName = DGCharts;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 97CA70B02E0BAEEB00E42811 /* Project object */;
 }
