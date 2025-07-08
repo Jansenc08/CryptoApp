@@ -157,7 +157,7 @@ final class CoinService {
                       response.statusCode == 200 else {
                     // Attempt to decode CoinGecko specific error message
                     if let errorResponse = try? JSONSerialization.jsonObject(with: output.data, options: []) as? [String: Any],
-                       let errorMessage = errorResponse["error"] as? String {
+                       let _ = errorResponse["error"] as? String {
                         throw NetworkError.badURL
                     }
                     throw NetworkError.invalidResponse

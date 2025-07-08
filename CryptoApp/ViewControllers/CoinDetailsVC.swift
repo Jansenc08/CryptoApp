@@ -2,7 +2,7 @@ import UIKit
 import Combine
 import DGCharts
 
-final class CoinDetailsVC: UIViewController, ChartViewDelegate {
+final class CoinDetailsVC: UIViewController {
 
     private let coin: Coin
     private let viewModel: CoinDetailsVM
@@ -15,7 +15,6 @@ final class CoinDetailsVC: UIViewController, ChartViewDelegate {
 
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: Timer?
-
 
     init(coin: Coin) {
         self.coin = coin
@@ -72,27 +71,18 @@ final class CoinDetailsVC: UIViewController, ChartViewDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(stack)
-        
-        chartView.delegate = self
 
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            chartView.heightAnchor.constraint(equalToConstant: 280)
+            chartView.heightAnchor.constraint(equalToConstant: 280),
         ])
-    }
 
-    
-    func chartValueSelected(_ chartView: ChartViewBase, entry: ChartDataEntry, highlight: Highlight) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            chartView.highlightValue(nil)
+        // Setup chart scroll callbacks
+        chartView.onScrollToEdge = { [weak self] direction in
+            self?.handleEdgeScroll(direction)
         }
-    }
-    
-    func chartValueNothingSelected(_ chartView: ChartViewBase) {
-        // Immediately remove the marker when user taps outside the chart
-        chartView.highlightValue(nil)
     }
 
     private func bindViewModel() {
@@ -114,6 +104,8 @@ final class CoinDetailsVC: UIViewController, ChartViewDelegate {
             .store(in: &cancellables)
     }
 
+
+
     private func startAutoRefresh() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             guard let self = self else { return }
@@ -125,4 +117,17 @@ final class CoinDetailsVC: UIViewController, ChartViewDelegate {
         chartView.update(with: dataPoints, range: selectedRange.value)
     }
 
+    private func handleEdgeScroll(_ direction: ChartView.ScrollDirection) {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+
+        switch direction {
+        case .left:
+            // Load more historical data
+            viewModel.loadMoreHistoricalData(for: selectedRange.value, beforeDate: Date())
+        case .right:
+            // Could implement real-time data loading here
+            break
+        }
+    }
 }
