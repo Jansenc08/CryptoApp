@@ -1,17 +1,14 @@
+
 import UIKit
 import Combine
-import DGCharts
 
 final class CoinDetailsVC: UIViewController {
 
     private let coin: Coin
     private let viewModel: CoinDetailsVM
     private let selectedRange = CurrentValueSubject<String, Never>("24h")
-    private let nameLabel = UILabel()
-    private let rankLabel = UILabel()
-    private let priceLabel = UILabel()
-    private let segmentedFilter = SegmentView()
     private let chartView = ChartView()
+    private let tableView = UITableView(frame: .zero, style: .plain)
 
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: Timer?
@@ -28,7 +25,7 @@ final class CoinDetailsVC: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureUI()
+        setupTableView()
         bindViewModel()
         bindFilter()
         startAutoRefresh()
@@ -38,57 +35,36 @@ final class CoinDetailsVC: UIViewController {
         super.viewWillDisappear(animated)
         refreshTimer?.invalidate()
     }
-    private func configureUI() {
+
+    private func setupTableView() {
         view.backgroundColor = .systemBackground
         navigationItem.title = coin.name
 
-        nameLabel.text = coin.name
-        nameLabel.font = .boldSystemFont(ofSize: 24)
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.separatorStyle = .none
+        tableView.showsVerticalScrollIndicator = false
+        tableView.contentInsetAdjustmentBehavior = .never
 
-        rankLabel.text = "#\(coin.cmcRank)"
-        rankLabel.font = .systemFont(ofSize: 16)
-        rankLabel.textColor = .secondaryLabel
+        tableView.register(InfoCell.self, forCellReuseIdentifier: "InfoCell")
+        tableView.register(SegmentCell.self, forCellReuseIdentifier: "SegmentCell")
+        tableView.register(ChartCell.self, forCellReuseIdentifier: "ChartCell")
 
-        priceLabel.text = coin.priceString
-        priceLabel.font = .systemFont(ofSize: 20, weight: .medium)
-        priceLabel.textColor = .label
-
-        segmentedFilter.configure(withItems: ["24h", "7d", "30d", "All"])
-        segmentedFilter.onSelectionChanged = { [weak self] index in
-            let range = ["24h", "7d", "30d", "365d"][index]
-            self?.selectedRange.send(range)
-        }
-
-        let topStack = UIStackView(arrangedSubviews: [nameLabel, rankLabel])
-        topStack.axis = .horizontal
-        topStack.spacing = 10
-        topStack.alignment = .center
-
-        let stack = UIStackView(arrangedSubviews: [topStack, priceLabel, segmentedFilter, chartView])
-        stack.axis = .vertical
-        stack.spacing = 16
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        view.addSubview(stack)
-
+        view.addSubview(tableView)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            chartView.heightAnchor.constraint(equalToConstant: 280),
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-
-        // Setup chart scroll callbacks
-        chartView.onScrollToEdge = { [weak self] direction in
-            self?.handleEdgeScroll(direction)
-        }
     }
 
     private func bindViewModel() {
         viewModel.$chartPoints
             .receive(on: DispatchQueue.main)
             .sink { [weak self] points in
-                self?.updateChart(with: points)
+                self?.chartView.update(with: points, range: self?.selectedRange.value ?? "24h")
             }
             .store(in: &cancellables)
     }
@@ -96,14 +72,11 @@ final class CoinDetailsVC: UIViewController {
     private func bindFilter() {
         selectedRange
             .removeDuplicates()
-            .debounce(for: .milliseconds(400), scheduler: DispatchQueue.main)
             .sink { [weak self] range in
                 self?.viewModel.fetchChartData(for: range)
             }
             .store(in: &cancellables)
     }
-
-
 
     private func startAutoRefresh() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
@@ -111,22 +84,62 @@ final class CoinDetailsVC: UIViewController {
             self.viewModel.fetchChartData(for: self.selectedRange.value)
         }
     }
+}
 
-    private func updateChart(with dataPoints: [Double]) {
-        chartView.update(with: dataPoints, range: selectedRange.value)
+extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
+    func numberOfSections(in tableView: UITableView) -> Int { 3 }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { 1 }
+
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        switch indexPath.section {
+        case 0: return UITableView.automaticDimension
+        case 1: return 44
+        case 2: return 300
+        default: return 44
+        }
     }
 
-    private func handleEdgeScroll(_ direction: ChartView.ScrollDirection) {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        return .leastNormalMagnitude
+    }
 
-        switch direction {
-        case .left:
-            // Load more historical data
-            viewModel.loadMoreHistoricalData(for: selectedRange.value, beforeDate: Date())
-        case .right:
-            // Could implement real-time data loading here
-            break
+    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
+        return .leastNormalMagnitude
+    }
+
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        return UIView(frame: .zero)
+    }
+
+    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
+        return UIView(frame: .zero)
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        switch indexPath.section {
+        case 0:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "InfoCell", for: indexPath) as! InfoCell
+            cell.configure(name: coin.name, rank: coin.cmcRank, price: coin.priceString)
+            cell.selectionStyle = .none
+            return cell
+        case 1:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "SegmentCell", for: indexPath) as! SegmentCell
+            cell.configure(items: ["24h", "7d", "30d", "All"]) { [weak self] range in
+                self?.selectedRange.send(range)
+            }
+            cell.selectionStyle = .none
+            return cell
+        case 2:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "ChartCell", for: indexPath) as! ChartCell
+            cell.embed(chartView)
+            chartView.onScrollToEdge = { [weak self] dir in
+                self?.viewModel.loadMoreHistoricalData(for: self?.selectedRange.value ?? "24h", beforeDate: Date())
+            }
+            cell.selectionStyle = .none
+            return cell
+        default:
+            return UITableViewCell()
         }
     }
 }

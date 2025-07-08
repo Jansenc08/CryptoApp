@@ -5,9 +5,6 @@
 //  Created by Jansen Castillo on 7/7/25.
 //
 
-//  ChartView.swift
-//  CryptoApp
-
 import UIKit
 import DGCharts
 

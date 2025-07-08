@@ -34,7 +34,7 @@ final class CoinManager {
         return coinService.fetchQuotes(for: ids, convert: convert)
     }
     
-    // FIXED: Now properly handles all range cases including 365 days
+    // handles all range cases including 365 days
     func fetchChartData(for coinSlug: String, range: String, currency: String = "usd") -> AnyPublisher<[Double], NetworkError> {
         // Map your range string to CoinGecko's 'days' parameter
         let daysParam: String
