@@ -38,7 +38,6 @@ final class CoinDetailsVC: UIViewController {
         super.viewWillDisappear(animated)
         refreshTimer?.invalidate()
     }
-
     private func configureUI() {
         view.backgroundColor = .systemBackground
         navigationItem.title = coin.name
