@@ -12,6 +12,8 @@ final class CoinDetailsVM: ObservableObject {
     @Published var chartPoints: [Double] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    
+    var shouldReloadChart = true
 
     private let coin: Coin
     private let coinManager: CoinManager
@@ -22,6 +24,7 @@ final class CoinDetailsVM: ObservableObject {
 
     private var currentRange: String = "24h"
     private var isLoadingMoreData = false
+    
 
     init(coin: Coin, coinManager: CoinManager = CoinManager()) {
         self.coin = coin
@@ -65,6 +68,7 @@ final class CoinDetailsVM: ObservableObject {
                     guard let self = self else { return }
                     print("✅ Received \(prices.count) data points")
                     self.chartCache[cacheKey] = ChartDataCache(data: prices)
+                    self.shouldReloadChart = true
                     self.chartPoints = prices
                     self.cleanExpiredCache()
                 }
@@ -76,6 +80,7 @@ final class CoinDetailsVM: ObservableObject {
         guard !isLoadingMoreData, let slug = coin.slug?.lowercased() else { return }
 
         isLoadingMoreData = true
+        
         let extendedDays = calculateExtendedRange(for: range)
         let cacheKey = "\(slug)-extended-\(extendedDays)"
 
@@ -110,6 +115,7 @@ final class CoinDetailsVM: ObservableObject {
 
     private func appendHistoricalData(_ newData: [Double]) {
         let olderData = newData.prefix(max(0, newData.count - chartPoints.count))
+        shouldReloadChart = false // Disables UI Reload
         chartPoints = Array(olderData) + chartPoints
         print("📈 Appended \(olderData.count) historical points. Total: \(chartPoints.count)")
     }

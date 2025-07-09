@@ -13,6 +13,7 @@ final class CoinDetailsVC: UIViewController {
     private var cancellables = Set<AnyCancellable>() // Combine cancellables
     private var refreshTimer: Timer? //  auto refresh timer
 
+
     // MARK: - Init
     
     init(coin: Coin) {
@@ -80,7 +81,15 @@ final class CoinDetailsVC: UIViewController {
         viewModel.$chartPoints
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.tableView.reloadSections(IndexSet(integer: 2), with: .none)
+                guard let self = self else { return }
+
+                // Only reload the chart section if it’s a fresh fetch
+                if self.viewModel.shouldReloadChart {
+                    self.tableView.reloadSections(IndexSet(integer: 2), with: .none)
+                }
+
+                // Reset flag after chartPoints updates
+                self.viewModel.shouldReloadChart = true
             }
             .store(in: &cancellables)
     }
