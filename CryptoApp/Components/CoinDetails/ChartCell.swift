@@ -1,13 +1,12 @@
-//
-//  ChartCell.swift
-//  CryptoApp
-//
-//  Created by Jansen Castillo on 8/7/25.
-//
+import UIKit
 
 final class ChartCell: UITableViewCell {
-    func embed(_ chartView: UIView) {
-        chartView.removeFromSuperview()
+    private let chartView = ChartView()
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        
+        // Add Chart to cell content
         contentView.addSubview(chartView)
         chartView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -16,5 +15,24 @@ final class ChartCell: UITableViewCell {
             chartView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             chartView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
         ])
+    }
+
+    // Configure chart with new data
+    func configure(points: [Double], range: String) {
+        chartView.update(with: points, range: range)
+    }
+    
+    // Allows setting a scroll callback
+    // Chartview detects user scrolling
+    // Chartview tells Chartcell
+    // Chartcell tells VC
+    // VC tells ViewModel and VM fetches data 
+    var onScrollToEdge: ((ChartView.ScrollDirection) -> Void)? {
+        get { chartView.onScrollToEdge }
+        set { chartView.onScrollToEdge = newValue }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
