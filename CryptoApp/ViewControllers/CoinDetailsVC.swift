@@ -45,25 +45,24 @@ final class CoinDetailsVC: UIViewController {
     
     private func setupTableView() {
         view.backgroundColor = .systemBackground
-        navigationItem.title = coin.name //  Set nav title to selected coin name
+        navigationItem.title = coin.name
         
-        // Setup Table View
         tableView.dataSource = self
         tableView.delegate = self
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.separatorStyle = .none
         tableView.showsVerticalScrollIndicator = false
-        tableView.contentInsetAdjustmentBehavior = .never
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 300
+        // tableView.contentInsetAdjustmentBehavior = .never  // Optional: comment this
 
-        
-        // Register custom cells
         tableView.register(InfoCell.self, forCellReuseIdentifier: "InfoCell")
         tableView.register(SegmentCell.self, forCellReuseIdentifier: "SegmentCell")
         tableView.register(ChartCell.self, forCellReuseIdentifier: "ChartCell")
+        tableView.register(StatsCell.self, forCellReuseIdentifier: "StatsCell")
 
         view.addSubview(tableView)
-        
-        // Layout constraints
+
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -71,6 +70,7 @@ final class CoinDetailsVC: UIViewController {
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
+
 
     
     // MARK: - Bindings
@@ -116,7 +116,7 @@ final class CoinDetailsVC: UIViewController {
 // MARK: - TableView Delegate/DataSource
 
 extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
-    func numberOfSections(in tableView: UITableView) -> Int { 3 } // Info section, filter section, chart section
+    func numberOfSections(in tableView: UITableView) -> Int { 4 } // Info section, filter section, chart section
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { 1 }
 
@@ -125,6 +125,7 @@ extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
         case 0: return UITableView.automaticDimension // InfoCell adjusts height based on text
         case 1: return 44                             // SegmentCell height (fixed)
         case 2: return 300                            // ChartCell height (fixed)
+        case 3: return UITableView.automaticDimension
         default: return 44
         }
     }
@@ -170,6 +171,15 @@ extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
             // Set chart scroll edge detection handler
             cell.selectionStyle = .none
             return cell
+        case 3: // Stats section
+            let cell = tableView.dequeueReusableCell(withIdentifier: "StatsCell", for: indexPath) as! StatsCell
+            cell.configure(with: viewModel.currentStats) { selectedRange in
+                // TODO: You can use this closure to trigger updates later when needed
+                print("Selected stats filter: \(selectedRange)")
+            }
+            cell.selectionStyle = .none
+            return cell
+
         default:
             return UITableViewCell()
         }

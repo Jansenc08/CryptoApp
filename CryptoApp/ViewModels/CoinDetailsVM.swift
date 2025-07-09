@@ -8,6 +8,29 @@
 import Foundation
 import Combine
 
+struct StatItem {
+    let title: String
+    let value: String
+}
+
+extension Double {
+    func formattedWithAbbreviations() -> String {
+        let num = abs(self)
+        let sign = self < 0 ? "-" : ""
+
+        switch num {
+        case 1_000_000_000...:
+            return "\(sign)\(String(format: "%.2f", num / 1_000_000_000))B"
+        case 1_000_000...:
+            return "\(sign)\(String(format: "%.2f", num / 1_000_000))M"
+        case 1_000...:
+            return "\(sign)\(String(format: "%.2f", num / 1_000))K"
+        default:
+            return "\(sign)\(String(format: "%.2f", self))"
+        }
+    }
+}
+
 final class CoinDetailsVM: ObservableObject {
     @Published var chartPoints: [Double] = []
     @Published var isLoading: Bool = false
@@ -25,6 +48,38 @@ final class CoinDetailsVM: ObservableObject {
     private var currentRange: String = "24h"
     private var isLoadingMoreData = false
     
+    var currentStats: [StatItem] {
+        var items: [StatItem] = []
+
+        if let quote = coin.quote?["USD"] {
+            if let marketCap = quote.marketCap {
+                items.append(StatItem(title: "Market Cap", value: marketCap.formattedWithAbbreviations()))
+            }
+            if let volume24h = quote.volume24h {
+                items.append(StatItem(title: "Volume (24h)", value: volume24h.formattedWithAbbreviations()))
+            }
+            if let fdv = quote.fullyDilutedMarketCap {
+                items.append(StatItem(title: "Fully Diluted Market Cap", value: fdv.formattedWithAbbreviations()))
+            }
+        }
+
+        if let circulating = coin.circulatingSupply {
+            items.append(StatItem(title: "Circulating Supply", value: circulating.formattedWithAbbreviations()))
+        }
+
+        if let total = coin.totalSupply {
+            items.append(StatItem(title: "Total Supply", value: total.formattedWithAbbreviations()))
+        }
+
+        if let max = coin.maxSupply {
+            items.append(StatItem(title: "Max Supply", value: max.formattedWithAbbreviations()))
+        }
+
+        items.append(StatItem(title: "Rank", value: "#\(coin.cmcRank)"))
+
+        return items
+    }
+
 
     init(coin: Coin, coinManager: CoinManager = CoinManager()) {
         self.coin = coin
