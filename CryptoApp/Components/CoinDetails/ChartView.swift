@@ -50,7 +50,7 @@ final class ChartView: LineChartView {
         configure()
     }
 
-    // MARK: -Chsart Setup
+    // MARK: -Chart Setup
     private func configure() {
         backgroundColor = .systemBackground
 

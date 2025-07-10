@@ -113,6 +113,7 @@ final class CoinDetailsVC: UIViewController {
 }
 
 // MARK: - TableView Delegate/DataSource
+
 // UITableViewDataSource – Controls what data the table displays
 // UITableViewDelegate – Controls how the table looks and behaves
 

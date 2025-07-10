@@ -43,26 +43,26 @@ final class CoinDetailsVM: ObservableObject {
         
         if let quote = coin.quote?["USD"] {
             if let marketCap = quote.marketCap {
-                items.append(StatItem(title: "Market Cap", value: marketCap.formattedWithAbbreviations()))
+                items.append(StatItem(title: "Market Cap", value: marketCap.abbreviatedString()))
             }
             if let volume24h = quote.volume24h {
-                items.append(StatItem(title: "Volume (24h)", value: volume24h.formattedWithAbbreviations()))
+                items.append(StatItem(title: "Volume (24h)", value: volume24h.abbreviatedString()))
             }
             if let fdv = quote.fullyDilutedMarketCap {
-                items.append(StatItem(title: "Fully Diluted Market Cap", value: fdv.formattedWithAbbreviations()))
+                items.append(StatItem(title: "Fully Diluted Market Cap", value: fdv.abbreviatedString()))
             }
         }
         
         if let circulating = coin.circulatingSupply {
-            items.append(StatItem(title: "Circulating Supply", value: circulating.formattedWithAbbreviations()))
+            items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
         }
         
         if let total = coin.totalSupply {
-            items.append(StatItem(title: "Total Supply", value: total.formattedWithAbbreviations()))
+            items.append(StatItem(title: "Total Supply", value: total.abbreviatedString()))
         }
         
         if let max = coin.maxSupply {
-            items.append(StatItem(title: "Max Supply", value: max.formattedWithAbbreviations()))
+            items.append(StatItem(title: "Max Supply", value: max.abbreviatedString()))
         }
         
         items.append(StatItem(title: "Rank", value: "#\(coin.cmcRank)"))

@@ -61,7 +61,7 @@ extension Coin {
 
     var marketSupplyString: String {
         if let marketCap = quote?["USD"]?.marketCap {
-            return "$" + marketCap.abbreviated()
+            return "$" + marketCap.abbreviatedString()
         } else {
             return "N/A"
         }
@@ -78,22 +78,3 @@ extension Coin: Hashable {
     }
 }
 
-extension Double {
-    func abbreviated() -> String {
-        let num = abs(self)
-        let sign = (self < 0) ? "-" : ""
-
-        switch num {
-        case 1_000_000_000_000...:
-            return "\(sign)\(String(format: "%.2f", num / 1_000_000_000_000))T"
-        case 1_000_000_000...:
-            return "\(sign)\(String(format: "%.2f", num / 1_000_000_000))B"
-        case 1_000_000...:
-            return "\(sign)\(String(format: "%.2f", num / 1_000_000))M"
-        case 1_000...:
-            return "\(sign)\(String(format: "%.2f", num / 1_000))K"
-        default:
-            return "\(sign)\(String(format: "%.2f", num))"
-        }
-    }
-}
