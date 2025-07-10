@@ -206,10 +206,3 @@ extension CoinListVC: UICollectionViewDelegate {
         }
     }
 }
-
-
-// MARK: - Preview
-
-#Preview {
-    CoinListVC()
-}

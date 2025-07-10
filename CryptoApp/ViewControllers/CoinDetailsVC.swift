@@ -54,8 +54,7 @@ final class CoinDetailsVC: UIViewController {
         tableView.showsVerticalScrollIndicator = false
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 300
-        // tableView.contentInsetAdjustmentBehavior = .never  // Optional: comment this
-
+        
         tableView.register(InfoCell.self, forCellReuseIdentifier: "InfoCell")
         tableView.register(SegmentCell.self, forCellReuseIdentifier: "SegmentCell")
         tableView.register(ChartCell.self, forCellReuseIdentifier: "ChartCell")
@@ -114,9 +113,11 @@ final class CoinDetailsVC: UIViewController {
 }
 
 // MARK: - TableView Delegate/DataSource
+// UITableViewDataSource – Controls what data the table displays
+// UITableViewDelegate – Controls how the table looks and behaves
 
 extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
-    func numberOfSections(in tableView: UITableView) -> Int { 4 } // Info section, filter section, chart section
+    func numberOfSections(in tableView: UITableView) -> Int { 4 } // Info section, filter section, chart section, Statistics Section
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { 1 }
 
@@ -125,17 +126,13 @@ extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
         case 0: return UITableView.automaticDimension // InfoCell adjusts height based on text
         case 1: return 44                             // SegmentCell height (fixed)
         case 2: return 300                            // ChartCell height (fixed)
-        case 3: return UITableView.automaticDimension
+        case 3: return UITableView.automaticDimension // StatsCell
         default: return 44
         }
     }
 
     // Remove extra spacing above and below sections
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        return .leastNormalMagnitude
-    }
-
-    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
         return .leastNormalMagnitude
     }
 
@@ -148,6 +145,9 @@ extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
     }
     
     // Provide cells for each section
+    // PArt of UITableVieDataSource protocol
+    // Responsible for configuring and returning correct cell for a given row in the table
+    // Determines which cell to show based on section index
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         switch indexPath.section {
         case 0: // Info section
@@ -181,7 +181,7 @@ extension CoinDetailsVC: UITableViewDataSource, UITableViewDelegate {
             return cell
 
         default:
-            return UITableViewCell()
+            return UITableViewCell() //  if an unexpected section is given, returns an empty default cell.
         }
     }
 }
