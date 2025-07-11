@@ -20,7 +20,12 @@ final class CoinListVC: UIViewController {
     let refreshControl = UIRefreshControl()                                 // Pull-to-refresh controller
     
     var autoRefreshTimer: Timer?                                            // Timer to refresh visible cells every few seconds
-    let autoRefreshInterval: TimeInterval = 5                               // Interval in seconds
+    let autoRefreshInterval: TimeInterval = 15                              // Optimized interval: 15 seconds instead of 5
+    
+    // MARK: - Optimization Properties
+    
+    private var isRefreshing = false                                        // Track if refresh is in progress
+    private var lastAutoRefreshTime: Date?                                  // Track last auto-refresh time
     
     // MARK: - Lifecycle
     
@@ -79,9 +84,24 @@ final class CoinListVC: UIViewController {
     // MARK: - Pull to Refresh
 
     @objc func handleRefresh() {
-        viewModel.fetchCoins {
-            self.refreshControl.endRefreshing()
+        print("\n🔄 Pull-to-Refresh | User initiated refresh")
+        
+        // Prevent multiple concurrent refreshes
+        guard !isRefreshing else {
+            print("🚫 Pull-to-Refresh | Already refreshing - cancelled")
+            refreshControl.endRefreshing()
+            return
         }
+        
+        isRefreshing = true
+        print("✅ Pull-to-Refresh | Starting data fetch...")
+        
+        viewModel.fetchCoins(onFinish: {
+            print("🏁 Pull-to-Refresh | Data fetch completed")
+            self.isRefreshing = false
+            self.refreshControl.endRefreshing()
+            print("🎯 Pull-to-Refresh | Spinner stopped, refresh complete")
+        })
     }
     
     // MARK: - Diffable Data Source Setup
@@ -154,6 +174,14 @@ final class CoinListVC: UIViewController {
             }
             .store(in: &cancellables)
         
+        // Bind price updates - only update cells that actually changed
+        viewModel.$updatedCoinIds
+            .receive(on: DispatchQueue.main)
+            .filter { !$0.isEmpty }  // Only process when there are actual changes
+            .sink { [weak self] updatedCoinIds in
+                self?.updateCellsForChangedCoins(updatedCoinIds)
+            }
+            .store(in: &cancellables)
     }
     
     private func showAlert(title: String, message: String) {
@@ -178,27 +206,65 @@ final class CoinListVC: UIViewController {
     }
     
     private func refreshVisibleCells() {
-        guard !viewModel.isLoading else { return }
+        // Prevent multiple concurrent refreshes
+        guard !viewModel.isLoading && !isRefreshing else { return }
         
-        // Fetch the latest price updates and refresh only visible cells
-        viewModel.fetchPriceUpdates { [weak self] in
-            guard let self = self else { return }
-            
-            for indexPath in self.collectionView.indexPathsForVisibleItems {
-                guard let coin = self.viewModel.coins[safe: indexPath.item],
-                      let cell = self.collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
-                
-                let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
-                
-                // Update cell without reloading the whole list
-                cell.updatePriceData(
-                    withPrice: coin.priceString,
-                    percentChange24h: coin.percentChange24hString,
-                    sparklineData: sparklineNumbers,
-                    isPositiveChange: coin.isPositiveChange
-                )
-            }
+        // Throttle auto-refresh to prevent excessive API calls
+        if let lastRefresh = lastAutoRefreshTime,
+           Date().timeIntervalSince(lastRefresh) < 10 { // Minimum 10 seconds between auto-refreshes
+            return
         }
+        
+        isRefreshing = true
+        lastAutoRefreshTime = Date()
+        
+        // Get visible coin IDs for targeted updates
+        let visibleIndexPaths = collectionView.indexPathsForVisibleItems
+        let visibleCoinIds = visibleIndexPaths.compactMap { indexPath in
+            viewModel.coins[safe: indexPath.item]?.id
+        }
+        
+        // Fetch price updates only for visible coins
+        print("\n🚀 Auto-Refresh | Starting price update cycle...")
+        viewModel.fetchPriceUpdatesForVisibleCoins(visibleCoinIds) { [weak self] in
+            self?.isRefreshing = false
+        }
+    }
+    
+    // MARK: - Optimized Price Update Logic
+    
+    private func updateCellsForChangedCoins(_ updatedCoinIds: Set<Int>) {
+        // Skip if no changes
+        guard !updatedCoinIds.isEmpty else { return }
+        
+        // Only update visible cells that actually changed
+        var updatedCellsCount = 0
+        
+        for indexPath in collectionView.indexPathsForVisibleItems {
+            guard let coin = viewModel.coins[safe: indexPath.item],
+                  updatedCoinIds.contains(coin.id),
+                  let cell = collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
+            
+            let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            
+            // Update cell without reloading the whole list
+            cell.updatePriceData(
+                withPrice: coin.priceString,
+                percentChange24h: coin.percentChange24hString,
+                sparklineData: sparklineNumbers,
+                isPositiveChange: coin.isPositiveChange
+            )
+            
+            updatedCellsCount += 1
+        }
+        
+        if updatedCellsCount > 0 {
+            print("🎨 UI Refresh | Updated \(updatedCellsCount) visible cells")
+            print("═════════════════════════════════════════")
+        }
+        
+        // Clear the updated coin IDs after processing
+        viewModel.clearUpdatedCoinIds()
     }
 }
 
@@ -217,7 +283,7 @@ extension CoinListVC: UICollectionViewDelegate {
     }
     
     // This function is called every time the user scrolls the collection view.
-    // Implement infinite scroll thresholding
+    // Implement infinite scroll thresholding with optimizations
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         
         // Load more coins when scrolling near the bottom
@@ -229,14 +295,19 @@ extension CoinListVC: UICollectionViewDelegate {
         // The total height of the scrollable content (all coin cells combined).
         let height = scrollView.frame.size.height
         
+        // Only proceed if we have content
+        guard contentHeight > 0 else { return }
+        
         // Calculate how far the user has scrolled as a percentage
         // Calculate scroll progress as a ratio:
         // (current scroll position from top + visible height) / total scrollable content height
         // This gives a value between 0.0 (top) and 1.0 (bottom).
         let scrollProgress = (offsetY + height) / contentHeight
         
-        // If user has scrolled past 70% of the total content height, trigger pagination.
-        if scrollProgress > 0.7 {
+        // If user has scrolled past 75% of the total content height, trigger pagination.
+        // Balanced threshold for good UX while preventing excessive API calls
+        if scrollProgress > 0.75 {
+            print("📜 Scroll | Triggered pagination at \(String(format: "%.1f", scrollProgress * 100))%")
             viewModel.loadMoreCoins()
         }
     }

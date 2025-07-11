@@ -7,11 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9716CA7D2E1FCFF9002D2C8F /* mock_top_coins.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */; };
+		9716CA7F2E1FD00D002D2C8F /* mock_logos.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA7E2E1FD007002D2C8F /* mock_logos.json */; };
+		9716CA812E1FD020002D2C8F /* mock_quotes.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA802E1FD019002D2C8F /* mock_quotes.json */; };
 		977F770D2E1B72100043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F770C2E1B72100043D04C /* DGCharts */; };
 		977F77182E1B74960043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F77172E1B74960043D04C /* DGCharts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_top_coins.json; sourceTree = "<group>"; };
+		9716CA7E2E1FD007002D2C8F /* mock_logos.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_logos.json; sourceTree = "<group>"; };
+		9716CA802E1FD019002D2C8F /* mock_quotes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_quotes.json; sourceTree = "<group>"; };
 		97CA70B82E0BAEEB00E42811 /* CryptoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CryptoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -59,6 +65,9 @@
 		97CA70AF2E0BAEEB00E42811 = {
 			isa = PBXGroup;
 			children = (
+				9716CA802E1FD019002D2C8F /* mock_quotes.json */,
+				9716CA7E2E1FD007002D2C8F /* mock_logos.json */,
+				9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */,
 				97CA70BA2E0BAEEB00E42811 /* CryptoApp */,
 				977F77162E1B74960043D04C /* Frameworks */,
 				97CA70B92E0BAEEB00E42811 /* Products */,
@@ -139,6 +148,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9716CA812E1FD020002D2C8F /* mock_quotes.json in Resources */,
+				9716CA7F2E1FD00D002D2C8F /* mock_logos.json in Resources */,
+				9716CA7D2E1FCFF9002D2C8F /* mock_top_coins.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,6 +1,6 @@
 import Foundation
 
-struct Coin: Decodable {
+struct Coin: Codable {
     let id: Int
     let name: String
     let symbol: String

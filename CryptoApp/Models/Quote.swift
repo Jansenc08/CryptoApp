@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Quote: Decodable {
+struct Quote: Codable {
     let price: Double?
     let volume24h: Double?
     let volumeChange24h: Double?
