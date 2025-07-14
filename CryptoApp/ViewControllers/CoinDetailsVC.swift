@@ -138,6 +138,14 @@ final class CoinDetailsVC: UIViewController {
                 self?.showErrorAlert(message: errorMessage)
             }
             .store(in: &cancellables)
+        
+        // Stats range updates - reload stats section when range changes
+        viewModel.$selectedStatsRange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateStatsCell()
+            }
+            .store(in: &cancellables)
     }
     
     // Prevents excessive updates on the page
@@ -177,6 +185,23 @@ final class CoinDetailsVC: UIViewController {
     private func getChartCell() -> ChartCell? {
         let chartIndexPath = IndexPath(row: 0, section: 2)
         return tableView.cellForRow(at: chartIndexPath) as? ChartCell
+    }
+    
+    private func updateStatsCell() {
+        let statsIndexPath = IndexPath(row: 0, section: 3)
+        guard let statsCell = tableView.cellForRow(at: statsIndexPath) as? StatsCell else {
+            // Fallback to section reload if cell not found
+            tableView.reloadSections(IndexSet(integer: 3), with: .none)
+            return
+        }
+        
+        // Update stats cell with new data and preserve selected segment
+        statsCell.configure(with: viewModel.currentStats, selectedRange: viewModel.selectedStatsRange) { [weak self] selectedRange in
+            print("📊 Selected stats filter: \(selectedRange)")
+            self?.viewModel.updateStatsRange(selectedRange)
+        }
+        
+        print("📊 Updated stats cell for range: \(viewModel.selectedStatsRange)")
     }
     
     private func showErrorAlert(message: String) {
@@ -266,8 +291,9 @@ extension CoinDetailsVC: UITableViewDataSource {
             return cell
         case 3: // Stats section
             let cell = tableView.dequeueReusableCell(withIdentifier: "StatsCell", for: indexPath) as! StatsCell
-            cell.configure(with: viewModel.currentStats) { selectedRange in
-                print("Selected stats filter: \(selectedRange)")
+            cell.configure(with: viewModel.currentStats, selectedRange: viewModel.selectedStatsRange) { [weak self] selectedRange in
+                print("📊 Selected stats filter: \(selectedRange)")
+                self?.viewModel.updateStatsRange(selectedRange)
             }
             cell.selectionStyle = .none
             return cell

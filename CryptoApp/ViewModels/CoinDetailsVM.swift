@@ -17,6 +17,7 @@ final class CoinDetailsVM: ObservableObject {
     @Published var chartPoints: [Double] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    @Published var selectedStatsRange: String = "24h"  // Track selected stats time range
 
     var shouldReloadChart = true
 
@@ -35,13 +36,19 @@ final class CoinDetailsVM: ObservableObject {
     private var prefetchedRanges: Set<String> = []
     private let commonRanges = ["24h", "7d", "30d"] // Most commonly accessed ranges
 
-    // Dynamically creates a list of stats based on available data
+    // Dynamically creates a list of stats based on available data and selected time range
     // Returns Data such as Market cap, volume, fdv etc.
     // uses helper class: formattedWithAbbreviations() to convert values to 1.23B, 999K etc
     var currentStats: [StatItem] {
+        return getStats(for: selectedStatsRange)
+    }
+    
+    // Generate stats based on selected time range
+    private func getStats(for range: String) -> [StatItem] {
         var items: [StatItem] = []
 
         if let quote = coin.quote?["USD"] {
+            // Always show current market data
             if let marketCap = quote.marketCap {
                 items.append(StatItem(title: "Market Cap", value: marketCap.abbreviatedString()))
             }
@@ -51,8 +58,12 @@ final class CoinDetailsVM: ObservableObject {
             if let fdv = quote.fullyDilutedMarketCap {
                 items.append(StatItem(title: "Fully Diluted Market Cap", value: fdv.abbreviatedString()))
             }
+            
+            // Add time-based percentage changes based on selected range
+            addPercentageChangeStats(to: &items, from: quote, for: range)
         }
 
+        // Supply information (always shown)
         if let circulating = coin.circulatingSupply {
             items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
         }
@@ -68,6 +79,61 @@ final class CoinDetailsVM: ObservableObject {
         items.append(StatItem(title: "Rank", value: "#\(coin.cmcRank)"))
 
         return items
+    }
+    
+    // Add percentage change stats based on selected time range
+    private func addPercentageChangeStats(to items: inout [StatItem], from quote: Quote, for range: String) {
+        switch range {
+        case "24h":
+            if let change24h = quote.percentChange24h {
+                let changeString = String(format: "%.2f%%", change24h)
+                let color = change24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                items.append(StatItem(title: "24h Change", value: changeString, valueColor: color))
+            }
+            if let volume24h = quote.volume24h, let volumeChange24h = quote.volumeChange24h {
+                let changeString = String(format: "%.2f%%", volumeChange24h)
+                let color = volumeChange24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                items.append(StatItem(title: "24h Volume Change", value: changeString, valueColor: color))
+            }
+            
+        case "30d":
+            if let change30d = quote.percentChange30d {
+                let changeString = String(format: "%.2f%%", change30d)
+                let color = change30d >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                items.append(StatItem(title: "30d Change", value: changeString, valueColor: color))
+            }
+            if let change7d = quote.percentChange7d {
+                let changeString = String(format: "%.2f%%", change7d)
+                let color = change7d >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                items.append(StatItem(title: "7d Change", value: changeString, valueColor: color))
+            }
+            
+        case "1y":
+            if let change90d = quote.percentChange90d {
+                let changeString = String(format: "%.2f%%", change90d)
+                let color = change90d >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                items.append(StatItem(title: "90d Change", value: changeString, valueColor: color))
+            }
+            if let change60d = quote.percentChange60d {
+                let changeString = String(format: "%.2f%%", change60d)
+                let color = change60d >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                items.append(StatItem(title: "60d Change", value: changeString, valueColor: color))
+            }
+            if let change30d = quote.percentChange30d {
+                let changeString = String(format: "%.2f%%", change30d)
+                let color = change30d >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                items.append(StatItem(title: "30d Change", value: changeString, valueColor: color))
+            }
+            
+        default:
+            break
+        }
+    }
+    
+    // Method to update selected stats range
+    func updateStatsRange(_ range: String) {
+        selectedStatsRange = range
+        print("📊 Stats range updated to: \(range)")
     }
 
     init(coin: Coin, coinManager: CoinManager = CoinManager()) {

@@ -43,6 +43,12 @@
     self.segmentedControl.selectedSegmentIndex = 0;
 }
 
+- (void)setSelectedIndex:(NSInteger)index {
+    if (index >= 0 && index < self.segmentedControl.numberOfSegments) {
+        self.segmentedControl.selectedSegmentIndex = index;
+    }
+}
+
 - (void)valueChanged:(UISegmentedControl *)sender {
     if (self.onSelectionChanged) {
         self.onSelectionChanged(sender.selectedSegmentIndex);

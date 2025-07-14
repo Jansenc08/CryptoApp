@@ -86,12 +86,15 @@ final class StatsCell: UITableViewCell {
         ])
     }
 
-    func configure(with stats: [StatItem], onSegmentChange: @escaping (String) -> Void) {
+    func configure(with stats: [StatItem], selectedRange: String = "24h", onSegmentChange: @escaping (String) -> Void) {
         self.onSegmentChange = onSegmentChange
 
-        // Configure segment view
+        // Configure segment view with selected range
         let options = ["24h", "30d", "1y"]
+        let selectedIndex = options.firstIndex(of: selectedRange) ?? 0
+        
         segmentView.configure(withItems: options)
+        segmentView.setSelectedIndex(selectedIndex) // Set the correct selected segment
         segmentView.onSelectionChanged = { [weak self] index in
             self?.onSegmentChange?(options[index])
         }
@@ -101,22 +104,22 @@ final class StatsCell: UITableViewCell {
 
         // Add each stat as a horizontal row
         for item in stats {
-            let row = makeStatRow(title: item.title, value: item.value)
+            let row = makeStatRow(for: item)
             stackView.addArrangedSubview(row)
         }
     }
 
 
-    private func makeStatRow(title: String, value: String) -> UIView {
+    private func makeStatRow(for item: StatItem) -> UIView {
         let titleLabel = UILabel()
         titleLabel.font = .systemFont(ofSize: 13)
         titleLabel.textColor = .secondaryLabel
-        titleLabel.text = title
+        titleLabel.text = item.title
 
         let valueLabel = UILabel()
         valueLabel.font = .boldSystemFont(ofSize: 13)
-        valueLabel.textColor = .label
-        valueLabel.text = value
+        valueLabel.textColor = item.valueColor ?? .label // Use valueColor if available, otherwise default
+        valueLabel.text = item.value
         valueLabel.textAlignment = .right
 
         let row = UIStackView(arrangedSubviews: [titleLabel, valueLabel])
