@@ -1,9 +1,5 @@
-//
 //  CoinDetailsVM.swift
 //  CryptoApp
-//
-//  Created by Jansen Castillo on 7/7/25.
-//
 
 // Handles, Fetching & Caching Chart Data.
 // Expose stats and chart data points to CoinDetailsVC
@@ -15,32 +11,36 @@ import Foundation
 import Combine
 
 final class CoinDetailsVM: ObservableObject {
-    
+
     // @Published variables are obeserved by the view
     // Any change to them triggers UI updates via combine
     @Published var chartPoints: [Double] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
-    
+
     var shouldReloadChart = true
-    
+
     private let coin: Coin // holds current coin to hold data
     private let coinManager: CoinManager // holds current manager to hold data
-    
+    private var geckoID: String? // store resolved CoinGecko ID
+
     var cancellables = Set<AnyCancellable>() //  stores combine subscriptions
-    
-    private var chartCache: [String: ChartDataCache] = [:]
-    private let maxCacheAge: TimeInterval = 300
-    
+
+    // Using CacheService for chart data caching
+
     private var currentRange: String = "24h"
     private var isLoadingMoreData = false // prevents duplicate calls when scrolling left
-    
+
+    // MARK: - Prefetching Support
+    private var prefetchedRanges: Set<String> = []
+    private let commonRanges = ["24h", "7d", "30d"] // Most commonly accessed ranges
+
     // Dynamically creates a list of stats based on available data
-    // Returns Data such as Market cap, volime, fdv etc.
+    // Returns Data such as Market cap, volume, fdv etc.
     // uses helper class: formattedWithAbbreviations() to convert values to 1.23B, 999K etc
     var currentStats: [StatItem] {
         var items: [StatItem] = []
-        
+
         if let quote = coin.quote?["USD"] {
             if let marketCap = quote.marketCap {
                 items.append(StatItem(title: "Market Cap", value: marketCap.abbreviatedString()))
@@ -52,122 +52,293 @@ final class CoinDetailsVM: ObservableObject {
                 items.append(StatItem(title: "Fully Diluted Market Cap", value: fdv.abbreviatedString()))
             }
         }
-        
+
         if let circulating = coin.circulatingSupply {
             items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
         }
-        
+
         if let total = coin.totalSupply {
             items.append(StatItem(title: "Total Supply", value: total.abbreviatedString()))
         }
-        
+
         if let max = coin.maxSupply {
             items.append(StatItem(title: "Max Supply", value: max.abbreviatedString()))
         }
-        
+
         items.append(StatItem(title: "Rank", value: "#\(coin.cmcRank)"))
-        
+
         return items
     }
-    
-    
+
     init(coin: Coin, coinManager: CoinManager = CoinManager()) {
         self.coin = coin
         self.coinManager = coinManager
+
+        // Use coin slug directly - it's what we need for the mapping
+        if let slug = coin.slug {
+            self.geckoID = slug.lowercased()
+            print("✅ Using coin slug for \(coin.symbol): \(slug)")
+            // Start prefetching common ranges in background
+            // Background prefetch 24h, 7d, 30d
+            self.startPrefetchingCommonRanges()
+        } else {
+            print("❌ No slug found for \(coin.symbol)")
+        }
+    }
+
+    // MARK: - Prefetching Implementation (Optimized for Filter Performance)
+    private func startPrefetchingCommonRanges() {
+        guard let geckoID = geckoID else { return }
+        
+        // Instead of waiting 20 seconds, start prefetching immediately with staggered delays
+        // This means when users click filters, the data is likely already cached
+        let prefetchPlan = [
+            ("24h", 5.0),   // 5 seconds - most common after current
+            ("7d", 10.0),   // 10 seconds - second most common
+            ("30d", 15.0)   // 15 seconds - third most common
+        ]
+        
+        for (range, delay) in prefetchPlan {
+            DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + delay) {
+                // Only prefetch if user is still on this page
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, !self.chartPoints.isEmpty else { return }
+                    
+                    // Skip if already prefetched - no duplicate work
+                    if self.prefetchedRanges.contains(range) {
+                        print("📦 Skipping prefetch for \(range) - already cached")
+                        return
+                    }
+                    
+                    print("🔄 Starting prefetch for \(geckoID) - \(range)")
+                    self.prefetchSingleRange(geckoID: geckoID, range: range)
+                }
+            }
+        }
+    }
+
+    // Method for efficient single-range prefetching
+    private func prefetchSingleRange(geckoID: String, range: String) {
+        let days = mapRangeToDays(range)
+        
+        // Use LOW priority for background prefetching - this ensures it doesn't interfere 
+        // with user-initiated filter changes, but still happens in the background
+        coinManager.fetchChartData(for: geckoID, range: days, priority: .low)
+            .subscribe(on: DispatchQueue.global(qos: .background))
+            .map { [weak self] rawData in
+                return self?.processChartData(rawData, for: days) ?? []
+            }
+            .receive(on: DispatchQueue.global(qos: .background))
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    if case .failure(let error) = completion {
+                        print("📦 Prefetch failed for \(range): \(error)")
+                    } else {
+                        print("📦 ✅ Prefetch completed for \(range)")
+                        // Mark as prefetched so we don't try again
+                        self?.prefetchedRanges.insert(range)
+                    }
+                },
+                receiveValue: { processedData in
+                    print("📦 Prefetched and processed \(processedData.count) points for \(range)")
+                }
+            )
+            .store(in: &cancellables)
     }
     
-    // Checks if Data is already cached and fresh
-    // if yes -> use it directly
-    // if no -> make an API request via coinManager
+    // High priority chart data fetching for user filter changes
     func fetchChartData(for range: String) {
-        guard let slug = coin.slug?.lowercased() else { return }
-        
         currentRange = range
         let days = mapRangeToDays(range)
-        let cacheKey = "\(slug)-\(days)"
-        
-        if let cachedData = chartCache[cacheKey], !cachedData.isExpired() {
-            print("📦 Using cached data: \(cachedData.data.count) points")
-            self.chartPoints = cachedData.data
+
+        guard let id = geckoID else {
+            print("❌ No CoinGecko ID found for \(coin.symbol)")
             return
         }
+        // Mark all user filter changes as HIGH PRIORITY
+        // This means they jump to the front of the request queue and only wait 2 seconds.
+        print("📊 ‼️ HIGH PRIORITY: User filter change for \(id) - \(range)")
         
-        fetchChartDataFromAPI(slug: slug, days: days, cacheKey: cacheKey)
+        // Execute immediately with HIGH priority for user-initiated filter changes
+        // This is what makes filter switching much faster!
+        fetchChartDataFromAPI(geckoID: id, days: days, priority: .high)
     }
     
-    // Calls API via coinManager.fetchChartData.
-    // Stores the data in cache.
-    // Publishes the data into chartPoints.
-    func fetchChartDataFromAPI(slug: String, days: String, cacheKey: String) {
+    // Simplified API call - CacheService handles all caching logic
+    private func fetchChartDataFromAPI(geckoID: String, days: String, priority: RequestPriority = .normal) {
         isLoading = true
         errorMessage = nil
         
-        print("🌐 Making API call for \(slug) with \(days) days")
+        // Enhanced logging to show priority level - helps me understand what's happening
+        let priorityLabel = priority == .high ? "‼️ HIGH PRIORITY" : "🟡 NORMAL"
+        print("🌐 \(priorityLabel) API call for \(geckoID) with \(days) days")
         
-        coinManager.fetchChartData(for: slug, range: days)
-            .retry(2)
-            .receive(on: DispatchQueue.main)
+        // Background Threads: Data Processing
+        // Pass the priority parameter all the way through to CoinManager
+        coinManager.fetchChartData(for: geckoID, range: days, priority: priority)
+            .subscribe(on: DispatchQueue.global(qos: .userInitiated)) // Network on background
+            .map { [weak self] rawData in
+                // Process data in background
+                return self?.processChartData(rawData, for: days) ?? []
+            }
+            .retryWithExponentialBackoff(maxRetries: 3, initialDelay: 1.0)
+            .receive(on: DispatchQueue.main) // Switch back on main thread for UI updates 
             .sink(
                 receiveCompletion: { [weak self] completion in
                     self?.isLoading = false
                     if case .failure(let error) = completion {
-                        self?.errorMessage = "Failed to load chart data: \(error.localizedDescription)"
-                        print("❌ Chart fetch failed: \(error)")
+                        self?.handleChartDataError(error)
                     }
                 },
-                receiveValue: { [weak self] prices in
+                receiveValue: { [weak self] processedData in
                     guard let self = self else { return }
-                    print("✅ Received \(prices.count) data points")
-                    self.chartCache[cacheKey] = ChartDataCache(data: prices)
+                    print("✅ \(priorityLabel) Processed \(processedData.count) data points")
                     self.shouldReloadChart = true
-                    self.chartPoints = prices
-                    self.cleanExpiredCache()
+                    self.chartPoints = processedData
+                    self.errorMessage = nil // Clear any previous errors
                 }
             )
             .store(in: &cancellables)
     }
     
-    // Used when the chart scrolls to the left (past data).
-    // Avoids reloading if already loading.
-    // Uses an extended time range to get more data and prepends it.
+    // MARK: - Background Data Processing
+    
+    private func processChartData(_ rawData: [Double], for days: String) -> [Double] {
+        // Perform heavy data processing on background queue
+        let processedData = rawData.compactMap { value -> Double? in
+            // Remove invalid values
+            guard value.isFinite, value >= 0 else { return nil }
+            return value
+        }
+        
+        // Apply smoothing for longer time ranges
+        let smoothedData = applyDataSmoothing(processedData, for: days)
+        
+        // Optimize data density for UI performance
+        let optimizedData = optimizeDataDensity(smoothedData, for: days)
+        
+        print("📊 Data processing: \(rawData.count) → \(optimizedData.count) points")
+        return optimizedData
+    }
+    
+    private func applyDataSmoothing(_ data: [Double], for days: String) -> [Double] {
+        // Apply smoothing only for longer time ranges to reduce noise
+        guard days != "1", data.count > 10 else { return data }
+        
+        let windowSize = min(5, data.count / 10)
+        guard windowSize > 1 else { return data }
+        
+        var smoothedData: [Double] = []
+        
+        for i in 0..<data.count {
+            let start = max(0, i - windowSize / 2)
+            let end = min(data.count, i + windowSize / 2 + 1)
+            let window = Array(data[start..<end])
+            let average = window.reduce(0, +) / Double(window.count)
+            smoothedData.append(average)
+        }
+        
+        return smoothedData
+    }
+    
+    private func optimizeDataDensity(_ data: [Double], for days: String) -> [Double] {
+        // Optimize data density based on chart display needs
+        let maxDisplayPoints: Int
+        
+        switch days {
+        case "1": maxDisplayPoints = 100  // 24h - high resolution
+        case "7": maxDisplayPoints = 200  // 7d - medium resolution
+        case "30": maxDisplayPoints = 300 // 30d - medium resolution
+        case "365": maxDisplayPoints = 400 // 1y - lower resolution
+        default: maxDisplayPoints = 300
+        }
+        
+        guard data.count > maxDisplayPoints else { return data }
+        
+        // Use data thinning to reduce points while preserving shape
+        let step = Double(data.count) / Double(maxDisplayPoints)
+        var optimizedData: [Double] = []
+        
+        for i in 0..<maxDisplayPoints {
+            let index = Int(Double(i) * step)
+            if index < data.count {
+                optimizedData.append(data[index])
+            }
+        }
+        
+        return optimizedData
+    }
+    
+    private func handleChartDataError(_ error: Error) {
+        let userFriendlyMessage: String
+        
+        switch error {
+        case NetworkError.badURL:
+            userFriendlyMessage = "Invalid request. Please try again."
+        case NetworkError.invalidResponse:
+            userFriendlyMessage = "Server error. Please check your connection."
+        case NetworkError.decodingError:
+            userFriendlyMessage = "Data format error. Please try again later."
+        case NetworkError.unknown(let underlyingError):
+            if underlyingError.localizedDescription.contains("offline") ||
+               underlyingError.localizedDescription.contains("network") {
+                userFriendlyMessage = "No internet connection. Please check your network."
+            } else {
+                userFriendlyMessage = "Something went wrong. Please try again."
+            }
+        default:
+            userFriendlyMessage = "Unable to load chart data. Please try again."
+        }
+        
+        self.errorMessage = userFriendlyMessage
+        print("❌ Chart fetch failed: \(error.localizedDescription)")
+        
+        // Optional: Automatically retry after a delay for certain errors
+        if shouldAutoRetry(for: error) {
+            autoRetryAfterDelay()
+        }
+    }
+    
+    private func shouldAutoRetry(for error: Error) -> Bool {
+        // Auto-retry for network-related errors, but not for client errors
+        switch error {
+        case NetworkError.badURL, NetworkError.decodingError:
+            return false
+        case NetworkError.invalidResponse, NetworkError.unknown:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    private func autoRetryAfterDelay() {
+        // Wait 5 seconds before automatic retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            guard let self = self else { return }
+            print("🔄 Auto-retrying chart data fetch...")
+            self.fetchChartData(for: self.currentRange)
+        }
+    }
+    
+    // MARK: - Historical Data Loading (Optimized)
     func loadMoreHistoricalData(for range: String, beforeDate: Date) {
-        guard !isLoadingMoreData, let slug = coin.slug?.lowercased() else { return }
+        // Prevent multiple simultaneous loads
+        guard !isLoadingMoreData else { return }
         
         isLoadingMoreData = true
         
-        let extendedDays = calculateExtendedRange(for: range)
-        let cacheKey = "\(slug)-extended-\(extendedDays)"
+        // For now, this is a placeholder - in a real app, API endpoints is needed
+        // that support pagination with date parameters
+        print("📅 Loading more historical data for \(range) before \(beforeDate)")
         
-        if let cachedData = chartCache[cacheKey], !cachedData.isExpired() {
-            print("📦 Using cached extended data: \(cachedData.data.count) points")
-            appendHistoricalData(cachedData.data)
-            isLoadingMoreData = false
-            return
+        // Simulate async load
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.isLoadingMoreData = false
+            // In real implementation, append new data to chartPoints
         }
-        
-        print("🌐 Loading more historical data for \(slug)")
-        
-        coinManager.fetchChartData(for: slug, range: extendedDays)
-            .retry(1)
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { [weak self] completion in
-                    self?.isLoadingMoreData = false
-                    if case .failure(let error) = completion {
-                        print("❌ Extended data fetch failed: \(error)")
-                    }
-                },
-                receiveValue: { [weak self] prices in
-                    guard let self = self else { return }
-                    print("✅ Received \(prices.count) extended data points")
-                    self.chartCache[cacheKey] = ChartDataCache(data: prices)
-                    self.appendHistoricalData(prices)
-                }
-            )
-            .store(in: &cancellables)
     }
     
-    //Takes older historical points and prepends them to chartPoints.
+    // Takes older historical points and prepends them to chartPoints.
     // Keeps existing points intact.
     // Disables chart redraw by setting shouldReloadChart = false.
     func appendHistoricalData(_ newData: [Double]) {
@@ -202,11 +373,7 @@ final class CoinDetailsVM: ObservableObject {
         }
     }
     
-    
-    func cleanExpiredCache() {
-        let now = Date()
-        chartCache = chartCache.filter { now.timeIntervalSince($0.value.timestamp) < maxCacheAge }
-    }
+
     
     var canLoadMoreData: Bool {
         return !isLoadingMoreData && !chartPoints.isEmpty

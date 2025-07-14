@@ -20,7 +20,7 @@ final class CoinListVC: UIViewController {
     let refreshControl = UIRefreshControl()                                 // Pull-to-refresh controller
     
     var autoRefreshTimer: Timer?                                            // Timer to refresh visible cells every few seconds
-    let autoRefreshInterval: TimeInterval = 15                              // Optimized interval: 15 seconds instead of 5
+    let autoRefreshInterval: TimeInterval = 15                              //  Interval: 15 seconds
     
     // MARK: - Optimization Properties
     
@@ -192,7 +192,11 @@ final class CoinListVC: UIViewController {
     }
     
     // MARK: - Auto-Refresh Logic
-    
+    // The timer runs independently every 15 seconds
+    // It triggers viewModel.fetchPriceUpdatesForVisibleCoins(...)
+    // The fetch logic inside the view model runs asynchronously, updates only visible prices
+    // After fetching, the Combine publisher emits new prices, which trigger targeted UI updates
+
     private func startAutoRefresh() {
         stopAutoRefresh() // clear any existing timer
         autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: autoRefreshInterval, repeats: true) { [weak self] _ in
@@ -205,34 +209,46 @@ final class CoinListVC: UIViewController {
         autoRefreshTimer = nil
     }
     
+    // Timer throttled to prevent API spam
     private func refreshVisibleCells() {
-        // Prevent multiple concurrent refreshes
+        
+        // Avoid overlapping refreshes
+        // - If data is already loading (initial load or pagination)
+        // - Or if another refresh (pull-to-refresh or timer) is already in progress
+        // => Skip this cycle to prevent multiple concurrent fetches
         guard !viewModel.isLoading && !isRefreshing else { return }
         
-        // Throttle auto-refresh to prevent excessive API calls
+        //  Throttle refreshes (rate-limiting)
+        // - If the last refresh happened < 10 seconds ago, skip
+        // - This prevents rapid, repeated API calls during quick scrolls or timer triggers
         if let lastRefresh = lastAutoRefreshTime,
-           Date().timeIntervalSince(lastRefresh) < 10 { // Minimum 10 seconds between auto-refreshes
+           Date().timeIntervalSince(lastRefresh) < 10 {
             return
         }
         
+        //  Mark that a refresh is in progress
         isRefreshing = true
-        lastAutoRefreshTime = Date()
+        lastAutoRefreshTime = Date() // Update last refresh timestamp
         
-        // Get visible coin IDs for targeted updates
+        //  Determine which coins are currently visible on screen
+        // - Only refresh prices for those visible coins (optimization)
         let visibleIndexPaths = collectionView.indexPathsForVisibleItems
         let visibleCoinIds = visibleIndexPaths.compactMap { indexPath in
             viewModel.coins[safe: indexPath.item]?.id
         }
         
-        // Fetch price updates only for visible coins
+        //   Trigger price update for visible coin IDs
+        // - This calls a ViewModel method that fetches prices only for the listed coin IDs
+        // - Once the update completes, mark refresh as finished
         print("\n🚀 Auto-Refresh | Starting price update cycle...")
         viewModel.fetchPriceUpdatesForVisibleCoins(visibleCoinIds) { [weak self] in
             self?.isRefreshing = false
         }
     }
+
     
     // MARK: - Optimized Price Update Logic
-    
+    // Updates Prices only if it changes otherwise no  
     private func updateCellsForChangedCoins(_ updatedCoinIds: Set<Int>) {
         // Skip if no changes
         guard !updatedCoinIds.isEmpty else { return }

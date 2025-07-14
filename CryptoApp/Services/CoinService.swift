@@ -18,19 +18,22 @@ final class CoinService {
     private let cacheService = CacheService.shared
     private let requestManager = RequestManager.shared
 
-    func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1) -> AnyPublisher<[Coin], NetworkError> {
+    func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
         // Check cache first
+        // Always check cache before making API calls to avoid unnecessary requests
         if let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert) {
+            print("💾 Cache hit for coin list (limit: \(limit), start: \(start))")
             return Just(cachedCoins)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()
         }
         
-        // Use request manager to handle deduplication
+        // Use request manager with priority - I pass the priority through the entire chain
         return requestManager.fetchTopCoins(
             limit: limit,
             convert: convert,
-            start: start
+            start: start,
+            priority: priority
         ) { [weak self] in
             self?.performTopCoinsRequest(limit: limit, convert: convert, start: start) ?? 
             Fail(error: NetworkError.unknown(NSError(domain: "CoinService", code: -1, userInfo: nil)))
@@ -45,7 +48,7 @@ final class CoinService {
             }
         }
         .handleEvents(receiveOutput: { [weak self] coins in
-            // Cache the result
+            // Cache the result for future use
             self?.cacheService.setCoinList(coins, limit: limit, start: start, convert: convert)
         })
         .eraseToAnyPublisher()
@@ -94,15 +97,16 @@ final class CoinService {
             .eraseToAnyPublisher()
     }
     
-    func fetchCoinLogos(forIDs ids: [Int]) -> AnyPublisher<[Int: String], Never> {
-        // Check cache first
+    func fetchCoinLogos(forIDs ids: [Int], priority: RequestPriority = .low) -> AnyPublisher<[Int: String], Never> {
+        // Check cache first for logos too
         if let cachedLogos = cacheService.getCoinLogos(forIDs: ids) {
+            print("💾 Cache hit for coin logos (IDs: \(ids))")
             return Just(cachedLogos)
                 .eraseToAnyPublisher()
         }
         
-        // Use request manager to handle deduplication
-        return requestManager.fetchCoinLogos(ids: ids) { [weak self] in
+        // Use request manager with priority - logos get low priority since they're not urgent
+        return requestManager.fetchCoinLogos(ids: ids, priority: priority) { [weak self] in
             self?.performCoinLogosRequest(forIDs: ids) ?? 
             Just([:]).eraseToAnyPublisher()
         }
@@ -150,18 +154,20 @@ final class CoinService {
             .eraseToAnyPublisher()
     }
     
-    func fetchQuotes(for ids: [Int], convert: String) -> AnyPublisher<[Int: Quote], NetworkError> {
-        // Check cache first
+    func fetchQuotes(for ids: [Int], convert: String, priority: RequestPriority = .normal) -> AnyPublisher<[Int: Quote], NetworkError> {
+        // Check cache first for price quotes
         if let cachedQuotes = cacheService.getPriceUpdates(forIDs: ids, convert: convert) {
+            print("💾 Cache hit for price quotes (IDs: \(ids))")
             return Just(cachedQuotes)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()
         }
         
-        // Use request manager to handle deduplication
+        // Use request manager with priority
         return requestManager.fetchQuotes(
             ids: ids,
-            convert: convert
+            convert: convert,
+            priority: priority
         ) { [weak self] in
             self?.performQuotesRequest(for: ids, convert: convert) ?? 
             Fail(error: NetworkError.unknown(NSError(domain: "CoinService", code: -1, userInfo: nil)))
@@ -229,19 +235,25 @@ final class CoinService {
     }
     
     
-    func fetchCoinGeckoChartData(for coinId: String, currency: String, days: String) -> AnyPublisher<[Double], NetworkError> {
-        // Check cache first
+    func fetchCoinGeckoChartData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[Double], NetworkError> {
+        // Check cache first and return immediately if found
+        // No rate limiting delays when data is cached. Makes filter switching instant
         if let cachedData = cacheService.getChartData(coinId: coinId, currency: currency, days: days) {
+            print("💾 ⚡ Instant cache hit for chart data: \(coinId) - \(days) (\(cachedData.count) points)")
             return Just(cachedData)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()
         }
         
-        // Use request manager to handle deduplication
+        print("🌐 Cache miss for chart data: \(coinId) - \(days) (priority: \(priority.description))")
+        
+        // Use request manager with priority for non-cached data
+        // High priority requests (filter changes) get processed faster
         return requestManager.fetchChartData(
             coinId: coinId,
             currency: currency,
-            days: days
+            days: days,
+            priority: priority
         ) { [weak self] in
             self?.performChartDataRequest(for: coinId, currency: currency, days: days) ?? 
             Fail(error: NetworkError.unknown(NSError(domain: "CoinService", code: -1, userInfo: nil)))
@@ -256,14 +268,20 @@ final class CoinService {
             }
         }
         .handleEvents(receiveOutput: { [weak self] data in
-            // Cache the result
+            // Cache the result for future filter changes.
             self?.cacheService.setChartData(data, coinId: coinId, currency: currency, days: days)
+            print("💾 Cached chart data for \(coinId) - \(days): \(data.count) points")
         })
         .eraseToAnyPublisher()
     }
     
     private func performChartDataRequest(for coinId: String, currency: String, days: String) -> AnyPublisher<[Double], NetworkError> {
-        let endpoint = "\(coinGeckoBaseURL)/coins/\(coinId)/market_chart?vs_currency=\(currency)&days=\(days)"
+        // Map CoinMarketCap slug to CoinGecko ID
+        let geckoId = mapCMCSlugToGeckoId(coinId)
+        let endpoint = "\(coinGeckoBaseURL)/coins/\(geckoId)/market_chart?vs_currency=\(currency)&days=\(days)"
+        
+        print("🔄 Mapping '\(coinId)' → '\(geckoId)'")
+        print("🌐 CoinGecko URL: \(endpoint)")
 
         guard let url = URL(string: endpoint) else {
             return Fail(error: .badURL).eraseToAnyPublisher()
@@ -274,13 +292,26 @@ final class CoinService {
 
         return URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { output in
-                guard let response = output.response as? HTTPURLResponse,
-                      response.statusCode == 200 else {
+                guard let response = output.response as? HTTPURLResponse else {
+                    print("❌ No HTTP response")
+                    throw NetworkError.invalidResponse
+                }
+                
+                print("📡 CoinGecko response: HTTP \(response.statusCode)")
+                
+                if response.statusCode == 404 {
+                    print("❌ CoinGecko: Coin '\(geckoId)' not found")
                     // Attempt to decode CoinGecko specific error message
                     if let errorResponse = try? JSONSerialization.jsonObject(with: output.data, options: []) as? [String: Any],
-                       let _ = errorResponse["error"] as? String {
-                        throw NetworkError.badURL
+                       let errorMsg = errorResponse["error"] as? String {
+                        print("❌ CoinGecko error: \(errorMsg)")
                     }
+                    throw NetworkError.badURL
+                } else if response.statusCode == 429 {
+                    print("⚠️ CoinGecko: Rate limit exceeded (429). Requests too frequent.")
+                    throw NetworkError.invalidResponse // Will trigger exponential backoff retry
+                } else if response.statusCode != 200 {
+                    print("❌ CoinGecko: HTTP \(response.statusCode)")
                     throw NetworkError.invalidResponse
                 }
                 return output.data
@@ -288,7 +319,9 @@ final class CoinService {
             .decode(type: CoinGeckoChartResponse.self, decoder: JSONDecoder())
             .map { response in
                 // CoinGecko returns prices as [[timestamp, price]]. We only want the price.
-                return response.prices.map { $0[1] }
+                let prices = response.prices.map { $0[1] }
+                print("✅ Successfully fetched \(prices.count) price points for '\(geckoId)'")
+                return prices
             }
             .receive(on: DispatchQueue.main)
             .mapError { error in
@@ -304,123 +337,55 @@ final class CoinService {
             .eraseToAnyPublisher()
     }
     
-//    // MARK: - Fetch Top Coins (MOCKED)
-//        func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1) -> AnyPublisher<[Coin], NetworkError> {
-//            return Future<[Coin], NetworkError> { promise in
-//                DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-//                    guard let url = Bundle.main.url(forResource: "mock_top_coins", withExtension: "json") else {
-//                        promise(.failure(.badURL))
-//                        return
-//                    }
-//
-//                    do {
-//                        let data = try Data(contentsOf: url)
-//                        let decoded = try JSONDecoder().decode(MarketResponse.self, from: data)
-//                        promise(.success(decoded.data))
-//                    } catch {
-//                        print("❌ Mock TopCoins decoding failed:", error)
-//                        promise(.failure(.decodingError))
-//                    }
-//                }
-//            }
-//            .receive(on: DispatchQueue.main)
-//            .eraseToAnyPublisher()
-//
-//            /*
-//            // LIVE API (commented out)
-//            let endpoint = "\(baseURL)/cryptocurrency/listings/latest?limit=\(limit)&convert=\(convert)&start=\(start)"
-//            ...
-//            */
-//        }
-//
-//        // MARK: - Fetch Quotes (MOCKED)
-//        func fetchQuotes(for ids: [Int], convert: String) -> AnyPublisher<[Int: Quote], NetworkError> {
-//            return Future<[Int: Quote], NetworkError> { promise in
-//                DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) {
-//                    guard let url = Bundle.main.url(forResource: "mock_quotes", withExtension: "json") else {
-//                        promise(.failure(.badURL))
-//                        return
-//                    }
-//
-//                    do {
-//                        let data = try Data(contentsOf: url)
-//                        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-//                        guard let dataDict = json?["data"] as? [String: Any] else {
-//                            promise(.failure(.decodingError))
-//                            return
-//                        }
-//
-//                        var result: [Int: Quote] = [:]
-//                        for (key, coinData) in dataDict {
-//                            guard
-//                                let id = Int(key),
-//                                let coinDict = coinData as? [String: Any],
-//                                let quoteDict = coinDict["quote"] as? [String: Any],
-//                                let quoteForCurrency = quoteDict[convert] as? [String: Any],
-//                                let quoteData = try? JSONSerialization.data(withJSONObject: quoteForCurrency),
-//                                let quote = try? JSONDecoder().decode(Quote.self, from: quoteData)
-//                            else { continue }
-//
-//                            result[id] = quote
-//                        }
-//
-//                        promise(.success(result))
-//                    } catch {
-//                        print("❌ Mock Quotes decoding failed:", error)
-//                        promise(.failure(.decodingError))
-//                    }
-//                }
-//            }
-//            .receive(on: DispatchQueue.main)
-//            .eraseToAnyPublisher()
-//
-//            /*
-//            // LIVE API (commented out)
-//            let idString = ids.map { String($0) }.joined(separator: ",")
-//            ...
-//            */
-//        }
-//
-//        // MARK: - Fetch Logos (MOCKED)
-//        func fetchCoinLogos(forIDs ids: [Int]) -> AnyPublisher<[Int: String], Never> {
-//            return Future<[Int: String], Never> { promise in
-//                DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) {
-//                    guard let url = Bundle.main.url(forResource: "mock_logos", withExtension: "json") else {
-//                        promise(.success([:]))
-//                        return
-//                    }
-//
-//                    do {
-//                        let data = try Data(contentsOf: url)
-//                        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-//                        guard let dataDict = json?["data"] as? [String: Any] else {
-//                            promise(.success([:]))
-//                            return
-//                        }
-//
-//                        var result: [Int: String] = [:]
-//                        for (key, value) in dataDict {
-//                            if let id = Int(key),
-//                               let info = value as? [String: Any],
-//                               let logo = info["logo"] as? String {
-//                                result[id] = logo
-//                            }
-//                        }
-//
-//                        promise(.success(result))
-//                    } catch {
-//                        print("❌ Mock Logos decoding failed:", error)
-//                        promise(.success([:]))
-//                    }
-//                }
-//            }
-//            .receive(on: DispatchQueue.main)
-//            .eraseToAnyPublisher()
-//
-//            /*
-//            // LIVE API (commented out)
-//            let idString = ids.map { String($0) }.joined(separator: ",")
-//            ...
-//            */
-//        }
+    // Maps CoinMarketCap slugs to CoinGecko coin IDs
+    private func mapCMCSlugToGeckoId(_ cmcSlug: String) -> String {
+        let mapping: [String: String] = [
+            // Top cryptocurrencies mapping - CMC slug : CoinGecko ID
+            "bitcoin": "bitcoin",
+            "ethereum": "ethereum", 
+            "bnb": "binancecoin",         
+            "solana": "solana",
+            "xrp": "ripple",
+            "dogecoin": "dogecoin",
+            "cardano": "cardano",
+            "avalanche": "avalanche-2",
+            "polygon": "matic-network",
+            "chainlink": "chainlink",
+            "polkadot": "polkadot",
+            "litecoin": "litecoin",
+            "bitcoin-cash": "bitcoin-cash",
+            "ethereum-classic": "ethereum-classic",
+            "stellar": "stellar",
+            "uniswap": "uniswap",
+            "cosmos": "cosmos",
+            "algorand": "algorand",
+            "filecoin": "filecoin",
+            "vechain": "vechain",
+            "tron": "tron",
+            "monero": "monero",
+            "hedera": "hedera-hashgraph",
+            "internet-computer": "internet-computer",
+            "aave": "aave",
+            "shiba-inu": "shiba-inu",
+            "cronos": "crypto-com-chain",
+            "near": "near",
+            "aptos": "aptos",
+            "quant": "quant-network",
+            "arbitrum": "arbitrum",
+            "optimism": "optimism",
+            "maker": "maker",
+            "fantom": "fantom",
+            "mantle": "mantle",
+            "rocket-pool": "rocket-pool",
+            "kaspa": "kaspa",
+            "thorchain": "thorchain",
+            "flow": "flow",
+            "pepe": "pepe",
+            "bonk": "bonk",
+            "floki": "floki"
+        ]
+        
+        // Return mapped ID or fallback to original slug  
+        return mapping[cmcSlug.lowercased()] ?? cmcSlug.lowercased()
+    }
 }

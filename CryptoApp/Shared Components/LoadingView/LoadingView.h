@@ -8,7 +8,7 @@
 #import <UIKit/UIKit.h>
 
 @interface LoadingView : UIView
-
+// Class Method
 + (instancetype)showInView:(UIView *)parentView NS_SWIFT_NAME(show(in:));
 + (void)dismissFromView:(UIView *)parentView NS_SWIFT_NAME(dismiss(from:));
 

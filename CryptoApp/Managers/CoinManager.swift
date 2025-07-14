@@ -17,26 +17,30 @@ final class CoinManager {
         self.coinService = coinService
     }
 
-    func getTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1) -> AnyPublisher<[Coin], NetworkError> {
-        return coinService.fetchTopCoins(limit: limit, convert: convert, start: start)
+    // Added priority parameters to all methods so the ViewModels can specify urgency
+    func getTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
+        // Simple pass-through to CoinService with priority
+        return coinService.fetchTopCoins(limit: limit, convert: convert, start: start, priority: priority)
             .map { coins in
-                // Do any data transformation here
+                // Do any data transformation here if needed
                 return coins
             }
             .eraseToAnyPublisher()
     }
     
-    func getCoinLogos(forIDs ids: [Int]) -> AnyPublisher<[Int: String], Never> {
-        return coinService.fetchCoinLogos(forIDs: ids)
+    // Logo fetching defaults to low priority since they're visual enhancements, not critical data
+    func getCoinLogos(forIDs ids: [Int], priority: RequestPriority = .low) -> AnyPublisher<[Int: String], Never> {
+        return coinService.fetchCoinLogos(forIDs: ids, priority: priority)
     }
     
-    func getQuotes(for ids: [Int], convert: String = "USD") -> AnyPublisher<[Int: Quote], NetworkError> {
-        return coinService.fetchQuotes(for: ids, convert: convert)
+    // Price quotes is set to normal priority - important but not as urgent as user filter changes
+    func getQuotes(for ids: [Int], convert: String = "USD", priority: RequestPriority = .normal) -> AnyPublisher<[Int: Quote], NetworkError> {
+        return coinService.fetchQuotes(for: ids, convert: convert, priority: priority)
     }
     
-    // handles all range cases including 365 days
-    func fetchChartData(for coinSlug: String, range: String, currency: String = "usd") -> AnyPublisher<[Double], NetworkError> {
-        // Map your range string to CoinGecko's 'days' parameter
+    // Chart data fetching supports priority - high priority for user filter changes
+    func fetchChartData(for geckoID: String, range: String, currency: String = "usd", priority: RequestPriority = .normal) -> AnyPublisher<[Double], NetworkError> {
+        // Map range string to CoinGecko's 'days' parameter
         let daysParam: String
         switch range {
         case "1":     // 24h from VM
@@ -52,8 +56,10 @@ final class CoinManager {
             daysParam = "1"
         }
         
-        print("🔍 CoinManager: Fetching chart data for \(coinSlug) with \(daysParam) days")
+        // Enhanced logging to show priority level - helps debug filter performance
+        print("🔍 CoinManager: Fetching chart data for CoinGecko ID \(geckoID) with \(daysParam) days (priority: \(priority.description))")
 
-        return coinService.fetchCoinGeckoChartData(for: coinSlug, currency: currency, days: daysParam)
+        // Pass the priority all the way down to CoinService - this shows how filter changes get high priority
+        return coinService.fetchCoinGeckoChartData(for: geckoID, currency: currency, days: daysParam, priority: priority)
     }
 }

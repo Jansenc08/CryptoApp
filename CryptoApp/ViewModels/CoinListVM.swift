@@ -89,8 +89,9 @@ final class CoinListVM: ObservableObject {
         errorMessage = nil
         lastFetchTime = Date()
 
-        // Call API to fetch top coins (page 1)
-        coinManager.getTopCoins(limit: itemsPerPage, convert: convert)
+        // Call API to fetch top coins (page 1) with NORMAL priority
+        // I use normal priority for initial coin loading since it's important but not as urgent as filter changes
+        coinManager.getTopCoins(limit: itemsPerPage, convert: convert, priority: .normal)
             .receive(on: DispatchQueue.main) // Ensure results update UI on main thread
             .sink { [weak self] completion in
                 self?.isLoading = false
@@ -115,7 +116,8 @@ final class CoinListVM: ObservableObject {
                 // Only allow loading more if we got a full page, and we haven't hit the 100 coin cap
                 self?.canLoadMore = coins.count == self?.itemsPerPage && coins.count < 100
 
-                // Start fetching logos for the coins (only if we don't already have them)
+                // Start fetching logos for the coins (only if we don't already have them) with LOW priority
+                // I use low priority for logos since they're visual enhancements, not critical data
                 let ids = coins.map { $0.id }
                 self?.fetchCoinLogosIfNeeded(forIDs: ids)
                 
@@ -160,7 +162,9 @@ final class CoinListVM: ObservableObject {
         // Calculate start index for API pagination
         let start = (currentPage - 1) * itemsPerPage + 1
 
-        coinManager.getTopCoins(limit: itemsPerPage, convert: convert, start: start)
+        // Use NORMAL priority for pagination requests
+        // I use normal priority for pagination since users are actively scrolling and expect reasonable response times
+        coinManager.getTopCoins(limit: itemsPerPage, convert: convert, start: start, priority: .normal)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 self?.isLoadingMore = false
@@ -182,7 +186,8 @@ final class CoinListVM: ObservableObject {
                     print("🏁 Pagination | Complete | Total: \(totalCoins) | CanLoadMore: \(self.canLoadMore)")
                 }
 
-                // Fetch logos for newly appended coins (only if we don't already have them)
+                // Fetch logos for newly appended coins (only if we don't already have them) with LOW priority
+                // Again, logos are nice-to-have visual enhancements that can wait
                 let newIds = newCoins.map { $0.id }
                 self.fetchCoinLogosIfNeeded(forIDs: newIds)
             }
@@ -192,7 +197,8 @@ final class CoinListVM: ObservableObject {
     // MARK: - Fetch Coin Logos (Called after loading coins)
 
     func fetchCoinLogos(forIDs ids: [Int]) {
-        coinManager.getCoinLogos(forIDs: ids)
+        // Use LOW priority for logo fetching
+        coinManager.getCoinLogos(forIDs: ids, priority: .low)
             .sink { [weak self] logos in
                 // Merge new logos with existing ones (new overrides old if needed)
                 self?.coinLogos.merge(logos) { _, new in new }
@@ -205,7 +211,8 @@ final class CoinListVM: ObservableObject {
         let missingLogoIds = ids.filter { coinLogos[$0] == nil }
         
         if !missingLogoIds.isEmpty {
-            coinManager.getCoinLogos(forIDs: missingLogoIds)
+            // Use LOW priority for logo fetching
+            coinManager.getCoinLogos(forIDs: missingLogoIds, priority: .low)
                 .sink { [weak self] logos in
                     // Merge new logos with existing ones (new overrides old if needed)
                     self?.coinLogos.merge(logos) { _, new in new }
@@ -234,7 +241,10 @@ final class CoinListVM: ObservableObject {
             return
         }
 
-        coinManager.getQuotes(for: ids)
+        // Use LOW priority for background auto-refresh
+        // I use low priority for auto-refresh because it's happening in the background
+        // and shouldn't interfere with user-initiated actions like filter changes
+        coinManager.getQuotes(for: ids, priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completionResult in
                 if case .failure(let error) = completionResult {
@@ -303,7 +313,9 @@ final class CoinListVM: ObservableObject {
             return
         }
 
-        coinManager.getQuotes(for: visibleIds)
+        // Use LOW priority for background auto-refresh
+        // Same logic as above - background auto-refresh should never interfere with user actions
+        coinManager.getQuotes(for: visibleIds, priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completionResult in
                 if case .failure(let error) = completionResult {
@@ -364,7 +376,7 @@ final class CoinListVM: ObservableObject {
                 
                 completion()
             }
-                        .store(in: &cancellables)
+            .store(in: &cancellables)
     }
     
     // MARK: - State Management

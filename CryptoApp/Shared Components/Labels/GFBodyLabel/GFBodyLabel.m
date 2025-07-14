@@ -12,7 +12,7 @@
 
 // Calls superclass UILabel initializer
 - (instancetype)init {
-    self = [super initWithFrame:CGRectZero];
+    self = [super initWithFrame:CGRectZero]; // this is the default initializer used when [[GFBodyLabel alloc] init] is called
     if (self) {
         [self configure]; // Calls Configure to apply default styling
     }
@@ -30,13 +30,14 @@
     }
     return self;
 }
-
+// helper method to apply default label styling.
+// Instance Method: call this method on an object (an instance).
 - (void)configure {
-    self.textColor = [UIColor labelColor]; // Default text color (dark/light mode)
-    self.adjustsFontSizeToFitWidth = YES;  // Auto-shrink text
-    self.adjustsFontForContentSizeCategory = YES;  // Support Dynamic Type
-    self.minimumScaleFactor = 0.8;  // Allow shrinking to 80%
-    self.numberOfLines = 1;  // Single-line label
+    self.textColor = [UIColor labelColor];                // Default text color (dark/light mode)
+    self.adjustsFontSizeToFitWidth = YES;                 // Auto-shrink text
+    self.adjustsFontForContentSizeCategory = YES;         // Support Dynamic Type
+    self.minimumScaleFactor = 0.8;                        // Allow shrinking to 80%
+    self.numberOfLines = 1;                               // Single-line label
     self.translatesAutoresizingMaskIntoConstraints = NO;  // Allow shrinking to 80%
 }
 
