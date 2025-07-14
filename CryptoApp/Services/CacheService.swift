@@ -45,10 +45,10 @@ final class CacheService: NSObject {
     static let coinListTTL: TimeInterval = 30
     static let logoTTL: TimeInterval = 3600
     static let priceUpdateTTL: TimeInterval = 10
-    // I increased this from 5 minutes (300s) to 10 minutes (600s) for better filter performance!
+    // Increased to 10 minutes (600s) for better filter performance
     // This means chart data stays cached longer, so when users switch between filters,
     // they're more likely to get instant responses instead of waiting for new API calls
-    static let chartDataTTL: TimeInterval = 600  // Increased from 5 minutes to 10 minutes for better filter performance
+    static let chartDataTTL: TimeInterval = 600
 
     private override init() {
         super.init()

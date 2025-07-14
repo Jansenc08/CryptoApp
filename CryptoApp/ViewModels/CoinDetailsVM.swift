@@ -74,7 +74,7 @@ final class CoinDetailsVM: ObservableObject {
         self.coin = coin
         self.coinManager = coinManager
 
-        // Use coin slug directly - it's what we need for the mapping
+        // Use coin slug directly -> needed for mapping
         if let slug = coin.slug {
             self.geckoID = slug.lowercased()
             print("✅ Using coin slug for \(coin.symbol): \(slug)")
@@ -87,6 +87,9 @@ final class CoinDetailsVM: ObservableObject {
     }
 
     // MARK: - Prefetching Implementation (Optimized for Filter Performance)
+    // Schedules multiple background prefetches for commonly used ranges like "24h", "7d", and "30d" with staggered delays
+    // Called once during init()
+    // Calls prefetchSingleRange(...) for each range
     private func startPrefetchingCommonRanges() {
         guard let geckoID = geckoID else { return }
         
@@ -118,6 +121,8 @@ final class CoinDetailsVM: ObservableObject {
     }
 
     // Method for efficient single-range prefetching
+    // Called by startPrefetchingCommonRanges()
+    // Fetches + processes + marks range as prefetched
     private func prefetchSingleRange(geckoID: String, range: String) {
         let days = mapRangeToDays(range)
         
@@ -126,6 +131,7 @@ final class CoinDetailsVM: ObservableObject {
         coinManager.fetchChartData(for: geckoID, range: days, priority: .low)
             .subscribe(on: DispatchQueue.global(qos: .background))
             .map { [weak self] rawData in
+
                 return self?.processChartData(rawData, for: days) ?? []
             }
             .receive(on: DispatchQueue.global(qos: .background))
@@ -165,11 +171,13 @@ final class CoinDetailsVM: ObservableObject {
     }
     
     // Simplified API call - CacheService handles all caching logic
+    // This method fetches chart data from the API for a specific coin and time range, handles caching, loading states, and UI updates.
+    // Supports priority-based fetching (e.g., high for user filters, low for background), and ensures background processing is done efficiently.
     private func fetchChartDataFromAPI(geckoID: String, days: String, priority: RequestPriority = .normal) {
         isLoading = true
         errorMessage = nil
         
-        // Enhanced logging to show priority level - helps me understand what's happening
+        // Logging to show priority level (For debugging purposes)
         let priorityLabel = priority == .high ? "‼️ HIGH PRIORITY" : "🟡 NORMAL"
         print("🌐 \(priorityLabel) API call for \(geckoID) with \(days) days")
         

@@ -50,7 +50,10 @@ final class RequestManager {
     private init() {}
     
     // MARK: - Generic Request Deduplication with Priority
-    
+    // Core function
+    // Deduplicates by checking activeRequests and applies throttling using lastRequestTimes
+    // Removes completed request from map
+    // Uses combine's future + .sink to deliver results
     func executeRequest<T>(
         key: String,
         priority: RequestPriority = .normal,
@@ -65,10 +68,12 @@ final class RequestManager {
             
             self.queue.async(flags: .barrier) {
                 // Check if we should throttle this request based on priority
+                // This checks how recently the same reuquest was made using 'key'
                 if let lastTime = self.lastRequestTimes[key],
                    Date().timeIntervalSince(lastTime) < priority.delayInterval {
                     
                     // For HIGH priority request, reduce throttling significantly - only block if less than 1 second apart
+                    // If it's too soon based on priority, it blocks the request (avoids API spam).
                     if priority == .high {
                         let timeSinceLastRequest = Date().timeIntervalSince(lastTime)
                         if timeSinceLastRequest < 1.0 { // Only throttle if less than 1 second
@@ -82,7 +87,7 @@ final class RequestManager {
                     }
                 }
                 
-                // Check if request is already in progress - this prevents duplicate API calls
+                // This checks if request is already running -> this prevents duplicate API calls
                 if let existingRequest = self.activeRequests[key] {
                     print("♻️ \(priority.description) request deduplication: \(key)")
                     // Return the existing request, cast to the correct type
@@ -110,17 +115,21 @@ final class RequestManager {
                     return
                 }
                 
-                // Create new request with enhanced logging so I can debug what's happening
+                // Actually starts new request with logging (for debugging purposes)
                 let publisher = request()
                     .handleEvents(
                         receiveSubscription: { _ in
                             print("🚀 \(priority.description) request started: \(key)")
                         },
+                        
+                        // After we get a response, update lastRequestTimes so throttling can work next time.
                         receiveOutput: { [weak self] _ in
                             self?.queue.async(flags: .barrier) {
                                 self?.lastRequestTimes[key] = Date()
                             }
                         },
+                        
+                        // Removes the finished request from activeRequests to free up memory and avoid stale reuse.
                         receiveCompletion: { [weak self] completion in
                             switch completion {
                             case .finished:
@@ -136,10 +145,12 @@ final class RequestManager {
                     .map { $0 as Any }
                     .eraseToAnyPublisher()
                 
-                // Store the request
+                // Before it runs, it's saved in activeRequests so future calls with same key can reuse it.
+                // Stores the request basically
                 self.activeRequests[key] = publisher
                 
                 // Execute the request
+                // This sends the result back to the caller, whether it succeeded or failed.
                 publisher
                     .tryMap { result in
                         guard let typedResult = result as? T else {
@@ -167,6 +178,9 @@ final class RequestManager {
     }
     
     // MARK: - Specific Request Methods
+    // These are wrapper methods for specific requests that:
+    // Generates a unique key and calls executeRequest with a custom closure
+    // Ensures all requests go through the manager
     
     func fetchTopCoins(
         limit: Int,
@@ -216,6 +230,13 @@ final class RequestManager {
         }
     }
     
+    // Due to CoinGecko's restrictions:
+    // This method tracks requests in a 60-second window -> Capped to 7 requests/minute
+    // If the cap is reached → returns .rateLimited error
+    // Adds each chart request to a priority queue
+    // Queues are processed in order (high > normal > low), and each item is spaced out by its delay.
+
+
     func fetchChartData(
         coinId: String,
         currency: String,
@@ -297,6 +318,10 @@ final class RequestManager {
     }
     
     // Process high priority requests first
+    // Called when a request is added to a queue
+    // Picks a request from the highest non-empty queue
+    // Waits (DispatchQueue.asyncAfter) based on its priority delay
+    // Then runs next item 
     private func processPriorityQueue() {
         isProcessingQueue = true
         
