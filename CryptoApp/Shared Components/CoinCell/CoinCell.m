@@ -36,58 +36,73 @@
     self.percentChangeLabel = [[GFBodyLabel alloc] initWithTextAlignment:NSTextAlignmentRight fontSize:12 weight:UIFontWeightMedium];
     self.sparklineView = [[SparklineView alloc] init];
 
-    // Init vertical left and right stacks
+    // Init vertical left stack (rank, image, name/market info)
     UIStackView *nameStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.nameLabel, self.marketSupply]];
-    nameStack.axis = UILayoutConstraintAxisVertical; //stacked top to bottom
+    nameStack.axis = UILayoutConstraintAxisVertical;
     nameStack.spacing = 2;
+    nameStack.alignment = UIStackViewAlignmentLeading;
 
     self.leftStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.rankLabel, self.coinImageView, nameStack]];
-    self.leftStack.axis = UILayoutConstraintAxisHorizontal; // Stackview arranges subviews ina horizontal line (side by side)
-    self.leftStack.alignment = UIStackViewAlignmentCenter; // Sets the alignment of views perpendicular to the axis.
-    self.leftStack.spacing = 20;
+    self.leftStack.axis = UILayoutConstraintAxisHorizontal;
+    self.leftStack.alignment = UIStackViewAlignmentCenter;
+    self.leftStack.spacing = 12;
+    self.leftStack.distribution = UIStackViewDistributionFill;
     
+    // Create sparkline and percentage stack (sparkline above percentage)
+    UIStackView *sparklineAndPercentStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.sparklineView, self.percentChangeLabel]];
+    sparklineAndPercentStack.axis = UILayoutConstraintAxisVertical;
+    sparklineAndPercentStack.spacing = 4;
+    sparklineAndPercentStack.alignment = UIStackViewAlignmentCenter;
     
-    // Adjust pricelabel down
-    // Wraps pricelabel in a vertical stack and pushes it down using a spacer
-    UIView *spacer = [[UIView alloc] init];
-    [spacer.heightAnchor constraintEqualToConstant:15].active = YES;
-
-    UIStackView *priceWrapper = [[UIStackView alloc] initWithArrangedSubviews:@[spacer, self.priceLabel]];
-    priceWrapper.axis = UILayoutConstraintAxisVertical;
-    priceWrapper.spacing = 0;
-
-    UIStackView *priceAndSparklineStack = [[UIStackView alloc] initWithArrangedSubviews:@[priceWrapper, self.sparklineView]];
-    priceAndSparklineStack.axis = UILayoutConstraintAxisHorizontal;
-    priceAndSparklineStack.alignment = UIStackViewAlignmentCenter;
-    priceAndSparklineStack.spacing = 50;
-
-    self.rightStack = [[UIStackView alloc] initWithArrangedSubviews:@[priceAndSparklineStack, self.percentChangeLabel]];
-    self.rightStack.axis = UILayoutConstraintAxisVertical;
-    self.rightStack.alignment = UIStackViewAlignmentTrailing;
-    self.rightStack.spacing = 4;
+    // Create right stack with price and sparkline/percent stack
+    self.rightStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.priceLabel, sparklineAndPercentStack]];
+    self.rightStack.axis = UILayoutConstraintAxisHorizontal;
+    self.rightStack.alignment = UIStackViewAlignmentCenter;
+    self.rightStack.spacing = 16; // Good spacing between price and sparkline/percent
+    self.rightStack.distribution = UIStackViewDistributionFill;
     
-    // Main horizontal layout
+    // Main horizontal layout with better spacing
     self.mainStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.leftStack, self.rightStack]];
     self.mainStack.axis = UILayoutConstraintAxisHorizontal;
     self.mainStack.alignment = UIStackViewAlignmentCenter;
-    self.mainStack.distribution = UIStackViewDistributionEqualSpacing;
-    self.mainStack.spacing = 12;
+    self.mainStack.distribution = UIStackViewDistributionFillProportionally; // Better distribution
+    self.mainStack.spacing = 16;
     self.mainStack.translatesAutoresizingMaskIntoConstraints = NO;
 
-    [self.contentView addSubview:self.mainStack]; // Then added to the cell
+    [self.contentView addSubview:self.mainStack];
 
-    // Constraints (Pins the mainStack to all sides of the cell with padding.)
+    // Constraints for better spacing
     [NSLayoutConstraint activateConstraints:@[
-        [self.mainStack.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
-        [self.mainStack.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
-        [self.mainStack.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
-        [self.mainStack.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8],
+        [self.mainStack.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
+        [self.mainStack.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
+        [self.mainStack.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
+        [self.mainStack.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
 
+        // Fixed sizes for consistent layout
         [self.coinImageView.widthAnchor constraintEqualToConstant:32],
         [self.coinImageView.heightAnchor constraintEqualToConstant:32],
         [self.sparklineView.widthAnchor constraintEqualToConstant:60],
         [self.sparklineView.heightAnchor constraintEqualToConstant:20],
+        
+        // Minimum widths for better layout
+        [self.rankLabel.widthAnchor constraintGreaterThanOrEqualToConstant:20],
+        [self.nameLabel.widthAnchor constraintGreaterThanOrEqualToConstant:80],
+        [self.priceLabel.widthAnchor constraintGreaterThanOrEqualToConstant:70],
+        
+        // Ensure sparkline and percent stack has proper width
+        [sparklineAndPercentStack.widthAnchor constraintGreaterThanOrEqualToConstant:60],
     ]];
+    
+    // Set content hugging and compression resistance priorities for better layout
+    [self.rankLabel setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
+    [self.coinImageView setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
+    [self.sparklineView setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
+    [sparklineAndPercentStack setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
+    
+    // Allow name label to compress if needed, but keep price and percent change readable
+    [self.nameLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [self.priceLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
+    [self.percentChangeLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
 }
 
 - (void)configureWithRank:(NSInteger)rank
