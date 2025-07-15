@@ -18,9 +18,9 @@ final class CoinManager {
     }
 
     // Added priority parameters to all methods so the ViewModels can specify urgency
-    func getTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
+    func getTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, sortType: String = "market_cap", sortDir: String = "desc", priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
         // Simple pass-through to CoinService with priority
-        return coinService.fetchTopCoins(limit: limit, convert: convert, start: start, priority: priority)
+        return coinService.fetchTopCoins(limit: limit, convert: convert, start: start, sortType: sortType, sortDir: sortDir, priority: priority)
             .map { coins in
                 // Do any data transformation here if needed
                 return coins

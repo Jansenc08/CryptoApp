@@ -153,8 +153,8 @@ struct FilterHeaderViewPreview: UIViewRepresentable {
 struct FilterHeaderView_Previews: PreviewProvider {
     static var previews: some View {
         FilterHeaderViewPreview()
-            .frame(height: 57)
+            .frame(height: 68)
             .previewLayout(.sizeThatFits)
     }
 }
-#endif 
+#endif

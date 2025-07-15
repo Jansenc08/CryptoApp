@@ -18,10 +18,10 @@ final class CoinService {
     private let cacheService = CacheService.shared
     private let requestManager = RequestManager.shared
 
-    func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
+    func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, sortType: String = "market_cap", sortDir: String = "desc", priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
         // Check cache first
         // Always check cache before making API calls to avoid unnecessary requests
-        if let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert) {
+        if let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir) {
             print("💾 Cache hit for coin list (limit: \(limit), start: \(start))")
             return Just(cachedCoins)
                 .setFailureType(to: NetworkError.self)
@@ -33,9 +33,11 @@ final class CoinService {
             limit: limit,
             convert: convert,
             start: start,
+            sortType: sortType,
+            sortDir: sortDir,
             priority: priority
         ) { [weak self] in
-            self?.performTopCoinsRequest(limit: limit, convert: convert, start: start) ?? 
+            self?.performTopCoinsRequest(limit: limit, convert: convert, start: start, sortType: sortType, sortDir: sortDir) ?? 
             Fail(error: NetworkError.unknown(NSError(domain: "CoinService", code: -1, userInfo: nil)))
                 .eraseToAnyPublisher()
         }
@@ -49,13 +51,13 @@ final class CoinService {
         }
         .handleEvents(receiveOutput: { [weak self] coins in
             // Cache the result for future use
-            self?.cacheService.setCoinList(coins, limit: limit, start: start, convert: convert)
+            self?.cacheService.setCoinList(coins, limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir)
         })
         .eraseToAnyPublisher()
     }
     
-    private func performTopCoinsRequest(limit: Int, convert: String, start: Int) -> AnyPublisher<[Coin], NetworkError> {
-        let endpoint = "\(baseURL)/cryptocurrency/listings/latest?limit=\(limit)&convert=\(convert)&start=\(start)"
+    private func performTopCoinsRequest(limit: Int, convert: String, start: Int, sortType: String, sortDir: String) -> AnyPublisher<[Coin], NetworkError> {
+        let endpoint = "\(baseURL)/cryptocurrency/listings/latest?limit=\(limit)&convert=\(convert)&start=\(start)&sort=\(sortType)&sort_dir=\(sortDir)"
 
         guard let url = URL(string: endpoint) else {
             return Fail(error: .badURL).eraseToAnyPublisher()
@@ -98,12 +100,16 @@ final class CoinService {
     }
     
     func fetchCoinLogos(forIDs ids: [Int], priority: RequestPriority = .low) -> AnyPublisher<[Int: String], Never> {
+        print("🖼️ CoinService.fetchCoinLogos | Requested IDs: \(ids)")
+        
         // Check cache first for logos too
         if let cachedLogos = cacheService.getCoinLogos(forIDs: ids) {
-            print("💾 Cache hit for coin logos (IDs: \(ids))")
+            print("💾 Cache hit for coin logos (IDs: \(ids)) | Found \(cachedLogos.count) logos")
             return Just(cachedLogos)
                 .eraseToAnyPublisher()
         }
+        
+        print("🌐 CoinService.fetchCoinLogos | Cache miss, fetching from API...")
         
         // Use request manager with priority - logos get low priority since they're not urgent
         return requestManager.fetchCoinLogos(ids: ids, priority: priority) { [weak self] in
@@ -112,6 +118,7 @@ final class CoinService {
         }
         .replaceError(with: [:])
         .handleEvents(receiveOutput: { [weak self] logos in
+            print("📥 CoinService.fetchCoinLogos | Received \(logos.count) logos: \(logos)")
             // Cache the result
             self?.cacheService.setCoinLogos(logos, forIDs: ids)
         })

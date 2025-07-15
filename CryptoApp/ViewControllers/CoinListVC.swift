@@ -18,6 +18,8 @@ final class CoinListVC: UIViewController {
     
     let imageCache = NSCache<NSString, UIImage>()                           // Optional image cache for coin logos
     let refreshControl = UIRefreshControl()                                 // Pull-to-refresh controller
+    private var filterHeaderView: FilterHeaderView!                         // Filter buttons container
+    private var sortHeaderView: SortHeaderView!                             // Sort column headers
     
     var autoRefreshTimer: Timer?                                            // Timer to refresh visible cells every few seconds
     let autoRefreshInterval: TimeInterval = 15                              //  Interval: 15 seconds
@@ -39,7 +41,16 @@ final class CoinListVC: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        viewModel.fetchCoins() // Fetch fresh data every time view appears
+        
+        // Only fetch data on initial load, not on every view appear
+        // Pull-to-refresh and auto-refresh handle data updates
+        if viewModel.coins.isEmpty {
+            print("📱 Initial load - fetching data")
+            viewModel.fetchCoins()
+        } else {
+            print("📱 View appeared - data already loaded, skipping fetch")
+        }
+        
         startAutoRefresh()     // Start auto-refreshing price updates
     }
     
@@ -64,6 +75,40 @@ final class CoinListVC: UIViewController {
     private func configureView() {
         view.backgroundColor = .systemBackground
         navigationItem.title = "Markets"
+        setupFilterHeaderView()
+        setupSortHeaderView()
+    }
+    
+    private func setupFilterHeaderView() {
+        filterHeaderView = FilterHeaderView()
+        filterHeaderView.delegate = self
+        filterHeaderView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(filterHeaderView)
+        
+        NSLayoutConstraint.activate([
+            filterHeaderView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            filterHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            filterHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+    }
+    
+    private func setupSortHeaderView() {
+        sortHeaderView = SortHeaderView()
+        sortHeaderView.delegate = self
+        sortHeaderView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sortHeaderView)
+        
+        NSLayoutConstraint.activate([
+            sortHeaderView.topAnchor.constraint(equalTo: filterHeaderView.bottomAnchor),
+            sortHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            sortHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        
+        // Update sort header with current filter state
+        updateSortHeaderForCurrentFilter()
+        
+        // Ensure ViewModel and SortHeaderView start in sync
+        syncViewModelWithSortHeader()
     }
     
     private func configureCollectionView() {
@@ -84,10 +129,10 @@ final class CoinListVC: UIViewController {
         collectionView.refreshControl = refreshControl
         
         NSLayoutConstraint.activate([
-            collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            collectionView.topAnchor.constraint(equalTo: sortHeaderView.bottomAnchor),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            collectionView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
     }
     
@@ -106,10 +151,24 @@ final class CoinListVC: UIViewController {
         isRefreshing = true
         print("✅ Pull-to-Refresh | Starting data fetch...")
         
+        // Debug: Print sort state before refresh
+        print("🔍 Pull-to-refresh - Before fetch:")
+        print("  UI: \(sortHeaderView.currentSortColumn) \(sortHeaderView.currentSortOrder == CryptoSortOrder.descending ? "DESC" : "ASC")")
+        print("  VM: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == CryptoSortOrder.descending ? "DESC" : "ASC")")
+        
         viewModel.fetchCoins(onFinish: {
             print("🏁 Pull-to-Refresh | Data fetch completed")
+            
+            // Debug: Print sort state after refresh
+            print("🔍 Pull-to-refresh - After fetch:")
+            print("  VM: \(self.viewModel.getCurrentSortColumn()) \(self.viewModel.getCurrentSortOrder() == CryptoSortOrder.descending ? "DESC" : "ASC")")
+            
             self.isRefreshing = false
             self.refreshControl.endRefreshing()
+            
+            // Sync SortHeaderView UI with ViewModel's current sort state
+            self.syncSortHeaderWithViewModel()
+            
             print("🎯 Pull-to-Refresh | Spinner stopped, refresh complete")
         })
     }
@@ -127,7 +186,7 @@ final class CoinListVC: UIViewController {
             // Configure the cell with all relevant info
             cell.configure(
                 withRank: coin.cmcRank,
-                name: coin.name,
+                name: coin.symbol,
                 price: coin.priceString,
                 market: coin.marketSupplyString,
                 percentChange24h: coin.percentChange24hString,
@@ -137,8 +196,10 @@ final class CoinListVC: UIViewController {
             
             // Load the coin logo image if available
             if let urlString = self?.viewModel.coinLogos[coin.id] {
+                print("🖼️ CoinListVC | Loading logo for \(coin.name) (ID: \(coin.id)): \(urlString)")
                 cell.coinImageView.downloadImage(fromURL: urlString)
             } else {
+                print("❌ CoinListVC | No logo URL for \(coin.name) (ID: \(coin.id))")
                 cell.coinImageView.setPlaceholder()
             }
             
@@ -292,6 +353,35 @@ final class CoinListVC: UIViewController {
         // Clear the updated coin IDs after processing
         viewModel.clearUpdatedCoinIds()
     }
+    
+    private func updateSortHeaderForCurrentFilter() {
+        let priceChangeTitle = viewModel.filterState.priceChangeFilter.shortDisplayName + "%"
+        sortHeaderView.updatePriceChangeColumnTitle(priceChangeTitle)
+    }
+    
+        private func syncSortHeaderWithViewModel() {
+        // Only sync if the states are different to avoid unnecessary updates
+        if sortHeaderView.currentSortColumn != viewModel.getCurrentSortColumn() ||
+           sortHeaderView.currentSortOrder != viewModel.getCurrentSortOrder() {
+            sortHeaderView.currentSortColumn = viewModel.getCurrentSortColumn()
+            sortHeaderView.currentSortOrder = viewModel.getCurrentSortOrder()
+            sortHeaderView.updateSortIndicators()
+            print("🔄 Synced sort header UI: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == CryptoSortOrder.descending ? "DESC" : "ASC")")
+        }
+    }
+    
+    private func syncViewModelWithSortHeader() {
+        // Ensure ViewModel starts with the same state as SortHeaderView
+        let headerColumn = sortHeaderView.currentSortColumn
+        let headerOrder = sortHeaderView.currentSortOrder
+        
+        if viewModel.getCurrentSortColumn() != headerColumn || viewModel.getCurrentSortOrder() != headerOrder {
+            viewModel.updateSorting(column: headerColumn, order: headerOrder)
+            print("🔧 Synced ViewModel with SortHeader: \(headerColumn) \(headerOrder == CryptoSortOrder.descending ? "DESC" : "ASC")")
+        }
+    }
+
+      // MARK: - Configuration
 }
 
 // MARK: - Scroll Pagination
@@ -336,5 +426,63 @@ extension CoinListVC: UICollectionViewDelegate {
             print("📜 Scroll | Triggered pagination at \(String(format: "%.1f", scrollProgress * 100))%")
             viewModel.loadMoreCoins()
         }
+    }
+}
+
+// MARK: - SortHeaderViewDelegate
+
+extension CoinListVC: SortHeaderViewDelegate {
+    func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, with order: CryptoSortOrder) {
+        print("🔄 Sort: Column \(column) | Order: \(order == CryptoSortOrder.descending ? "Descending" : "Ascending")")
+        viewModel.updateSorting(column: column, order: order)
+    }
+}
+
+// MARK: - FilterHeaderViewDelegate
+
+extension CoinListVC: FilterHeaderViewDelegate {
+    func filterHeaderView(_ headerView: FilterHeaderView, didTapPriceChangeButton button: FilterButton) {
+        let modalVC = FilterModalVC(filterType: .priceChange, currentState: viewModel.filterState)
+        modalVC.delegate = self
+        present(modalVC, animated: true)
+    }
+    
+    func filterHeaderView(_ headerView: FilterHeaderView, didTapTopCoinsButton button: FilterButton) {
+        let modalVC = FilterModalVC(filterType: .topCoins, currentState: viewModel.filterState)
+        modalVC.delegate = self
+        present(modalVC, animated: true)
+    }
+}
+
+// MARK: - FilterModalVC Delegate
+
+extension CoinListVC: FilterModalVCDelegate {
+    func filterModalVC(_ modalVC: FilterModalVC, didSelectPriceChangeFilter filter: PriceChangeFilter) {
+        filterHeaderView.setLoading(true, for: .priceChange)
+        viewModel.updatePriceChangeFilter(filter)
+        
+        // Update header view state and remove loading state after brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.filterHeaderView.updateFilterState(self?.viewModel.filterState ?? .defaultState)
+            self?.filterHeaderView.setLoading(false, for: .priceChange)
+            self?.updateSortHeaderForCurrentFilter() // Also update sort header
+        }
+    }
+    
+    func filterModalVC(_ modalVC: FilterModalVC, didSelectTopCoinsFilter filter: TopCoinsFilter) {
+        filterHeaderView.setLoading(true, for: .topCoins)
+        viewModel.updateTopCoinsFilter(filter)
+        
+        // Update header view state and remove loading state after brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.filterHeaderView.updateFilterState(self?.viewModel.filterState ?? .defaultState)
+            self?.filterHeaderView.setLoading(false, for: .topCoins)
+            self?.updateSortHeaderForCurrentFilter() // Also update sort header
+        }
+    }
+    
+    func filterModalVCDidCancel(_ modalVC: FilterModalVC) {
+        // Handle cancellation if needed
+        print("Filter modal was cancelled")
     }
 }

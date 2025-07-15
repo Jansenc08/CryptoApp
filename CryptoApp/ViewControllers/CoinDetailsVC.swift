@@ -69,7 +69,7 @@ final class CoinDetailsVC: UIViewController {
     
     private func setupTableView() {
         view.backgroundColor = .systemBackground
-        navigationItem.title = coin.name
+        navigationItem.title = coin.symbol
         
         tableView.dataSource = self
         tableView.delegate = self
@@ -283,7 +283,7 @@ extension CoinDetailsVC: UITableViewDataSource {
         switch indexPath.section {
         case 0: // Info section
             let cell = tableView.dequeueReusableCell(withIdentifier: "InfoCell", for: indexPath) as! InfoCell
-            cell.configure(name: coin.name, rank: coin.cmcRank, price: coin.priceString)
+            cell.configure(name: coin.symbol, rank: coin.cmcRank, price: coin.priceString)
             cell.selectionStyle = .none
             return cell
         case 1: // Filter section (Segmented control)

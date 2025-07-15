@@ -35,6 +35,7 @@
 
 - (void)downloadImageFromURL:(NSString *)urlString {
     if (!urlString) {
+        NSLog(@"❌ CoinImageView | No URL provided, setting placeholder");
         [self setPlaceholder];
         return;
     }
@@ -43,20 +44,33 @@
     UIImage *cachedImage = [self.imageCache objectForKey:cacheKey];
 
     if (cachedImage) {
+        NSLog(@"💾 CoinImageView | Cache hit for: %@", urlString);
         self.image = cachedImage;
         return;
     }
 
     NSURL *url = [NSURL URLWithString:urlString];
     if (!url) {
+        NSLog(@"❌ CoinImageView | Invalid URL: %@", urlString);
         [self setPlaceholder];
         return;
     }
 
+    NSLog(@"🌐 CoinImageView | Downloading image from: %@", urlString);
+
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithURL:url
       completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-          if (error || !data) {
+          if (error) {
+              NSLog(@"❌ CoinImageView | Download error for %@: %@", urlString, error.localizedDescription);
+              dispatch_async(dispatch_get_main_queue(), ^{
+                  [self setPlaceholder];
+              });
+              return;
+          }
+          
+          if (!data) {
+              NSLog(@"❌ CoinImageView | No data received for: %@", urlString);
               dispatch_async(dispatch_get_main_queue(), ^{
                   [self setPlaceholder];
               });
@@ -65,11 +79,13 @@
 
           UIImage *downloadedImage = [UIImage imageWithData:data];
           if (downloadedImage) {
+              NSLog(@"✅ CoinImageView | Successfully downloaded image for: %@", urlString);
               [self.imageCache setObject:downloadedImage forKey:cacheKey];
               dispatch_async(dispatch_get_main_queue(), ^{
                   self.image = downloadedImage;
               });
           } else {
+              NSLog(@"❌ CoinImageView | Failed to create image from data for: %@", urlString);
               dispatch_async(dispatch_get_main_queue(), ^{
                   [self setPlaceholder];
               });

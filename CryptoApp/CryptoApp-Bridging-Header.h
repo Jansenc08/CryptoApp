@@ -11,3 +11,5 @@
 #import "TabBarController.h"
 #import "LoadingView.h"
 #import "SegmentView.h"
+#import "FilterButton.h"
+#import "SortHeaderView.h"

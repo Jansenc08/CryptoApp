@@ -171,13 +171,13 @@ final class CacheService: NSObject {
 
     // MARK: - Type-Specific Getters/Setters
 
-    func getCoinList(limit: Int, start: Int, convert: String) -> [Coin]? {
-        let key = "coins_\(limit)_\(start)_\(convert)"
+    func getCoinList(limit: Int, start: Int, convert: String, sortType: String = "market_cap", sortDir: String = "desc") -> [Coin]? {
+        let key = "coins_\(limit)_\(start)_\(convert)_\(sortType)_\(sortDir)"
         return get(key: key, type: [Coin].self)
     }
 
-    func setCoinList(_ coins: [Coin], limit: Int, start: Int, convert: String) {
-        let key = "coins_\(limit)_\(start)_\(convert)"
+    func setCoinList(_ coins: [Coin], limit: Int, start: Int, convert: String, sortType: String = "market_cap", sortDir: String = "desc") {
+        let key = "coins_\(limit)_\(start)_\(convert)_\(sortType)_\(sortDir)"
         set(key: key, value: coins, ttl: CacheService.coinListTTL)
     }
 

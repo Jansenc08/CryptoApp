@@ -186,10 +186,12 @@ final class RequestManager {
         limit: Int,
         convert: String,
         start: Int,
+        sortType: String = "market_cap",
+        sortDir: String = "desc",
         priority: RequestPriority = .normal,
         apiCall: @escaping () -> AnyPublisher<[Coin], NetworkError>
     ) -> AnyPublisher<[Coin], Error> {
-        let key = "top_coins_\(limit)_\(start)_\(convert)"
+        let key = "top_coins_\(limit)_\(start)_\(convert)_\(sortType)_\(sortDir)"
         
         return executeRequest(key: key, priority: priority) {
             apiCall()
