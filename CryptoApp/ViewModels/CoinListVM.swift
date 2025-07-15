@@ -40,27 +40,25 @@ final class CoinListVM: ObservableObject {
     
     // MARK: - Optimization Properties
     
-    private let loadMoreSubject = PassthroughSubject<String, Never>()  // Subject for debouncing load more requests with convert parameter
-    private var lastFetchTime: Date?                       // Track when we last fetched data
-    private let minimumFetchInterval: TimeInterval = 2.0   // Minimum time between fetches (2 seconds)
+    private var lastFetchTime: Date?                       // Track last fetch to prevent rapid consecutive calls
+    private let minimumFetchInterval: TimeInterval = 2.0  // Minimum time between fetches in seconds
+    
+    // MARK: - Performance Optimization Properties
+    private var pendingLogoRequests: Set<Int> = []         // Track pending logo requests to avoid duplicates
 
     // MARK: - Init
 
     init(coinManager: CoinManager = CoinManager()) {
         self.coinManager = coinManager
-        setupLoadMoreDebouncing()
     }
     
-    // MARK: - Setup
+    // MARK: - Setup and Cleanup
     
-    private func setupLoadMoreDebouncing() {
-        // Debounce load more requests to prevent excessive API calls during rapid scrolling
-        loadMoreSubject
-            .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // Reduced from 0.5 to 0.3 seconds for better responsiveness
-            .sink { [weak self] convert in
-                self?.performLoadMoreCoins(convert: convert)
-            }
-            .store(in: &cancellables)
+
+    
+    private func resetOptimizationState() {
+        // Clear pending requests to reset optimization state
+        pendingLogoRequests.removeAll()
     }
 
     // MARK: - Filter Management
@@ -138,6 +136,10 @@ final class CoinListVM: ObservableObject {
         let sortedDisplayCoins = Array(fullFilteredCoins.prefix(pageSize))
         coins = sortedDisplayCoins
         
+        // Fetch logos for newly displayed coins after sorting
+        let displayedIds = sortedDisplayCoins.map { $0.id }
+        fetchCoinLogosIfNeeded(forIDs: displayedIds)
+        
         print("✅ Sort applied: Displaying \(sortedDisplayCoins.count) coins")
     }
     
@@ -162,6 +164,9 @@ final class CoinListVM: ObservableObject {
         canLoadMore = true
         coins = []
         fullFilteredCoins = []
+        
+        // Clear optimization state to prevent logo requests for old filters
+        resetOptimizationState()
         
         print("🔄 Fetching fresh data with new filters...")
         
@@ -196,6 +201,10 @@ final class CoinListVM: ObservableObject {
             let sortedCachedCoins = sortCoins(offlineData.coins)
             coins = sortedCachedCoins
             coinLogos = offlineData.logos
+            
+            // Fetch logos for displayed coins after sorting (they may be different than cached logos)
+            let displayedIds = sortedCachedCoins.map { $0.id }
+            fetchCoinLogosIfNeeded(forIDs: displayedIds)
             
             onFinish?()
             return
@@ -282,6 +291,10 @@ final class CoinListVM: ObservableObject {
                     self?.coins = sortedFallbackCoins
                     self?.coinLogos = offlineData.logos
                     self?.errorMessage = "Using offline data due to network error"
+                    
+                    // Fetch logos for displayed coins after sorting (they may be different than cached logos)
+                    let displayedIds = sortedFallbackCoins.map { $0.id }
+                    self?.fetchCoinLogosIfNeeded(forIDs: displayedIds)
                 }
             }
             print("🔄 VM.fetchCoins | Calling completion handler")
@@ -382,13 +395,8 @@ final class CoinListVM: ObservableObject {
     // MARK: - Pagination (Triggered on Scroll)
 
     func loadMoreCoins(convert: String = "USD") {
-        // Use debounced approach to prevent excessive API calls
-        loadMoreSubject.send(convert)
-    }
-    
-    private func performLoadMoreCoins(convert: String = "USD") {
-        // Request guarding
-        // Prevent multiple calls from running concurrently
+        // OPTIMIZED: Direct pagination without debouncing for better performance
+        // Request guarding - prevent multiple calls from running concurrently
         guard canLoadMore && !isLoadingMore && !isLoading else { 
             print("🚫 Pagination | Blocked | CanLoad: \(canLoadMore) | Loading: \(isLoading) | LoadingMore: \(isLoadingMore)")
             return 
@@ -411,30 +419,36 @@ final class CoinListVM: ObservableObject {
         
         print("📖 Pagination | Loading page \(currentPage) | Current: \(coins.count) coins")
 
-        // Simulate brief loading delay for UX, then append next batch from cached data
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            guard let self = self else { return }
-            
-            let startIndex = self.coins.count
-            let endIndex = min(startIndex + self.itemsPerPage, self.fullFilteredCoins.count)
-            let newCoins = Array(self.fullFilteredCoins[startIndex..<endIndex])
-            
-            self.coins.append(contentsOf: newCoins)
-            self.isLoadingMore = false
-            
-            let totalCoins = self.coins.count
-            print("✅ Pagination | Added \(newCoins.count) coins | Total: \(totalCoins)")
-
-            // Check if we can load more
-            if totalCoins >= self.fullFilteredCoins.count {
-                self.canLoadMore = false
-                print("🏁 Pagination | Complete | Total: \(totalCoins)/\(self.fullFilteredCoins.count)")
-            }
-
-            // Fetch logos for newly displayed coins
-            let newIds = newCoins.map { $0.id }
-            self.fetchCoinLogosIfNeeded(forIDs: newIds)
+        // OPTIMIZED: Remove artificial delay - load immediately
+        let startIndex = coins.count
+        let endIndex = min(startIndex + itemsPerPage, fullFilteredCoins.count)
+        
+        guard startIndex < fullFilteredCoins.count else {
+            // Edge case: No more items available
+            isLoadingMore = false
+            canLoadMore = false
+            print("🛑 Pagination | No more items available")
+            return
         }
+        
+        let newCoins = Array(fullFilteredCoins[startIndex..<endIndex])
+        
+        // Update state immediately
+        coins.append(contentsOf: newCoins)
+        isLoadingMore = false
+        
+        let totalCoins = coins.count
+        print("✅ Pagination | Added \(newCoins.count) coins | Total: \(totalCoins)")
+
+        // Check if we can load more
+        if totalCoins >= fullFilteredCoins.count {
+            canLoadMore = false
+            print("🏁 Pagination | Complete | Total: \(totalCoins)/\(fullFilteredCoins.count)")
+        }
+
+        // Fetch logos for newly displayed coins (optimized with batching)
+        let newIds = newCoins.map { $0.id }
+        fetchCoinLogosIfNeeded(forIDs: newIds)
     }
 
     // MARK: - Fetch Coin Logos (Called after loading coins)
@@ -450,29 +464,39 @@ final class CoinListVM: ObservableObject {
     }
     
     private func fetchCoinLogosIfNeeded(forIDs ids: [Int]) {
-        // Only fetch logos for coins we don't already have
-        let missingLogoIds = ids.filter { coinLogos[$0] == nil }
-        
-        print("🖼️ CoinListVM.fetchCoinLogosIfNeeded | Total IDs: \(ids.count), Missing: \(missingLogoIds.count)")
-        print("🖼️ Current logo count: \(coinLogos.count)")
-        
-        if !missingLogoIds.isEmpty {
-            print("🌐 CoinListVM | Fetching logos for missing IDs: \(missingLogoIds)")
-            // Use LOW priority for logo fetching
-            coinManager.getCoinLogos(forIDs: missingLogoIds, priority: .low)
-                .sink { [weak self] logos in
-                    print("📥 CoinListVM | Received \(logos.count) new logos, merging with existing \(self?.coinLogos.count ?? 0)")
-                    // Merge new logos with existing ones (new overrides old if needed)
-                    self?.coinLogos.merge(logos) { _, new in new }
-                    print("📊 CoinListVM | Total logos after merge: \(self?.coinLogos.count ?? 0)")
-                    
-                    // Save updated logos for offline use
-                    self?.persistenceService.saveCoinLogos(self?.coinLogos ?? [:])
-                }
-                .store(in: &cancellables)
-        } else {
-            print("✅ CoinListVM | All logos already available, no fetch needed")
+        // Filter out IDs that already have logos or are pending requests
+        let missingLogoIds = ids.filter { id in
+            coinLogos[id] == nil && !pendingLogoRequests.contains(id)
         }
+        
+        print("🖼️ CoinListVM.fetchCoinLogosIfNeeded | Total IDs: \(ids.count), Missing: \(missingLogoIds.count), Pending: \(pendingLogoRequests.count)")
+        
+        guard !missingLogoIds.isEmpty else {
+            print("✅ CoinListVM | All logos already available or pending, no fetch needed")
+            return
+        }
+        
+        // Add to pending requests to prevent duplicates
+        pendingLogoRequests.formUnion(missingLogoIds)
+        
+        print("🌐 CoinListVM | Fetching logos for missing IDs: \(missingLogoIds)")
+        
+        // SIMPLIFIED: Direct fetch without batching complexity
+        coinManager.getCoinLogos(forIDs: missingLogoIds, priority: .low)
+            .sink { [weak self] logos in
+                print("📥 CoinListVM | Received \(logos.count) new logos, merging with existing \(self?.coinLogos.count ?? 0)")
+                
+                // Remove from pending requests
+                self?.pendingLogoRequests.subtract(missingLogoIds)
+                
+                // Merge new logos with existing ones
+                self?.coinLogos.merge(logos) { _, new in new }
+                print("📊 CoinListVM | Total logos after merge: \(self?.coinLogos.count ?? 0)")
+                
+                // Save updated logos for offline use
+                self?.persistenceService.saveCoinLogos(self?.coinLogos ?? [:])
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Periodic Price Update (Used by auto-refresh)
