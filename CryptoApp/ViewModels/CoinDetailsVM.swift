@@ -90,7 +90,7 @@ final class CoinDetailsVM: ObservableObject {
                 let color = change24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
                 items.append(StatItem(title: "24h Change", value: changeString, valueColor: color))
             }
-            if let volume24h = quote.volume24h, let volumeChange24h = quote.volumeChange24h {
+            if let _ = quote.volume24h, let volumeChange24h = quote.volumeChange24h {
                 let changeString = String(format: "%.2f%%", volumeChange24h)
                 let color = volumeChange24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
                 items.append(StatItem(title: "24h Volume Change", value: changeString, valueColor: color))
@@ -154,6 +154,7 @@ final class CoinDetailsVM: ObservableObject {
 
     // MARK: - Prefetching Implementation (Optimized for Filter Performance)
     // Schedules multiple background prefetches for commonly used ranges like "24h", "7d", and "30d" with staggered delays
+    // These is happening sequentially
     // Called once during init()
     // Calls prefetchSingleRange(...) for each range
     private func startPrefetchingCommonRanges() {
@@ -186,7 +187,7 @@ final class CoinDetailsVM: ObservableObject {
         }
     }
 
-    // Method for efficient single-range prefetching
+    // Method for single-range prefetching
     // Called by startPrefetchingCommonRanges()
     // Fetches + processes + marks range as prefetched
     private func prefetchSingleRange(geckoID: String, range: String) {
@@ -451,6 +452,23 @@ final class CoinDetailsVM: ObservableObject {
     
     var canLoadMoreData: Bool {
         return !isLoadingMoreData && !chartPoints.isEmpty
+    }
+    
+    // MARK: - Cleanup
+    
+    // Method to manually cancel all ongoing API calls
+    // Can be called from viewWillDisappear for immediate cleanup
+    func cancelAllRequests() {
+        print("🛑 Cancelling all ongoing API calls for \(coin.symbol)")
+        cancellables.removeAll()
+        isLoading = false
+        isLoadingMoreData = false
+    }
+    
+    deinit {
+        print("🧹 CoinDetailsVM deinit - cancelling all API calls for \(coin.symbol)")
+        cancellables.removeAll()
+        // This automatically cancels all ongoing network requests and subscriptions
     }
 }
 

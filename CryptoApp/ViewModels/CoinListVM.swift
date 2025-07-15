@@ -381,7 +381,23 @@ final class CoinListVM: ObservableObject {
     
     // MARK: - State Management
     
-        func clearUpdatedCoinIds() {
+    func clearUpdatedCoinIds() {
         updatedCoinIds.removeAll()
+    }
+    
+    // MARK: - Cleanup
+    
+    // Method to manually cancel all ongoing API calls
+    // Can be called from viewWillDisappear for immediate cleanup
+    func cancelAllRequests() {
+        print("🛑 Cancelling all ongoing API calls for coin list")
+        cancellables.removeAll()
+        isLoading = false
+        isLoadingMore = false // Assuming isRefreshing is not used in this file, but keeping it for consistency
+    }
+    
+    deinit {
+        print("🧹 CoinListVM deinit - cleaning up subscriptions")
+        cancellables.removeAll()
     }
 }

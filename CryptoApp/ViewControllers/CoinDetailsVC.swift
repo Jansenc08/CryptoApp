@@ -31,6 +31,13 @@ final class CoinDetailsVC: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
     
+    deinit {
+        print("🧹 CoinDetailsVC deinit - cleaning up resources for \(coin.symbol)")
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        cancellables.removeAll()
+    }
+    
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
@@ -51,6 +58,11 @@ final class CoinDetailsVC: UIViewController {
         super.viewWillDisappear(animated)
         isViewVisible = false
         refreshTimer?.invalidate() // Stops auto-refresh when we leave the page
+        refreshTimer = nil
+        
+        // Immediately cancel all ongoing API calls when leaving the page
+        viewModel.cancelAllRequests()
+        print("🚪 Leaving coin details page - cancelled all API calls")
     }
 
     // MARK: - Setup

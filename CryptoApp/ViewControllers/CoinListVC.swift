@@ -46,6 +46,16 @@ final class CoinListVC: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopAutoRefresh() //  Stop Timer to avoid memory leaks / Unnecessary API Calls
+        
+        // Immediately cancel all ongoing API calls when leaving the coin list page
+        viewModel.cancelAllRequests()
+        print("🚪 Leaving coin list page - cancelled all API calls")
+    }
+    
+    deinit {
+        print("🧹 CoinListVC deinit - cleaning up resources")
+        stopAutoRefresh()
+        cancellables.removeAll()
     }
     
     
