@@ -527,12 +527,13 @@ final class CoinListVM: ObservableObject {
         // Add to pending requests to prevent duplicates
         pendingLogoRequests.formUnion(missingLogoIds)
         
-        print("🌐 CoinListVM | Fetching logos for missing IDs: \(missingLogoIds)")
+        print("🖼️ CoinListVM | Fetching \(missingLogoIds.count) missing coin logos...")
         
         // SIMPLIFIED: Direct fetch without batching complexity
         coinManager.getCoinLogos(forIDs: missingLogoIds, priority: .low)
             .sink { [weak self] logos in
-                print("📥 CoinListVM | Received \(logos.count) new logos, merging with existing \(self?.coinLogos.count ?? 0)")
+                let totalLogos = (self?.coinLogos.count ?? 0) + logos.count
+                print("✅ CoinListVM | Received \(logos.count) new logos (total: \(totalLogos) cached)")
                 
                 // Remove from pending requests
                 self?.pendingLogoRequests.subtract(missingLogoIds)

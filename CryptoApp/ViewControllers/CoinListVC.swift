@@ -196,10 +196,14 @@ final class CoinListVC: UIViewController {
             
             // Load the coin logo image if available
             if let urlString = self?.viewModel.coinLogos[coin.id] {
-                print("🖼️ CoinListVC | Loading logo for \(coin.name) (ID: \(coin.id)): \(urlString)")
+                // Removed verbose logo loading logs - only log if debugging needed
+                // print("🖼️ CoinListVC | Loading logo for \(coin.name) (ID: \(coin.id)): \(urlString)")
                 cell.coinImageView.downloadImage(fromURL: urlString)
             } else {
-                print("❌ CoinListVC | No logo URL for \(coin.name) (ID: \(coin.id))")
+                // Only log missing logos for top coins (helps identify data issues)
+                if coin.cmcRank <= 50 {
+                    print("❌ CoinListVC | No logo URL for top coin \(coin.name) (Rank: \(coin.cmcRank), ID: \(coin.id))")
+                }
                 cell.coinImageView.setPlaceholder()
             }
             
@@ -251,6 +255,24 @@ final class CoinListVC: UIViewController {
             .filter { !$0.isEmpty }  // Only process when there are actual changes
             .sink { [weak self] updatedCoinIds in
                 self?.updateCellsForChangedCoins(updatedCoinIds)
+            }
+            .store(in: &cancellables)
+        
+        // Bind loading state to show/hide LoadingView in collection view
+        viewModel.$isLoading
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isLoading in
+                guard let self = self else { return }
+                
+                if isLoading {
+                    // Show LoadingView in the collection view area
+                    LoadingView.show(in: self.collectionView)
+                    print("🔄 Loading | Showing spinner in collection view")
+                } else {
+                    // Hide LoadingView from collection view
+                    LoadingView.dismiss(from: self.collectionView)
+                    print("✅ Loading | Hiding spinner from collection view")
+                }
             }
             .store(in: &cancellables)
     }
@@ -458,27 +480,25 @@ extension CoinListVC: FilterHeaderViewDelegate {
 
 extension CoinListVC: FilterModalVCDelegate {
     func filterModalVC(_ modalVC: FilterModalVC, didSelectPriceChangeFilter filter: PriceChangeFilter) {
-        filterHeaderView.setLoading(true, for: .priceChange)
+        print("🎯 Filter Selected: \(filter.displayName)")
+        
+        // Apply the filter - ViewModel will handle loading state and LoadingView will show automatically
         viewModel.updatePriceChangeFilter(filter)
         
-        // Update header view state and remove loading state after brief delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.filterHeaderView.updateFilterState(self?.viewModel.filterState ?? .defaultState)
-            self?.filterHeaderView.setLoading(false, for: .priceChange)
-            self?.updateSortHeaderForCurrentFilter() // Also update sort header
-        }
+        // Update header view state to reflect the new filter
+        filterHeaderView.updateFilterState(viewModel.filterState)
+        updateSortHeaderForCurrentFilter() // Also update sort header
     }
     
     func filterModalVC(_ modalVC: FilterModalVC, didSelectTopCoinsFilter filter: TopCoinsFilter) {
-        filterHeaderView.setLoading(true, for: .topCoins)
+        print("🎯 Filter Selected: \(filter.displayName)")
+        
+        // Apply the filter - ViewModel will handle loading state and LoadingView will show automatically
         viewModel.updateTopCoinsFilter(filter)
         
-        // Update header view state and remove loading state after brief delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.filterHeaderView.updateFilterState(self?.viewModel.filterState ?? .defaultState)
-            self?.filterHeaderView.setLoading(false, for: .topCoins)
-            self?.updateSortHeaderForCurrentFilter() // Also update sort header
-        }
+        // Update header view state to reflect the new filter
+        filterHeaderView.updateFilterState(viewModel.filterState)
+        updateSortHeaderForCurrentFilter() // Also update sort header
     }
     
     func filterModalVCDidCancel(_ modalVC: FilterModalVC) {

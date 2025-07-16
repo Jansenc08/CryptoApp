@@ -107,6 +107,7 @@ class FilterHeaderView: UIView {
     func setLoading(_ isLoading: Bool, for buttonType: FilterType) {
         let button = buttonType == .priceChange ? priceChangeButton : topCoinsButton
         
+        // Simple visual feedback - slight dimming during filter application
         UIView.animate(withDuration: 0.2) {
             button.alpha = isLoading ? 0.6 : 1.0
             button.isUserInteractionEnabled = !isLoading

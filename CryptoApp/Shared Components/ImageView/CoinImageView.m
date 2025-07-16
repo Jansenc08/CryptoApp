@@ -56,7 +56,8 @@
         return;
     }
 
-    NSLog(@"🌐 CoinImageView | Downloading image from: %@", urlString);
+    // Only log download start for debugging if needed
+    // NSLog(@"🌐 CoinImageView | Downloading image from: %@", urlString);
 
     NSURLSessionDataTask *task = [[NSURLSession sharedSession]
         dataTaskWithURL:url
@@ -79,7 +80,8 @@
 
           UIImage *downloadedImage = [UIImage imageWithData:data];
           if (downloadedImage) {
-              NSLog(@"✅ CoinImageView | Successfully downloaded image for: %@", urlString);
+              // Only log success for debugging if needed
+              // NSLog(@"✅ CoinImageView | Successfully downloaded image for: %@", urlString);
               [self.imageCache setObject:downloadedImage forKey:cacheKey];
               dispatch_async(dispatch_get_main_queue(), ^{
                   self.image = downloadedImage;
