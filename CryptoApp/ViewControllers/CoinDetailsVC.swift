@@ -8,10 +8,10 @@ final class CoinDetailsVC: UIViewController {
     private let coin: Coin
     private let viewModel: CoinDetailsVM
     private let selectedRange = CurrentValueSubject<String, Never>("24h") // Default selected time range for chart
-    private let tableView = UITableView(frame: .zero, style: .plain) // Main table view
+    private let tableView = UITableView(frame: .zero, style: .plain)      // Main table view
 
-    private var cancellables = Set<AnyCancellable>() // Combine cancellables
-    private var refreshTimer: Timer? //  auto refresh timer
+    private var cancellables = Set<AnyCancellable>()                      // Combine cancellables
+    private var refreshTimer: Timer?                                      // auto refresh timer
     
     // MARK: - Optimization Properties
     private var isViewVisible = false
@@ -31,6 +31,8 @@ final class CoinDetailsVC: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
     
+    // Cleanup Combine subscriptions
+    // Stop timers
     deinit {
         print("🧹 CoinDetailsVC deinit - cleaning up resources for \(coin.symbol)")
         refreshTimer?.invalidate()
@@ -57,12 +59,20 @@ final class CoinDetailsVC: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         isViewVisible = false
-        refreshTimer?.invalidate() // Stops auto-refresh when we leave the page
+        refreshTimer?.invalidate() // Stops auto-refresh immediately when transition starts
         refreshTimer = nil
+    }
+    
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
         
-        // Immediately cancel all ongoing API calls when leaving the page
-        viewModel.cancelAllRequests()
-        print("🚪 Leaving coin details page - cancelled all API calls")
+        // Only cancel API calls if we're actually leaving (not just a partial swipe)
+        if isMovingFromParent || isBeingDismissed {
+            viewModel.cancelAllRequests()
+            print("🚪 Officially leaving coin details page - cancelled all API calls")
+        } else {
+            print("🔄 Transition cancelled - staying on coin details page")
+        }
     }
 
     // MARK: - Setup

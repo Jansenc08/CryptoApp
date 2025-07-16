@@ -41,14 +41,16 @@ final class CacheService: NSObject {
     private let maxMemoryUsage: Int = 100 * 1024 * 1024 // 100MB max
     private var memoryPressureObserver: NSObjectProtocol?
 
-    // TTL values (in seconds)
-    static let coinListTTL: TimeInterval = 30
-    static let logoTTL: TimeInterval = 3600
-    static let priceUpdateTTL: TimeInterval = 10
-    // Increased to 10 minutes (600s) for better filter performance
-    // This means chart data stays cached longer, so when users switch between filters,
-    // they're more likely to get instant responses instead of waiting for new API calls
-    static let chartDataTTL: TimeInterval = 600
+    // TTL values (in seconds) - Optimized for crypto data patterns
+    static let coinListTTL: TimeInterval = 30           // 30s - Rankings change frequently  
+    static let logoTTL: TimeInterval = 86400            // 24h - Logos rarely change
+    static let priceUpdateTTL: TimeInterval = 15        // 15s - Balance freshness vs performance
+    static let chartDataTTL: TimeInterval = 300         // 5min - Good for active trading
+    
+    // Additional crypto-specific TTLs
+    static let marketStatsTTL: TimeInterval = 60        // 1min - Market cap, volume
+    static let trendingCoinsTTL: TimeInterval = 300     // 5min - Trending lists
+    static let coinMetadataTTL: TimeInterval = 3600     // 1h - Name, symbol, description
 
     private override init() {
         super.init()

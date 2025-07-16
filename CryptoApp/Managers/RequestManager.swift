@@ -37,14 +37,14 @@ final class RequestManager {
     private var lastRequestTimes: [String: Date] = [:]
     private var coinGeckoRequestCount: Int = 0
     private var coinGeckoWindowStart: Date = Date()
-    private let coinGeckoMaxRequests: Int = 7 // conservative (25% of 30/min limit)
+    private let coinGeckoMaxRequests: Int = 7                // conservative (25% of 30/min limit)
     private let coinGeckoWindowDuration: TimeInterval = 60.0 // 1 minute window
     
     // Priority queue system
     // Separated requests into different queues so high priority requests jump the line
-    private var highPriorityQueue: [() -> Void] = []     // Filter changes will be processed first
-    private var normalPriorityQueue: [() -> Void] = []   // Regular requests
-    private var lowPriorityQueue: [() -> Void] = []      // Background stuff gets processed last
+    private var highPriorityQueue: [() -> Void] = []        // Filter changes will be processed first
+    private var normalPriorityQueue: [() -> Void] = []      // Regular requests
+    private var lowPriorityQueue: [() -> Void] = []         // Background stuff gets processed last
     private var isProcessingQueue = false
     
     private init() {}
@@ -63,13 +63,14 @@ final class RequestManager {
         return Future<T, Error> { [weak self] promise in
             guard let self = self else {
                 promise(.failure(RequestError.castingError))
+                promise(.failure(RequestError.castingError))
                 return
             }
             
             self.queue.async(flags: .barrier) {
                 // Check if we should throttle this request based on priority
                 // This checks how recently the same reuquest was made using 'key'
-                if let lastTime = self.lastRequestTimes[key],
+                if let lastTime = self.lastRequestTimes[key], // Thread-safe write
                    Date().timeIntervalSince(lastTime) < priority.delayInterval {
                     
                     // For HIGH priority request, reduce throttling significantly - only block if less than 1 second apart

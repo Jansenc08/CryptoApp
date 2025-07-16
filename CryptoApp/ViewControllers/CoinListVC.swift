@@ -56,11 +56,19 @@ final class CoinListVC: UIViewController {
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        stopAutoRefresh() //  Stop Timer to avoid memory leaks / Unnecessary API Calls
+        stopAutoRefresh() //  Stop Timer immediately when transition starts
+    }
+    
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
         
-        // Immediately cancel all ongoing API calls when leaving the coin list page
-        viewModel.cancelAllRequests()
-        print("🚪 Leaving coin list page - cancelled all API calls")
+        // Only cancel API calls if we're actually leaving (not just a partial swipe)
+        if isMovingFromParent || isBeingDismissed {
+            viewModel.cancelAllRequests()
+            print("🚪 Officially leaving coin list page - cancelled all API calls")
+        } else {
+            print("🔄 Transition cancelled - staying on coin list page")
+        }
     }
     
     deinit {

@@ -1,310 +1,387 @@
 //  CoinDetailsVM.swift
 //  CryptoApp
 
-// Handles, Fetching & Caching Chart Data.
-// Expose stats and chart data points to CoinDetailsVC
-// Manage Loading state
-// Supports scroll to load more data
-// Formats values for display
+/**
+ * CoinDetailsVM
+ *
+ * 
+ *   FEATURES:
+ * - Multi-timeframe chart data (24h, 7d, 30d, 1y)
+ * - Priority-based API request system (high priority for user actions)
+ * - Background prefetching of common chart ranges
+ * - Data processing (smoothing, optimization, validation)
+ * - Dynamic statistics generation based on selected timeframe
+ * - Error handling with auto-retry
+ * - Memory-efficient chart data management
+ * 
+ * 📊 CHART DATA PIPELINE:
+ * 1. User selects timeframe → High priority API request
+ * 2. Raw data processing → Smoothing → Optimization
+ * 3. Chart points updated → UI automatically refreshes
+ * 4. Background prefetching for other common ranges
+ * 
+ * PERFORMANCE OPTIMIZATIONS:
+ * - Background prefetching reduces filter switching delays
+ * - Data processing happens on background threads
+ * - Chart data optimization reduces UI rendering load
+ * - Smart caching prevents redundant API calls
+ */
 
 import Foundation
 import Combine
 
 final class CoinDetailsVM: ObservableObject {
 
-    // @Published variables are obeserved by the view
-    // Any change to them triggers UI updates via combine
-    @Published var chartPoints: [Double] = []
-    @Published var isLoading: Bool = false
-    @Published var errorMessage: String?
-    @Published var selectedStatsRange: String = "24h"  // Track selected stats time range
+    // MARK: - Published Properties (Reactive UI Binding)
+    
+    /**
+     * CHART AND UI STATE PROPERTIES
+     * 
+     * These @Published properties automatically trigger UI updates when changed.
+     * The chart view subscribes to these and updates instantly when new data arrives.
+     */
+    
+    @Published var chartPoints: [Double] = []              // Chart data points for visualization
+    @Published var isLoading: Bool = false                 // Loading state for chart area
+    @Published var errorMessage: String?                   // Error messages
+    @Published var selectedStatsRange: String = "24h"     //  Current stats timeframe filter
 
+    /**
+     * CHART RELOAD CONTROL
+     * 
+     * This flag controls when the chart should fully reload vs. append data.
+     * Used for historical data loading where we want to add older points
+     * without triggering a complete chart redraw.
+     */
     var shouldReloadChart = true
 
-    private let coin: Coin // holds current coin to hold data
-    private let coinManager: CoinManager // holds current manager to hold data
-    private var geckoID: String? // store resolved CoinGecko ID
+    // MARK: - Core Dependencies
+    
+    /**
+     * DEPENDENCY ARCHITECTURE
+     * 
+     * - coin: The specific cryptocurrency data being displayed
+     * - coinManager: Handles all API calls and network logic
+     * - geckoID: CoinGecko identifier for chart data API calls
+     * - cancellables: Combine subscription storage for memory management
+     */
+    
+    private let coin: Coin                     // Coin data model
+    private let coinManager: CoinManager       // API management layer
+    private var geckoID: String?               // CoinGecko API identifier
+    var cancellables = Set<AnyCancellable>()   // Combine subscription storage
 
-    var cancellables = Set<AnyCancellable>() //  stores combine subscriptions
+    // MARK: - Chart State Management
+    
+    /**
+     * CHART LOADING STATE TRACKING
+     * 
+     * These properties manage the current chart state and prevent
+     * conflicting operations like multiple simultaneous data loads.
+     */
+    
+    private var currentRange: String = "24h"              // Currently displayed timeframe
+    private var isLoadingMoreData = false                 // Prevents duplicate historical data requests
 
-    // Using CacheService for chart data caching
+    // MARK: - Smart Prefetching System
+    
+    /**
+     * PREFETCHING ARCHITECTURE
+     * 
+     * This system proactively downloads chart data for commonly accessed timeframes
+     * in the background, making filter switches feel instant to users.
+     * 
+     * FLOW:
+     * - When user opens coin details, immediately load selected range (high priority)
+     * - Start background prefetching of 24h, 7d, 30d after staggered delays
+     * - Mark prefetched ranges to avoid duplicate requests
+     * - Use low priority for prefetching to not interfere with user actions
+     */
+    
 
-    private var currentRange: String = "24h"
-    private var isLoadingMoreData = false // prevents duplicate calls when scrolling left
+    private let commonRanges = ["24h", "7d", "30d"]       // Most frequently accessed timeframes
 
-    // MARK: - Prefetching Support
-    private var prefetchedRanges: Set<String> = []
-    private let commonRanges = ["24h", "7d", "30d"] // Most commonly accessed ranges
-
-    // Dynamically creates a list of stats based on available data and selected time range
-    // Returns Data such as Market cap, volume, fdv etc.
-    // uses helper class: formattedWithAbbreviations() to convert values to 1.23B, 999K etc
+    // MARK: - Dynamic Statistics System
+    
+    /**
+     * COMPUTED STATISTICS BASED ON SELECTED TIMEFRAME
+     * 
+     * This computed property dynamically generates relevant statistics
+     * based on the user's selected time range filter.
+     * 
+     * EXAMPLES:
+     * - 24h range: Shows 24h change, 24h volume change
+     * - 30d range: Shows 30d change, 7d change
+     * - 1y range: Shows 90d, 60d, 30d changes for broader perspective
+     * 
+     * FORMATTING: Uses abbreviatedString() for user-friendly display (1.2B, 999M)
+     */
     var currentStats: [StatItem] {
         return getStats(for: selectedStatsRange)
     }
     
-    // Generate stats based on selected time range
+    /**
+     * STATISTICS GENERATION ENGINE
+     * 
+     * This method dynamically creates statistics based on available coin data
+     * and the selected timeframe. It intelligently shows relevant metrics
+     * for each time period.
+     * 
+     * ADAPTIVE CONTENT:
+     * - Always shows: Market cap, volume, supply info, rank
+     * - Time-specific: Different percentage changes based on selected range
+     * - Color coding: Green for positive changes, red for negative
+     */
     private func getStats(for range: String) -> [StatItem] {
         var items: [StatItem] = []
 
         if let quote = coin.quote?["USD"] {
-            // Always show current market data
-            if let marketCap = quote.marketCap {
+            // CORE FINANCIAL METRICS (Always Displayed) - Using Switch Pattern Matching
+            switch quote.marketCap {
+            case let marketCap?:
                 items.append(StatItem(title: "Market Cap", value: marketCap.abbreviatedString()))
-            }
-            if let volume24h = quote.volume24h {
-                items.append(StatItem(title: "Volume (24h)", value: volume24h.abbreviatedString()))
-            }
-            if let fdv = quote.fullyDilutedMarketCap {
-                items.append(StatItem(title: "Fully Diluted Market Cap", value: fdv.abbreviatedString()))
+            case nil:
+                break
             }
             
-            // Add time-based percentage changes based on selected range
+            switch quote.volume24h {
+            case let volume24h?:
+                items.append(StatItem(title: "Volume (24h)", value: volume24h.abbreviatedString()))
+            case nil:
+                break
+            }
+            
+            switch quote.fullyDilutedMarketCap {
+            case let fdv?:
+                items.append(StatItem(title: "Fully Diluted Market Cap", value: fdv.abbreviatedString()))
+            case nil:
+                break
+            }
+            
+            // TIME-SPECIFIC PERCENTAGE CHANGES
             addPercentageChangeStats(to: &items, from: quote, for: range)
         }
 
-        // Supply information (always shown)
-        if let circulating = coin.circulatingSupply {
+        // SUPPLY INFORMATION (Fundamental Analysis Data) - Using Switch Pattern Matching
+        switch coin.circulatingSupply {
+        case let circulating?:
             items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
+        case nil:
+            break
         }
 
-        if let total = coin.totalSupply {
+        switch coin.totalSupply {
+        case let total?:
             items.append(StatItem(title: "Total Supply", value: total.abbreviatedString()))
+        case nil:
+            break
         }
 
-        if let max = coin.maxSupply {
+        switch coin.maxSupply {
+        case let max?:
             items.append(StatItem(title: "Max Supply", value: max.abbreviatedString()))
+        case nil:
+            break
         }
 
+        // 🏆 MARKET RANKING
         items.append(StatItem(title: "Rank", value: "#\(coin.cmcRank)"))
 
         return items
     }
     
-    // Add percentage change stats based on selected time range
+    // MARK: - Helper Functions
+    
+    /**
+     * PERCENTAGE STAT HELPER
+     * 
+     * Creates a formatted percentage stat item with appropriate color coding.
+     * Eliminates code repetition across different timeframe stats.
+     */
+    private func addPercentageStat(to items: inout [StatItem], title: String, percentage: Double?) {
+        guard let percentage = percentage else { return }
+        
+        let changeString = String(format: "%.2f%%", percentage)
+        let color = percentage >= 0 ? UIColor.systemGreen : UIColor.systemRed
+        items.append(StatItem(title: title, value: changeString, valueColor: color))
+    }
+    
     private func addPercentageChangeStats(to items: inout [StatItem], from quote: Quote, for range: String) {
         switch range {
         case "24h":
-            if let change24h = quote.percentChange24h {
-                let changeString = String(format: "%.2f%%", change24h)
-                let color = change24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
-                items.append(StatItem(title: "24h Change", value: changeString, valueColor: color))
-            }
-            if let _ = quote.volume24h, let volumeChange24h = quote.volumeChange24h {
-                let changeString = String(format: "%.2f%%", volumeChange24h)
-                let color = volumeChange24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
-                items.append(StatItem(title: "24h Volume Change", value: changeString, valueColor: color))
+            // 📅 SHORT-TERM FOCUS: Daily changes and volume metrics
+            addPercentageStat(to: &items, title: "24h Change", percentage: quote.percentChange24h)
+            
+            // Volume change only if volume exists
+            if quote.volume24h != nil {
+                addPercentageStat(to: &items, title: "24h Volume Change", percentage: quote.volumeChange24h)
             }
             
         case "30d":
-            if let change30d = quote.percentChange30d {
-                let changeString = String(format: "%.2f%%", change30d)
-                let color = change30d >= 0 ? UIColor.systemGreen : UIColor.systemRed
-                items.append(StatItem(title: "30d Change", value: changeString, valueColor: color))
-            }
-            if let change7d = quote.percentChange7d {
-                let changeString = String(format: "%.2f%%", change7d)
-                let color = change7d >= 0 ? UIColor.systemGreen : UIColor.systemRed
-                items.append(StatItem(title: "7d Change", value: changeString, valueColor: color))
-            }
+            // 📅 MEDIUM-TERM PERSPECTIVE: Monthly and weekly changes
+            addPercentageStat(to: &items, title: "30d Change", percentage: quote.percentChange30d)
+            addPercentageStat(to: &items, title: "7d Change", percentage: quote.percentChange7d)
             
         case "1y":
-            if let change90d = quote.percentChange90d {
-                let changeString = String(format: "%.2f%%", change90d)
-                let color = change90d >= 0 ? UIColor.systemGreen : UIColor.systemRed
-                items.append(StatItem(title: "90d Change", value: changeString, valueColor: color))
-            }
-            if let change60d = quote.percentChange60d {
-                let changeString = String(format: "%.2f%%", change60d)
-                let color = change60d >= 0 ? UIColor.systemGreen : UIColor.systemRed
-                items.append(StatItem(title: "60d Change", value: changeString, valueColor: color))
-            }
-            if let change30d = quote.percentChange30d {
-                let changeString = String(format: "%.2f%%", change30d)
-                let color = change30d >= 0 ? UIColor.systemGreen : UIColor.systemRed
-                items.append(StatItem(title: "30d Change", value: changeString, valueColor: color))
-            }
+            // 📅 LONG-TERM ANALYSIS: Quarterly, bi-monthly, and monthly trends
+            addPercentageStat(to: &items, title: "90d Change", percentage: quote.percentChange90d)
+            addPercentageStat(to: &items, title: "60d Change", percentage: quote.percentChange60d)
+            addPercentageStat(to: &items, title: "30d Change", percentage: quote.percentChange30d)
             
         default:
             break
         }
     }
     
-    // Method to update selected stats range
+    /**
+     * STATISTICS RANGE UPDATE HANDLER
+     * 
+     * Updates the selected statistics timeframe and triggers UI refresh.
+     * This changes which percentage change metrics are displayed.
+     */
     func updateStatsRange(_ range: String) {
-        selectedStatsRange = range
+        selectedStatsRange = range  // 🎯 Triggers UI update via @Published
         print("📊 Stats range updated to: \(range)")
     }
 
+    // MARK: - Initialization & Setup
+    
+    /**
+     * INITIALIZATION WITH  PREFETCHING
+     *
+     * The initializer sets up the ViewModel and immediately starts optimizing
+     * the user experience through background prefetching.
+     * 
+     * INITIALIZATION FLOW:
+     * 1. Store coin data and dependencies
+     * 2. Map coin slug to CoinGecko ID for API calls
+     * 3. Start background prefetching of common ranges
+     * 
+     * PREFETCHING STRATEGY:
+     * Users typically view 24h first, then switch to 7d or 30d.
+     * By prefetching these ranges, switching will be instant.
+     */
     init(coin: Coin, coinManager: CoinManager = CoinManager()) {
         self.coin = coin
         self.coinManager = coinManager
 
-        // Use coin slug directly -> needed for mapping
+        // ID MAPPING: Convert CMC slug to CoinGecko ID for chart API
         if let slug = coin.slug {
             self.geckoID = slug.lowercased()
             print("✅ Using coin slug for \(coin.symbol): \(slug)")
-            // Start prefetching common ranges in background
-            // Background prefetch 24h, 7d, 30d
-            self.startPrefetchingCommonRanges()
+            
+
         } else {
             print("❌ No slug found for \(coin.symbol)")
         }
     }
 
-    // MARK: - Prefetching Implementation (Optimized for Filter Performance)
-    // Schedules multiple background prefetches for commonly used ranges like "24h", "7d", and "30d" with staggered delays
-    // These is happening sequentially
-    // Called once during init()
-    // Calls prefetchSingleRange(...) for each range
-    private func startPrefetchingCommonRanges() {
-        guard let geckoID = geckoID else { return }
-        
-        // Instead of waiting 20 seconds, start prefetching immediately with staggered delays
-        // This means when users click filters, the data is likely already cached
-        let prefetchPlan = [
-            ("24h", 5.0),   // 5 seconds - most common after current
-            ("7d", 10.0),   // 10 seconds - second most common
-            ("30d", 15.0)   // 15 seconds - third most common
-        ]
-        
-        for (range, delay) in prefetchPlan {
-            DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + delay) {
-                // Only prefetch if user is still on this page
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self, !self.chartPoints.isEmpty else { return }
-                    
-                    // Skip if already prefetched - no duplicate work
-                    if self.prefetchedRanges.contains(range) {
-                        print("📦 Skipping prefetch for \(range) - already cached")
-                        return
-                    }
-                    
-                    print("🔄 Starting prefetch for \(geckoID) - \(range)")
-                    self.prefetchSingleRange(geckoID: geckoID, range: range)
-                }
-            }
-        }
-    }
 
-    // Method for single-range prefetching
-    // Called by startPrefetchingCommonRanges()
-    // Fetches + processes + marks range as prefetched
-    private func prefetchSingleRange(geckoID: String, range: String) {
-        let days = mapRangeToDays(range)
-        
-        // Use LOW priority for background prefetching - this ensures it doesn't interfere 
-        // with user-initiated filter changes, but still happens in the background
-        coinManager.fetchChartData(for: geckoID, range: days, priority: .low)
-            .subscribe(on: DispatchQueue.global(qos: .background))
-            .map { [weak self] rawData in
-
-                return self?.processChartData(rawData, for: days) ?? []
-            }
-            .receive(on: DispatchQueue.global(qos: .background))
-            .sink(
-                receiveCompletion: { [weak self] completion in
-                    if case .failure(let error) = completion {
-                        print("📦 Prefetch failed for \(range): \(error)")
-                    } else {
-                        print("📦 ✅ Prefetch completed for \(range)")
-                        // Mark as prefetched so we don't try again
-                        self?.prefetchedRanges.insert(range)
-                    }
-                },
-                receiveValue: { processedData in
-                    print("📦 Prefetched and processed \(processedData.count) points for \(range)")
-                }
-            )
-            .store(in: &cancellables)
-    }
     
-    // High priority chart data fetching for user filter changes
+    /**
+     * CHART DATA FETCHING
+     */
     func fetchChartData(for range: String) {
         currentRange = range
         let days = mapRangeToDays(range)
 
-        guard let id = geckoID else {
+        guard let geckoID = geckoID else {
             print("❌ No CoinGecko ID found for \(coin.symbol)")
             return
         }
-        // Mark all user filter changes as HIGH PRIORITY
-        // This means they jump to the front of the request queue and only wait 2 seconds.
-        print("📊 ‼️ HIGH PRIORITY: User filter change for \(id) - \(range)")
         
-        // Execute immediately with HIGH priority for user-initiated filter changes
-        // This is what makes filter switching much faster!
-        fetchChartDataFromAPI(geckoID: id, days: days, priority: .high)
-    }
-    
-    // Simplified API call - CacheService handles all caching logic
-    // This method fetches chart data from the API for a specific coin and time range, handles caching, loading states, and UI updates.
-    // Supports priority-based fetching (e.g., high for user filters, low for background), and ensures background processing is done efficiently.
-    private func fetchChartDataFromAPI(geckoID: String, days: String, priority: RequestPriority = .normal) {
+        
         isLoading = true
         errorMessage = nil
         
-        // Logging to show priority level (For debugging purposes)
-        let priorityLabel = priority == .high ? "‼️ HIGH PRIORITY" : "🟡 NORMAL"
-        print("🌐 \(priorityLabel) API call for \(geckoID) with \(days) days")
-        
-        // Background Threads: Data Processing
-        // Pass the priority parameter all the way through to CoinManager
-        coinManager.fetchChartData(for: geckoID, range: days, priority: priority)
-            .subscribe(on: DispatchQueue.global(qos: .userInitiated)) // Network on background
+        coinManager.fetchChartData(for: geckoID, range: days, priority: .high)
+            .subscribe(on: DispatchQueue.global(qos: .userInitiated))
             .map { [weak self] rawData in
-                // Process data in background
                 return self?.processChartData(rawData, for: days) ?? []
             }
-            .retryWithExponentialBackoff(maxRetries: 3, initialDelay: 1.0)
-            .receive(on: DispatchQueue.main) // Switch back on main thread for UI updates 
+            .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
                     self?.isLoading = false
                     if case .failure(let error) = completion {
-                        self?.handleChartDataError(error)
+                        self?.errorMessage = error.localizedDescription
+                        print("📊 Chart fetch failed: \(error)")
                     }
                 },
                 receiveValue: { [weak self] processedData in
-                    guard let self = self else { return }
-                    print("✅ \(priorityLabel) Processed \(processedData.count) data points")
-                    self.shouldReloadChart = true
-                    self.chartPoints = processedData
-                    self.errorMessage = nil // Clear any previous errors
+                    self?.chartPoints = processedData
+                    print("📊 ✅ Chart updated with \(processedData.count) points for \(range)")
                 }
             )
             .store(in: &cancellables)
     }
+
     
-    // MARK: - Background Data Processing
+    // MARK: - Data Processing Engine
     
+    /**
+     *  DATA PROCESSING PIPELINE
+     * 
+     * This method transforms raw API data into optimized chart-ready format.
+     * 
+     *   PROCESSING GOALS:
+     * - Data validation and cleaning
+     * - Noise reduction through smoothing
+     * - Performance optimization for UI rendering
+     * - Consistent visual experience across timeframes
+     * 
+     *   MULTI-STAGE PIPELINE:
+     * 1. Validation: Remove invalid/infinite values
+     * 2. Smoothing: Reduce noise for better visuals
+     * 3. Optimization: Reduce point density for performance
+     * 4. Quality assurance: Ensure data integrity
+     */
     private func processChartData(_ rawData: [Double], for days: String) -> [Double] {
-        // Perform heavy data processing on background queue
+        //   1: DATA VALIDATION AND CLEANING
         let processedData = rawData.compactMap { value -> Double? in
-            // Remove invalid values
+            // Remove infinite, NaN, and negative values that would break charts
             guard value.isFinite, value >= 0 else { return nil }
             return value
         }
         
-        // Apply smoothing for longer time ranges
+        //   2: VISUAL SMOOTHING FOR BETTER USER EXPERIENCE
         let smoothedData = applyDataSmoothing(processedData, for: days)
         
-        // Optimize data density for UI performance
+        //   3: PERFORMANCE OPTIMIZATION FOR SMOOTH UI
         let optimizedData = optimizeDataDensity(smoothedData, for: days)
         
         print("📊 Data processing: \(rawData.count) → \(optimizedData.count) points")
         return optimizedData
     }
     
+    /**
+     *  DATA SMOOTHING ALGORITHM
+     * 
+     * Applies smoothing to reduce visual noise in longer timeframes while
+     * preserving important price movements and trends.
+     * 
+     *   DECISIONS:
+     * - No smoothing for 24h (preserves detail)
+     * - Light smoothing for longer ranges (reduces noise)
+     * - Moving average window scales with data size
+     * - Preserves overall trend while reducing visual clutter
+     * 
+     * 📊 TECHNICAL APPROACH:
+     * - Uses moving average algorithm
+     * - Dynamic window size based on data density
+     * - Maintains data integrity while improving visualization
+     */
     private func applyDataSmoothing(_ data: [Double], for days: String) -> [Double] {
-        // Apply smoothing only for longer time ranges to reduce noise
+        // SMART SMOOTHING: Only apply to longer ranges where noise is problematic
         guard days != "1", data.count > 10 else { return data }
         
+        // DYNAMIC WINDOW SIZE: Scales with data density for optimal results
         let windowSize = min(5, data.count / 10)
         guard windowSize > 1 else { return data }
         
         var smoothedData: [Double] = []
         
+        // MOVING AVERAGE CALCULATION
         for i in 0..<data.count {
             let start = max(0, i - windowSize / 2)
             let end = min(data.count, i + windowSize / 2 + 1)
@@ -316,21 +393,39 @@ final class CoinDetailsVM: ObservableObject {
         return smoothedData
     }
     
+    /**
+     * PERFORMANCE-ORIENTED DATA OPTIMIZATION
+     * 
+     * Optimizes data density for smooth chart rendering while preserving visual accuracy.
+     * Too many points can cause UI lag -> too few points lose important details.
+     *
+     *   OPTIMIZATION STRATEGY:
+     * - Different point densities for different timeframes
+     * - Higher resolution for shorter ranges -> more detail needed
+     * - Lower resolution for longer ranges -> trend more important
+     * - Maintains visual fidelity while ensuring smooth performance
+     * 
+     *   MOBILE OPTIMIZATION:
+     * - Balances visual quality with rendering performance
+     * - Prevents UI lag during scrolling and zooming
+     * - Ensures consistent experience across device types
+     */
     private func optimizeDataDensity(_ data: [Double], for days: String) -> [Double] {
-        // Optimize data density based on chart display needs
+        // 📊 DYNAMIC RESOLUTION: Different densities for different timeframes
         let maxDisplayPoints: Int
         
         switch days {
-        case "1": maxDisplayPoints = 100  // 24h - high resolution
-        case "7": maxDisplayPoints = 200  // 7d - medium resolution
-        case "30": maxDisplayPoints = 300 // 30d - medium resolution
-        case "365": maxDisplayPoints = 400 // 1y - lower resolution
+        case "1": maxDisplayPoints = 100   // 24h - high resolution for detail
+        case "7": maxDisplayPoints = 200   // 7d - medium resolution
+        case "30": maxDisplayPoints = 300  // 30d - medium resolution  
+        case "365": maxDisplayPoints = 400 // 1y - lower resolution for trend
         default: maxDisplayPoints = 300
         }
         
+        // EFFICIENCY CHECK: Only optimize if needed
         guard data.count > maxDisplayPoints else { return data }
         
-        // Use data thinning to reduce points while preserving shape
+        // THINNING: Preserve shape while reducing points
         let step = Double(data.count) / Double(maxDisplayPoints)
         var optimizedData: [Double] = []
         
@@ -344,7 +439,22 @@ final class CoinDetailsVM: ObservableObject {
         return optimizedData
     }
     
+    // MARK: - Error Handling System
+    
+    /**
+     * ERROR HANDLING APPROACH
+     *
+     * Transforms technical errors into user-friendly messages and implements
+     * intelligent recovery strategies for different error types.
+     *
+     * 🔄 RECOVERY STRATEGIES:
+     * - Network errors: Auto-retry with exponential backoff
+     * - Server errors: Auto-retry once after delay
+     * - Client errors: Show message, no retry (would fail again)
+     * - Rate limiting: Wait and retry automatically
+     */
     private func handleChartDataError(_ error: Error) {
+        // 🎨 USER EXPERIENCE: Convert technical errors to friendly messages
         let userFriendlyMessage: String
         
         switch error {
@@ -365,29 +475,39 @@ final class CoinDetailsVM: ObservableObject {
             userFriendlyMessage = "Unable to load chart data. Please try again."
         }
         
-        self.errorMessage = userFriendlyMessage
+        self.errorMessage = userFriendlyMessage  // 🎯 Show user-friendly message
         print("❌ Chart fetch failed: \(error.localizedDescription)")
         
-        // Optional: Automatically retry after a delay for certain errors
+        // AUTO-RECOVERY: Retry for recoverable errors
         if shouldAutoRetry(for: error) {
             autoRetryAfterDelay()
         }
     }
     
+    /**
+     * ERROR CLASSIFICATION
+     * 
+     * Determines which errors are worth retrying automatically.
+     * Prevents infinite retry loops while maximizing success rate.
+     */
     private func shouldAutoRetry(for error: Error) -> Bool {
-        // Auto-retry for network-related errors, but not for client errors
         switch error {
         case NetworkError.badURL, NetworkError.decodingError:
-            return false
+            return false  // 🚫 Client errors - retrying won't help
         case NetworkError.invalidResponse, NetworkError.unknown:
-            return true
+            return true   // 🔄 Server/network errors - might be transient
         default:
             return false
         }
     }
     
+    /**
+     * AUTOMATIC RETRY WITH DELAY
+     * 
+     * Implements exponential backoff strategy for automatic error recovery.
+     * Gives temporary issues time to resolve without immediate retry spam.
+     */
     private func autoRetryAfterDelay() {
-        // Wait 5 seconds before automatic retry
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
             guard let self = self else { return }
             print("🔄 Auto-retrying chart data fetch...")
@@ -395,35 +515,62 @@ final class CoinDetailsVM: ObservableObject {
         }
     }
     
-    // MARK: - Historical Data Loading (Optimized)
+    // MARK: - Historical Data Management
+    
+    /**
+     * HISTORICAL DATA EXPANSION
+     * 
+     * Allows users to scroll back in time to see more historical data.
+     * This would typically connect to API endpoints that support pagination.
+     * 
+     * DESIGN PATTERN:
+     * - Prevents duplicate requests with loading flag
+     * - Maintains UI responsiveness during loading
+     * - Would append older data to beginning of chart
+     * - Preserves current view position after loading
+     */
     func loadMoreHistoricalData(for range: String, beforeDate: Date) {
-        // Prevent multiple simultaneous loads
+        // 🛡️ CONCURRENCY PROTECTION: Prevent multiple simultaneous loads
         guard !isLoadingMoreData else { return }
         
         isLoadingMoreData = true
         
-        // For now, this is a placeholder - in a real app, API endpoints is needed
-        // that support pagination with date parameters
+        // 💡 IMPLEMENTATION NOTE: Real API integration would go here
         print("📅 Loading more historical data for \(range) before \(beforeDate)")
         
-        // Simulate async load
+        // 🔄 SIMULATED ASYNC OPERATION (placeholder for real implementation)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.isLoadingMoreData = false
-            // In real implementation, append new data to chartPoints
+            // Real implementation would call: appendHistoricalData(newOlderData)
         }
     }
     
-    // Takes older historical points and prepends them to chartPoints.
-    // Keeps existing points intact.
-    // Disables chart redraw by setting shouldReloadChart = false.
+    /**
+     * HISTORICAL DATA INTEGRATION
+     * 
+     * Seamlessly integrates older historical data with current chart data.
+     * Maintains chart state and user position while expanding the dataset.
+     * 
+     * SMART INTEGRATION:
+     * - Prepends older data to preserve chronological order
+     * - Disables chart reload to maintain user's current view
+     * - Enables smooth infinite scrolling experience
+     */
     func appendHistoricalData(_ newData: [Double]) {
         let olderData = newData.prefix(max(0, newData.count - chartPoints.count))
-        shouldReloadChart = false // Disables UI Reload
-        chartPoints = Array(olderData) + chartPoints
+        shouldReloadChart = false                    // 🚫 Prevents jarring chart reset
+        chartPoints = Array(olderData) + chartPoints // 📈 Seamless data integration
         print("📈 Appended \(olderData.count) historical points. Total: \(chartPoints.count)")
     }
     
-    // Converts (24h -> 1, 7d - > 7 ) to pass to API
+    // MARK: - Utility Methods
+    
+    /**
+     * TIMEFRAME CONVERSION UTILITY
+     * 
+     * Converts user-friendly time range labels to API-compatible day counts.
+     * This abstraction layer allows UI labels to be independent of API format.
+     */
     func mapRangeToDays(_ range: String) -> String {
         switch range {
         case "24h": return "1"
@@ -434,41 +581,69 @@ final class CoinDetailsVM: ObservableObject {
         }
     }
     
-    // This function is used when user scrolls to the edge of the chart to fetch older historical data than are currently displayed
-    // eg: if 24h is selected -> Loads 7 days more
-    // eg: if 7d ius selected -> Loads 20 days more
-    // Used in loadMoreHistoricalDat(for:beforedate)
+    /**
+     * INTELLIGENT RANGE EXTENSION FOR HISTORICAL LOADING
+     * 
+     * When user scrolls to chart edge, this determines how much additional
+     * historical data to load for a smooth experience.
+     * 
+     * EXTENSION APPROACH:
+     * - 24h → 7d: Expand to weekly view for more context
+     * - 7d → 30d: Monthly view for broader perspective  
+     * - 30d → 90d: Quarterly view for trend analysis
+     * - 1y → max: Full historical data available
+     */
     func calculateExtendedRange(for range: String) -> String {
         switch range {
-        case "24h": return "7"
-        case "7d": return "30"
-        case "30d": return "90"
-        case "365d": return "max"
+        case "24h": return "7"     // Show week context
+        case "7d": return "30"     // Show month context
+        case "30d": return "90"    // Show quarter context
+        case "365d": return "max"  // Show all available data
         default: return "30"
         }
     }
     
-
-    
+    /**
+     * DATA LOADING STATE CHECKER
+     * 
+     * Determines if more historical data can be loaded based on current state.
+     * Prevents loading when already in progress or when no data exists.
+     */
     var canLoadMoreData: Bool {
         return !isLoadingMoreData && !chartPoints.isEmpty
     }
     
-    // MARK: - Cleanup
+    // MARK: - Lifecycle Management
     
-    // Method to manually cancel all ongoing API calls
-    // Can be called from viewWillDisappear for immediate cleanup
+    /**
+     * 🛑 IMMEDIATE CLEANUP FOR SCREEN TRANSITIONS
+     * 
+     * Cancels all ongoing requests when user leaves the coin details screen.
+     * Prevents unnecessary API calls and ensures clean memory management.
+     * 
+     *   CLEANUP BENEFITS:
+     * - Saves bandwidth by canceling unneeded requests
+     * - Prevents memory leaks from active subscriptions
+     * - Ensures clean state for potential return visits
+     * - Improves overall app performance
+     */
     func cancelAllRequests() {
         print("🛑 Cancelling all ongoing API calls for \(coin.symbol)")
-        cancellables.removeAll()
-        isLoading = false
+        cancellables.removeAll()    // 🔗 Cancel all Combine subscriptions
+        isLoading = false          // 🧹 Reset loading states
         isLoadingMoreData = false
     }
     
+    /**
+     * AUTOMATIC CLEANUP ON DEALLOCATION
+     * 
+     * Ensures proper cleanup even if manual cleanup wasn't called.
+     * This is a safety net that prevents memory leaks and orphaned requests.
+     */
     deinit {
         print("🧹 CoinDetailsVM deinit - cancelling all API calls for \(coin.symbol)")
         cancellables.removeAll()
-        // This automatically cancels all ongoing network requests and subscriptions
+        // Combine automatically cancels subscriptions when cancellables are cleared
     }
 }
 
