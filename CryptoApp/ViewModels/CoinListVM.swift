@@ -328,11 +328,14 @@ final class CoinListVM: ObservableObject {
             return
         }
         
-        //  CACHE USAGE: Only use cache for default filters to prevent stale data
+        //  CACHE USAGE: Only use cache for default filters AND default sort to prevent stale data
+        let isDefaultSort = (currentSortColumn == .price && currentSortOrder == .descending)
+        
         if !persistenceService.isCacheExpired(), 
             let offlineData = persistenceService.getOfflineData(), // Offline support with cached data
-           filterState == .defaultState {
-            print("💾 VM.fetchCoins | Using cached offline data (default filters)")
+           filterState == .defaultState,
+           isDefaultSort { // Only use cache with default sort to preserve custom sort views
+            print("💾 VM.fetchCoins | Using cached offline data (default filters + default sort)")
             currentPage = 1
             canLoadMore = true
             
@@ -349,9 +352,11 @@ final class CoinListVM: ObservableObject {
             return
         }
         
-        // FRESH DATA PATH: For filters or expired cache
+        // FRESH DATA PATH: For filters, expired cache, or custom sort
         if filterState != .defaultState {
             print("🎯 VM.fetchCoins | Filters applied (\(filterState.topCoinsFilter.displayName) + \(filterState.priceChangeFilter.displayName)) - fetching fresh data")
+        } else if !isDefaultSort {
+            print("🔄 VM.fetchCoins | Custom sort detected (\(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")) - fetching fresh data to preserve sort")
         }
         
         // RESET STATE FOR FRESH FETCH
