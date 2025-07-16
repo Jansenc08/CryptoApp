@@ -15,9 +15,17 @@ final class CoinService {
     private let coinGeckoBaseURL = "https://api.coingecko.com/api/v3" // CoinGecko Base URL
     
     // Dependencies
-    private let cacheService = CacheService.shared
-    private let requestManager = RequestManager.shared
+    private let cacheService = CacheService.shared       // Stores recent responses in memory
+    private let requestManager = RequestManager.shared  // Queues and Prioritizes requests
 
+    
+    
+    // MARK: FetchTopCoins from CoinMarketCap
+    // 1. Check cache for any existing result (based on limit, start)
+    // 2. Uses RequestManager to throttle or prioritizes requests
+    // 3. Calls performTopCoinsRequest() to hit actual API if no cache
+    // 4. On success: stores result in cache & returns [Coin]
+    
     func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, sortType: String = "market_cap", sortDir: String = "desc", priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
         // Check cache first
         // Always check cache before making API calls to avoid unnecessary requests
@@ -56,6 +64,13 @@ final class CoinService {
         .eraseToAnyPublisher()
     }
     
+    // MARK: Makes the real API Call to /cryptocurrency/listings/latest
+    // 1. Constructs the URL using params like limit, start, convert, etc.
+    // 2. Adds API key and headers.
+    // 3. Uses URLSession.shared.dataTaskPublisher to fetch data.
+    // 4. Decodes the response into my model MarketResponse.
+    // 5. Emits [Coin] on the main thread.
+
     private func performTopCoinsRequest(limit: Int, convert: String, start: Int, sortType: String, sortDir: String) -> AnyPublisher<[Coin], NetworkError> {
         let endpoint = "\(baseURL)/cryptocurrency/listings/latest?limit=\(limit)&convert=\(convert)&start=\(start)&sort=\(sortType)&sort_dir=\(sortDir)"
 
@@ -99,6 +114,12 @@ final class CoinService {
             .eraseToAnyPublisher()
     }
     
+    
+    // MARK: Fetches logos (image URLs) for given coin IDs.
+    // 1. Checks cache via cacheService.getCoinLogos.
+    // 2. If not cached, uses RequestManager to prioritize the request.
+    // 3. Calls performCoinLogosRequest to get logo URLs from:
+
     func fetchCoinLogos(forIDs ids: [Int], priority: RequestPriority = .low) -> AnyPublisher<[Int: String], Never> {
         print("🖼️ CoinService.fetchCoinLogos | Requested IDs: \(ids)")
         
@@ -160,6 +181,13 @@ final class CoinService {
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
+    
+    
+    // MARK: fetches live price + 24h change for a list of coin IDs
+    // 1. Checks cache for price data.
+    // 2. Uses RequestManager to manage request priority.
+    // 3. Calls performQuotesRequest which: Hits /cryptocurrency/quotes/latest -> Parses nested JSON manually using JSONSerialization -> Extracts and decodes Quote objects
+    // 4. Caches result and returns [Int: Quote]
     
     func fetchQuotes(for ids: [Int], convert: String, priority: RequestPriority = .normal) -> AnyPublisher<[Int: Quote], NetworkError> {
         // Check cache first for price quotes
@@ -241,6 +269,10 @@ final class CoinService {
             .eraseToAnyPublisher()
     }
     
+    // MARK: Gets historical chart price points from CoinGecko.
+    // 1. Checks Chart Data cache with key (coinId, currency, days)
+    // 2. Uses RequestManager to prioritize
+    // 3. Calls performChartRequest to hit -> /coins/{id}/market_chart?vs_currency=...&days=...
     
     func fetchCoinGeckoChartData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[Double], NetworkError> {
         // Check cache first and return immediately if found
@@ -283,7 +315,7 @@ final class CoinService {
     }
     
     private func performChartDataRequest(for coinId: String, currency: String, days: String) -> AnyPublisher<[Double], NetworkError> {
-        // Map CoinMarketCap slug to CoinGecko ID
+        // Map CoinMarketCap slug to CoinGecko ID -> Mapping happens here
         let geckoId = mapCMCSlugToGeckoId(coinId)
         let endpoint = "\(coinGeckoBaseURL)/coins/\(geckoId)/market_chart?vs_currency=\(currency)&days=\(days)"
         

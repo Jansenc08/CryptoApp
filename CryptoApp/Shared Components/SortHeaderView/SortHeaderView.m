@@ -47,7 +47,7 @@
     // Create horizontal stack view for columns
     self.stackView = [[UIStackView alloc] init];
     self.stackView.axis = UILayoutConstraintAxisHorizontal;
-    self.stackView.distribution = UIStackViewDistributionFillEqually;
+    self.stackView.distribution = UIStackViewDistributionFill; // Changed from FillEqually to Fill for custom sizing
     self.stackView.alignment = UIStackViewAlignmentFill;
     self.stackView.spacing = 0;
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -57,24 +57,28 @@
 - (void)setupButtons {
     // Rank column
     self.rankButton = [self createColumnButtonWithTitle:@"Rank" tag:CryptoSortColumnRank];
+    self.rankButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft; // Match rankLabel alignment
     [self.stackView addArrangedSubview:self.rankButton];
     
     // Market Cap column
     self.marketCapButton = [self createColumnButtonWithTitle:@"Market Cap" tag:CryptoSortColumnMarketCap];
+    self.marketCapButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft; // Match nameLabel alignment
     [self.stackView addArrangedSubview:self.marketCapButton];
     
     // Price column
     self.priceButton = [self createColumnButtonWithTitle:@"Price" tag:CryptoSortColumnPrice];
+    self.priceButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight; // Match priceLabel alignment
     [self.stackView addArrangedSubview:self.priceButton];
     
     // Price Change column (will be updated based on filter)
     self.priceChangeButton = [self createColumnButtonWithTitle:@"24h%" tag:CryptoSortColumnPriceChange];
+    self.priceChangeButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight; // Match percentChangeLabel alignment
     [self.stackView addArrangedSubview:self.priceChangeButton];
     
     // Store original titles for reference
     self.originalTitles = @{
-        @(CryptoSortColumnRank): @"Rank",
-        @(CryptoSortColumnMarketCap): @"Market Cap", 
+        @(CryptoSortColumnRank): @"#",
+        @(CryptoSortColumnMarketCap): @"Market Cap",
         @(CryptoSortColumnPrice): @"Price",
         @(CryptoSortColumnPriceChange): @"24h%"
     };
@@ -89,8 +93,7 @@
     button.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
     [button setTitleColor:[UIColor secondaryLabelColor] forState:UIControlStateNormal];
     
-    // Configure layout
-    button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+    // Configure layout - alignment will be set individually for each button
     button.translatesAutoresizingMaskIntoConstraints = NO;
     
     // Add action
@@ -108,10 +111,19 @@
 - (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
         [self.stackView.topAnchor constraintEqualToAnchor:self.topAnchor],
-        [self.stackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-        [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        [self.stackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16], // Match CoinCell leading margin
+        [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16], // Match CoinCell trailing margin
         [self.stackView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
-        [self.stackView.heightAnchor constraintEqualToConstant:44]
+        [self.stackView.heightAnchor constraintEqualToConstant:44],
+        
+        // Rank column: Match rank label width (≥20px) + some padding
+        [self.rankButton.widthAnchor constraintEqualToConstant:35],
+        
+        // Market Cap column: Match coin image (32px) + spacing (12px) + name area (≥80px) 
+        [self.marketCapButton.widthAnchor constraintEqualToConstant:124], // 32 + 12 + 80 = 124
+        
+        // Price and Price Change columns will share remaining space equally
+        [self.priceButton.widthAnchor constraintEqualToAnchor:self.priceChangeButton.widthAnchor]
     ]];
 }
 

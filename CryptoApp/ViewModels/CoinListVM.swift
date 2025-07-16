@@ -22,8 +22,8 @@ final class CoinListVM: ObservableObject {
 
     // MARK: - Sorting Properties
     
-    private var currentSortColumn: CryptoSortColumn = CryptoSortColumn.price
-    private var currentSortOrder: CryptoSortOrder = CryptoSortOrder.descending
+    private var currentSortColumn: CryptoSortColumn = .price
+    private var currentSortOrder: CryptoSortOrder = .descending
     
     // MARK: - Dependencies
 
@@ -79,7 +79,7 @@ final class CoinListVM: ObservableObject {
         currentSortColumn = column
         currentSortOrder = order
         
-        print("🔄 Applying sort: \(columnName(for: column)) - \(order == CryptoSortOrder.descending ? "Descending" : "Ascending")")
+        print("🔄 Applying sort: \(columnName(for: column)) - \(order == .descending ? "Descending" : "Ascending")")
         
         // Apply sorting to current data
         applySortingToCurrentData()
@@ -98,13 +98,13 @@ final class CoinListVM: ObservableObject {
     
     private func columnName(for column: CryptoSortColumn) -> String {
         switch column {
-        case CryptoSortColumn.rank:
+        case .rank:
             return "Rank"
-        case CryptoSortColumn.marketCap:
+        case .marketCap:
             return "Market Cap"
-        case CryptoSortColumn.price:
+        case .price:
             return "Price"
-        case CryptoSortColumn.priceChange:
+        case .priceChange:
             return "\(filterState.priceChangeFilter.shortDisplayName) Change"
         default:
             return "Unknown"
@@ -126,7 +126,7 @@ final class CoinListVM: ObservableObject {
             return
         }
         
-        print("🔧 Sorting \(fullFilteredCoins.count) coins by \(columnName(for: currentSortColumn)) \(currentSortOrder == CryptoSortOrder.descending ? "DESC" : "ASC")")
+        print("🔧 Sorting \(fullFilteredCoins.count) coins by \(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")")
         
         // Sort the full filtered coins list
         fullFilteredCoins = sortCoins(fullFilteredCoins)
@@ -178,11 +178,11 @@ final class CoinListVM: ObservableObject {
 
     func fetchCoins(convert: String = "USD", priority: RequestPriority = .normal, onFinish: (() -> Void)? = nil) {
         print("🔧 VM.fetchCoins | Called with completion: \(onFinish != nil)")
-        print("🔧 VM.fetchCoins | Current sort: \(columnName(for: currentSortColumn)) \(currentSortOrder == CryptoSortOrder.descending ? "DESC" : "ASC")")
+        print("🔧 VM.fetchCoins | Current sort: \(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")")
         
         // Check if we should skip this fetch due to recent activity
         if let lastFetch = lastFetchTime,
-           Date().timeIntervalSince(lastFetch) < minimumFetchInterval {
+            Date().timeIntervalSince(lastFetch) < minimumFetchInterval {
             print("⏰ VM.fetchCoins | Skipped due to recent fetch")
             onFinish?()
             return
@@ -202,7 +202,7 @@ final class CoinListVM: ObservableObject {
             coins = sortedCachedCoins
             coinLogos = offlineData.logos
             
-            // Fetch logos for displayed coins after sorting (they may be different than cached logos)
+            // Fetch logos for displayed coins after sorting (may be different than cached logos)
             let displayedIds = sortedCachedCoins.map { $0.id }
             fetchCoinLogosIfNeeded(forIDs: displayedIds)
             
@@ -232,12 +232,16 @@ final class CoinListVM: ObservableObject {
         let topCoinsLimit = filterState.topCoinsFilter.rawValue
         let filterDescription = "\(filterState.topCoinsFilter.displayName) sorted by \(filterState.priceChangeFilter.displayName)"
         
+        // Add buffer to handle missing ranks (API sometimes has gaps)
+        let bufferSize = min(10, max(5, topCoinsLimit / 20)) // 5-10 extra coins as buffer
+        let fetchLimit = topCoinsLimit + bufferSize
+        
         print("🎯 Filter: \(filterDescription)")
-        print("🔄 Backend: Fetching top \(topCoinsLimit) coins by market cap (ranks 1-\(topCoinsLimit))...")
+        print("🔄 Backend: Fetching top \(fetchLimit) coins (target: \(topCoinsLimit) + \(bufferSize) buffer) by market cap...")
         
         // Backend: Get top N coins by market cap with all quote data
         coinManager.getTopCoins(
-            limit: topCoinsLimit,
+            limit: fetchLimit, // Request extra coins as buffer
             convert: convert,
             start: 1,
             sortType: "market_cap",
@@ -249,17 +253,59 @@ final class CoinListVM: ObservableObject {
             
             print("✅ Backend: Got \(topCoinsByMarketCap.count) coins (ranks 1-\(topCoinsByMarketCap.count))")
             
+            // DEBUG: Check for rank inconsistencies
+            let ranks = topCoinsByMarketCap.map { $0.cmcRank }.sorted()
+            let expectedRanks = Array(1...min(topCoinsLimit, topCoinsByMarketCap.count))
+            let missingRanks = Set(expectedRanks).subtracting(Set(ranks))
+            let extraRanks = Set(ranks).subtracting(Set(expectedRanks))
+            
+            if !missingRanks.isEmpty || !extraRanks.isEmpty {
+                print("⚠️ RANK INCONSISTENCY DETECTED!")
+                print("   Expected: \(expectedRanks.first!)...\(expectedRanks.last!)")
+                print("   Got: \(ranks.first!)...\(ranks.last!)")
+                if !missingRanks.isEmpty {
+                    print("   Missing ranks: \(Array(missingRanks).sorted())")
+                }
+                if !extraRanks.isEmpty {
+                    print("   Extra ranks: \(Array(extraRanks).sorted())")
+                }
+                
+                // Log specific details around rank 100
+                let around100 = topCoinsByMarketCap.filter { $0.cmcRank >= 98 && $0.cmcRank <= 102 }
+                    .sorted { $0.cmcRank < $1.cmcRank }
+                print("   Coins around rank 100:")
+                for coin in around100 {
+                    print("     Rank \(coin.cmcRank): \(coin.name) (\(coin.symbol))")
+                }
+            } else {
+                print("✅ Ranks are consecutive: \(ranks.first!)...\(ranks.last!)")
+            }
+            
+            // Filter to get exactly the target number of consecutive top-ranked coins
+            let targetCount = topCoinsLimit
+            let consecutiveTopCoins = topCoinsByMarketCap
+                .sorted { $0.cmcRank < $1.cmcRank } // Sort by rank first
+                .prefix(while: { $0.cmcRank <= targetCount }) // Take only coins within target range
+                .prefix(targetCount) // Limit to target count
+            
+            let finalCoins = Array(consecutiveTopCoins)
+            
+            if finalCoins.count != topCoinsByMarketCap.count {
+                print("🔧 Filtered from \(topCoinsByMarketCap.count) to \(finalCoins.count) coins (target: \(targetCount))")
+                print("   Final rank range: \(finalCoins.first?.cmcRank ?? 0)...\(finalCoins.last?.cmcRank ?? 0)")
+            }
+            
             // Debug: Print first few coins to verify we got top coins by market cap
-            if topCoinsByMarketCap.count > 0 {
-                let topFew = Array(topCoinsByMarketCap.prefix(3))
+            if finalCoins.count > 0 {
+                let topFew = Array(finalCoins.prefix(3))
                 let topCoinsDebug = topFew.map { "\($0.name) (ID:\($0.id), Rank:\($0.cmcRank))" }.joined(separator: ", ")
                 print("🔍 Top coins by market cap: \(topCoinsDebug)")
             }
             
-            print("🔄 Local: Applying current sort (\(self.columnName(for: self.currentSortColumn)) - \(self.currentSortOrder == CryptoSortOrder.descending ? "Descending" : "Ascending"))...")
+            print("🔄 Local: Applying current sort (\(self.columnName(for: self.currentSortColumn)) - \(self.currentSortOrder == .descending ? "Descending" : "Ascending"))...")
             
-            // Apply current sorting to the fetched coins
-            let sortedCoins = self.sortCoins(topCoinsByMarketCap)
+            // Apply current sorting to the filtered coins
+            let sortedCoins = self.sortCoins(finalCoins)
             
             // Debug: Print top few after sorting
             if sortedCoins.count > 0 {
@@ -331,29 +377,31 @@ final class CoinListVM: ObservableObject {
     
     private func sortCoins(_ coins: [Coin]) -> [Coin] {
         return coins.sorted { coin1, coin2 in
-                            let ascending = (currentSortOrder == CryptoSortOrder.ascending)
+            let ascending = (currentSortOrder == .ascending)
         
-        switch currentSortColumn {
-        case CryptoSortColumn.rank:
-                return ascending ? (coin1.cmcRank < coin2.cmcRank) : (coin1.cmcRank > coin2.cmcRank)
+            switch currentSortColumn {
+            case .rank:
+                // For rank: descending = best rank first (1,2,3...), ascending = worst rank first (...3,2,1)
+                // I have inverted this from other columns to make it intuitive for users
+                return ascending ? (coin1.cmcRank > coin2.cmcRank) : (coin1.cmcRank < coin2.cmcRank)
                 
-            case CryptoSortColumn.marketCap:
+            case .marketCap:
                 let marketCap1 = coin1.quote?["USD"]?.marketCap ?? 0
                 let marketCap2 = coin2.quote?["USD"]?.marketCap ?? 0
                 return ascending ? (marketCap1 < marketCap2) : (marketCap1 > marketCap2)
                 
-            case CryptoSortColumn.price:
+            case .price:
                 let price1 = coin1.quote?["USD"]?.price ?? 0
                 let price2 = coin2.quote?["USD"]?.price ?? 0
                 return ascending ? (price1 < price2) : (price1 > price2)
                 
-            case CryptoSortColumn.priceChange:
+            case .priceChange:
                 let change1 = getPriceChangeValue(for: coin1)
                 let change2 = getPriceChangeValue(for: coin2)
                 return ascending ? (change1 < change2) : (change1 > change2)
                 
             default:
-                // Fallback to rank sorting
+                // Fallback to rank sorting (best rank first)
                 return coin1.cmcRank < coin2.cmcRank
             }
         }
@@ -376,15 +424,15 @@ final class CoinListVM: ObservableObject {
     
     private func getSortValue(for coin: Coin, column: CryptoSortColumn) -> String {
         switch column {
-        case CryptoSortColumn.rank:
+        case .rank:
             return "#\(coin.cmcRank)"
-        case CryptoSortColumn.marketCap:
+        case .marketCap:
             let marketCap = coin.quote?["USD"]?.marketCap ?? 0
             return "$\(marketCap.abbreviatedString())"
-        case CryptoSortColumn.price:
+        case .price:
             let price = coin.quote?["USD"]?.price ?? 0
             return String(format: "$%.2f", price)
-        case CryptoSortColumn.priceChange:
+        case .priceChange:
             let change = getPriceChangeValue(for: coin)
             return String(format: "%.2f%%", change)
         default:

@@ -153,15 +153,15 @@ final class CoinListVC: UIViewController {
         
         // Debug: Print sort state before refresh
         print("🔍 Pull-to-refresh - Before fetch:")
-        print("  UI: \(sortHeaderView.currentSortColumn) \(sortHeaderView.currentSortOrder == CryptoSortOrder.descending ? "DESC" : "ASC")")
-        print("  VM: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == CryptoSortOrder.descending ? "DESC" : "ASC")")
+        print("  UI: \(sortHeaderView.currentSortColumn) \(sortHeaderView.currentSortOrder == .descending ? "DESC" : "ASC")")
+        print("  VM: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
         
         viewModel.fetchCoins(onFinish: {
             print("🏁 Pull-to-Refresh | Data fetch completed")
             
             // Debug: Print sort state after refresh
             print("🔍 Pull-to-refresh - After fetch:")
-            print("  VM: \(self.viewModel.getCurrentSortColumn()) \(self.viewModel.getCurrentSortOrder() == CryptoSortOrder.descending ? "DESC" : "ASC")")
+            print("  VM: \(self.viewModel.getCurrentSortColumn()) \(self.viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
             
             self.isRefreshing = false
             self.refreshControl.endRefreshing()
@@ -366,7 +366,7 @@ final class CoinListVC: UIViewController {
             sortHeaderView.currentSortColumn = viewModel.getCurrentSortColumn()
             sortHeaderView.currentSortOrder = viewModel.getCurrentSortOrder()
             sortHeaderView.updateSortIndicators()
-            print("🔄 Synced sort header UI: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == CryptoSortOrder.descending ? "DESC" : "ASC")")
+            print("🔄 Synced sort header UI: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
         }
     }
     
@@ -377,7 +377,7 @@ final class CoinListVC: UIViewController {
         
         if viewModel.getCurrentSortColumn() != headerColumn || viewModel.getCurrentSortOrder() != headerOrder {
             viewModel.updateSorting(column: headerColumn, order: headerOrder)
-            print("🔧 Synced ViewModel with SortHeader: \(headerColumn) \(headerOrder == CryptoSortOrder.descending ? "DESC" : "ASC")")
+            print("🔧 Synced ViewModel with SortHeader: \(headerColumn) \(headerOrder == .descending ? "DESC" : "ASC")")
         }
     }
 
@@ -433,7 +433,7 @@ extension CoinListVC: UICollectionViewDelegate {
 
 extension CoinListVC: SortHeaderViewDelegate {
     func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, with order: CryptoSortOrder) {
-        print("🔄 Sort: Column \(column) | Order: \(order == CryptoSortOrder.descending ? "Descending" : "Ascending")")
+        print("🔄 Sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
         viewModel.updateSorting(column: column, order: order)
     }
 }
