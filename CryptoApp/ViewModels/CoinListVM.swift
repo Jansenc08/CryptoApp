@@ -45,6 +45,7 @@ final class CoinListVM: ObservableObject {
     @Published var isLoading: Bool = false                 //  Shows/hides loading spinner in collection view
     @Published var isLoadingMore: Bool = false             //  Shows pagination loading at bottom
     @Published var errorMessage: String?                   //  Error alerts - auto-shown when set
+    private var isUpdatingPrices: Bool = false             //  Prevents race conditions during price updates
     @Published var updatedCoinIds: Set<Int> = []           //  Tracks which coins had price changes (for selective UI updates)
     @Published var filterState: FilterState = .defaultState // Current filter settings (Top 100, 24h, etc.)
 
@@ -341,7 +342,29 @@ final class CoinListVM: ObservableObject {
             
             // Apply current sorting to cached data BEFORE setting coins (prevents UI flash)
             let sortedCachedCoins = sortCoins(offlineData.coins)
-            coins = sortedCachedCoins  // 🎯 Triggers UI update
+            
+            // 🛡️ VALIDATION: Check cached data for duplicates
+            let cachedIds = sortedCachedCoins.map { $0.id }
+            let uniqueCachedIds = Set(cachedIds)
+            if cachedIds.count != uniqueCachedIds.count {
+                print("❌ WARNING: Cached data contains duplicate coin IDs!")
+                print("   Total: \(cachedIds.count), Unique: \(uniqueCachedIds.count)")
+                
+                // Deduplicate cached data
+                var seenIds = Set<Int>()
+                let deduplicatedCachedCoins = sortedCachedCoins.filter { coin in
+                    if seenIds.contains(coin.id) {
+                        print("   Removing cached duplicate: \(coin.name) (ID: \(coin.id))")
+                        return false
+                    } else {
+                        seenIds.insert(coin.id)
+                        return true
+                    }
+                }
+                coins = deduplicatedCachedCoins  // 🎯 Triggers UI update with clean data
+            } else {
+                coins = sortedCachedCoins  // 🎯 Triggers UI update
+            }
             coinLogos = offlineData.logos
             
             // Fetch any missing logos after loading cached data
@@ -480,7 +503,29 @@ final class CoinListVM: ObservableObject {
                 // 🛡️ OFFLINE FALLBACK: Try to load cached data on network error
                 if let offlineData = self?.persistenceService.getOfflineData() {
                     let sortedFallbackCoins = self?.sortCoins(offlineData.coins) ?? offlineData.coins
-                    self?.coins = sortedFallbackCoins  // 🎯 Update UI with fallback data
+                    
+                    // 🛡️ VALIDATION: Check fallback data for duplicates
+                    let fallbackIds = sortedFallbackCoins.map { $0.id }
+                    let uniqueFallbackIds = Set(fallbackIds)
+                    if fallbackIds.count != uniqueFallbackIds.count {
+                        print("❌ WARNING: Fallback data contains duplicate coin IDs!")
+                        print("   Total: \(fallbackIds.count), Unique: \(uniqueFallbackIds.count)")
+                        
+                        // Deduplicate fallback data
+                        var seenIds = Set<Int>()
+                        let deduplicatedFallbackCoins = sortedFallbackCoins.filter { coin in
+                            if seenIds.contains(coin.id) {
+                                print("   Removing fallback duplicate: \(coin.name) (ID: \(coin.id))")
+                                return false
+                            } else {
+                                seenIds.insert(coin.id)
+                                return true
+                            }
+                        }
+                        self?.coins = deduplicatedFallbackCoins  // 🎯 Update UI with clean fallback data
+                    } else {
+                        self?.coins = sortedFallbackCoins  // 🎯 Update UI with fallback data
+                    }
                     self?.coinLogos = offlineData.logos
                     self?.errorMessage = "Using offline data due to network error"
                     
@@ -498,7 +543,29 @@ final class CoinListVM: ObservableObject {
             // 📖 PAGINATION SETUP: Show first page, store full dataset for later
             let pageSize = self.itemsPerPage
             let initialCoins = Array(filteredAndSortedCoins.prefix(pageSize))
-            self.coins = initialCoins  // 🎯 Triggers UI update
+            
+            // 🛡️ VALIDATION: Check for duplicate IDs in API response before setting coins
+            let coinIds = initialCoins.map { $0.id }
+            let uniqueIds = Set(coinIds)
+            if coinIds.count != uniqueIds.count {
+                print("❌ CRITICAL: API returned duplicate coin IDs!")
+                print("   Total: \(coinIds.count), Unique: \(uniqueIds.count)")
+                
+                // Deduplicate by keeping first occurrence of each ID
+                var seenIds = Set<Int>()
+                let deduplicatedCoins = initialCoins.filter { coin in
+                    if seenIds.contains(coin.id) {
+                        print("   Removing API duplicate: \(coin.name) (ID: \(coin.id))")
+                        return false
+                    } else {
+                        seenIds.insert(coin.id)
+                        return true
+                    }
+                }
+                self.coins = deduplicatedCoins  // 🎯 Triggers UI update with clean data
+            } else {
+                self.coins = initialCoins  // 🎯 Triggers UI update
+            }
 
             // Store complete dataset for pagination and instant sorting
             self.fullFilteredCoins = filteredAndSortedCoins
@@ -628,9 +695,9 @@ final class CoinListVM: ObservableObject {
      * TRIGGER: Called by collection view scroll detection in the UI layer
      */
     func loadMoreCoins(convert: String = "USD") {
-        // GUARD CONDITIONS: Prevent invalid or duplicate pagination calls
-        guard canLoadMore && !isLoadingMore && !isLoading else { 
-            print("🚫 Pagination | Blocked | CanLoad: \(canLoadMore) | Loading: \(isLoading) | LoadingMore: \(isLoadingMore)")
+        // GUARD CONDITIONS: Prevent invalid or duplicate pagination calls + race conditions
+        guard canLoadMore && !isLoadingMore && !isLoading && !isUpdatingPrices else { 
+            print("🚫 Pagination | Blocked | CanLoad: \(canLoadMore) | Loading: \(isLoading) | LoadingMore: \(isLoadingMore) | UpdatingPrices: \(isUpdatingPrices)")
             return 
         }
 
@@ -757,7 +824,8 @@ final class CoinListVM: ObservableObject {
      * 🔄 PERIODIC PRICE UPDATES (Background Auto-Refresh)
      */
     func fetchPriceUpdates(completion: @escaping () -> Void) {
-        guard !isLoading && !isLoadingMore else {
+        guard !isLoading && !isLoadingMore && !isUpdatingPrices else {
+            print("🚫 Price updates blocked - loading/updating in progress")
             completion()
             return
         }
@@ -768,9 +836,12 @@ final class CoinListVM: ObservableObject {
             return
         }
 
+        isUpdatingPrices = true  // 🔒 Lock to prevent race conditions
+        
         coinManager.getQuotes(for: ids, priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completionResult in
+                self?.isUpdatingPrices = false  // 🔓 Unlock after completion
                 if case .failure(let error) = completionResult {
                     if !error.localizedDescription.contains("throttled") {
                         self?.errorMessage = error.localizedDescription
@@ -789,6 +860,26 @@ final class CoinListVM: ObservableObject {
     private func updateCoinPrices(with updatedQuotes: [Int: Quote]) {
         var changedCoinIds = Set<Int>()
         var updatedCoins = coins // Create a copy to avoid modifying during iteration
+        
+        // 🛡️ SAFETY CHECK: Verify no duplicate IDs exist before processing
+        let coinIds = updatedCoins.map { $0.id }
+        let uniqueIds = Set(coinIds)
+        if coinIds.count != uniqueIds.count {
+            print("❌ CRITICAL: Duplicate coin IDs detected in updateCoinPrices!")
+            print("   Total coins: \(coinIds.count), Unique IDs: \(uniqueIds.count)")
+            
+            // Remove duplicates by keeping only the first occurrence of each ID
+            var seenIds = Set<Int>()
+            updatedCoins = updatedCoins.filter { coin in
+                if seenIds.contains(coin.id) {
+                    print("   Removing duplicate: \(coin.name) (ID: \(coin.id))")
+                    return false
+                } else {
+                    seenIds.insert(coin.id)
+                    return true
+                }
+            }
+        }
         
         for i in 0..<updatedCoins.count {
             let coinId = updatedCoins[i].id
@@ -829,8 +920,9 @@ final class CoinListVM: ObservableObject {
      * USAGE: Called by the auto-refresh timer with visible coin IDs
      */
     func fetchPriceUpdatesForVisibleCoins(_ visibleIds: [Int], completion: @escaping () -> Void) {
-        // RESPECT LOADING STATES
-        guard !isLoading && !isLoadingMore else {
+        // RESPECT LOADING STATES + PREVENT RACE CONDITIONS
+        guard !isLoading && !isLoadingMore && !isUpdatingPrices else {
+            print("🚫 Visible price updates blocked - operations in progress")
             completion()
             return
         }
@@ -841,10 +933,13 @@ final class CoinListVM: ObservableObject {
             return
         }
 
+        isUpdatingPrices = true  // 🔒 Lock to prevent race conditions
+        
         // 🔽 LOW PRIORITY: Background updates are non-intrusive
         coinManager.getQuotes(for: visibleIds, priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completionResult in
+                self?.isUpdatingPrices = false  // 🔓 Unlock after completion
                 if case .failure(let error) = completionResult {
                     //  QUIET ERROR HANDLING
                     if !error.localizedDescription.contains("throttled") {

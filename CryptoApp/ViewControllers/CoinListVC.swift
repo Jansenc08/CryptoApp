@@ -1,7 +1,7 @@
 import UIKit
 import Combine
 
-final class CoinListVC: UIViewController {
+final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     
     // MARK: - Section Enum for Diffable Data Source
 
@@ -18,6 +18,9 @@ final class CoinListVC: UIViewController {
     
     let imageCache = NSCache<NSString, UIImage>()                           // Optional image cache for coin logos
     let refreshControl = UIRefreshControl()                                 // Pull-to-refresh controller
+    private var segmentControl: SegmentControl!                             // Segment control for Coins/Watchlist tabs
+    private var coinsContainerView: UIView!                                 // Container for coins tab content
+    private var watchlistContainerView: UIView!                             // Container for watchlist tab content
     private var filterHeaderView: FilterHeaderView!                         // Filter buttons container
     private var sortHeaderView: SortHeaderView!                             // Sort column headers
     
@@ -83,6 +86,8 @@ final class CoinListVC: UIViewController {
     private func configureView() {
         view.backgroundColor = .systemBackground
         navigationItem.title = "Markets"
+        setupSegmentControl()
+        setupContainerViews()
         setupFilterHeaderView()
         setupSortHeaderView()
     }
@@ -91,12 +96,12 @@ final class CoinListVC: UIViewController {
         filterHeaderView = FilterHeaderView()
         filterHeaderView.delegate = self
         filterHeaderView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(filterHeaderView)
+        coinsContainerView.addSubview(filterHeaderView)
         
         NSLayoutConstraint.activate([
-            filterHeaderView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            filterHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            filterHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            filterHeaderView.topAnchor.constraint(equalTo: coinsContainerView.topAnchor),
+            filterHeaderView.leadingAnchor.constraint(equalTo: coinsContainerView.leadingAnchor),
+            filterHeaderView.trailingAnchor.constraint(equalTo: coinsContainerView.trailingAnchor)
         ])
     }
     
@@ -104,12 +109,12 @@ final class CoinListVC: UIViewController {
         sortHeaderView = SortHeaderView()
         sortHeaderView.delegate = self
         sortHeaderView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(sortHeaderView)
+        coinsContainerView.addSubview(sortHeaderView)
         
         NSLayoutConstraint.activate([
             sortHeaderView.topAnchor.constraint(equalTo: filterHeaderView.bottomAnchor),
-            sortHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            sortHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            sortHeaderView.leadingAnchor.constraint(equalTo: coinsContainerView.leadingAnchor),
+            sortHeaderView.trailingAnchor.constraint(equalTo: coinsContainerView.trailingAnchor)
         ])
         
         // Update sort header with current filter state
@@ -117,6 +122,109 @@ final class CoinListVC: UIViewController {
         
         // Ensure ViewModel and SortHeaderView start in sync
         syncViewModelWithSortHeader()
+    }
+    
+    private func setupSegmentControl() {
+        segmentControl = SegmentControl(items: ["Coins", "Watchlist"])
+        segmentControl.delegate = self
+        segmentControl.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(segmentControl)
+        
+        NSLayoutConstraint.activate([
+            segmentControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            segmentControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            segmentControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
+        ])
+    }
+    
+    private func setupContainerViews() {
+        // Coins container view (contains existing filter + sort + collection view)
+        coinsContainerView = UIView()
+        coinsContainerView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(coinsContainerView)
+        
+        // Watchlist container view (hidden initially)
+        watchlistContainerView = UIView()
+        watchlistContainerView.backgroundColor = .systemBackground
+        watchlistContainerView.translatesAutoresizingMaskIntoConstraints = false
+        watchlistContainerView.isHidden = true
+        view.addSubview(watchlistContainerView)
+        
+        NSLayoutConstraint.activate([
+            // Coins container constraints
+            coinsContainerView.topAnchor.constraint(equalTo: segmentControl.bottomAnchor, constant: 20),
+            coinsContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            coinsContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            coinsContainerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            
+            // Watchlist container constraints (same as coins container)
+            watchlistContainerView.topAnchor.constraint(equalTo: segmentControl.bottomAnchor, constant: 20),
+            watchlistContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            watchlistContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            watchlistContainerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ])
+        
+        // Add placeholder label to watchlist container
+        let watchlistLabel = UILabel()
+        watchlistLabel.text = "Watchlist\nComing Soon"
+        watchlistLabel.font = UIFont.systemFont(ofSize: 24, weight: .medium)
+        watchlistLabel.textColor = .secondaryLabel
+        watchlistLabel.textAlignment = .center
+        watchlistLabel.numberOfLines = 0
+        watchlistLabel.translatesAutoresizingMaskIntoConstraints = false
+        watchlistContainerView.addSubview(watchlistLabel)
+        
+        NSLayoutConstraint.activate([
+            watchlistLabel.centerXAnchor.constraint(equalTo: watchlistContainerView.centerXAnchor),
+            watchlistLabel.centerYAnchor.constraint(equalTo: watchlistContainerView.centerYAnchor)
+        ])
+        
+        // Add pan gesture recognizers for swipe-to-switch functionality
+        setupSwipeGestures()
+    }
+    
+    private func setupSwipeGestures() {
+        // Add pan gesture recognizer to coins container
+        let coinsPanGesture = UIPanGestureRecognizer(target: self, action: #selector(handleContainerPan(_:)))
+        coinsPanGesture.delegate = self
+        coinsContainerView.addGestureRecognizer(coinsPanGesture)
+        
+        // Add pan gesture recognizer to watchlist container
+        let watchlistPanGesture = UIPanGestureRecognizer(target: self, action: #selector(handleContainerPan(_:)))
+        watchlistPanGesture.delegate = self
+        watchlistContainerView.addGestureRecognizer(watchlistPanGesture)
+    }
+    
+    @objc private func handleContainerPan(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        
+        let velocity = gesture.velocity(in: view)
+        let translation = gesture.translation(in: view)
+        
+        // Determine swipe direction - need significant horizontal movement
+        let minimumSwipeDistance: CGFloat = 50
+        let minimumVelocity: CGFloat = 300
+        
+        let isSignificantHorizontalSwipe = abs(translation.x) > minimumSwipeDistance && abs(velocity.x) > minimumVelocity
+        let isMainlyHorizontal = abs(translation.x) > abs(translation.y)
+        
+        guard isSignificantHorizontalSwipe && isMainlyHorizontal else { return }
+        
+        let currentIndex = segmentControl.selectedSegmentIndex
+        
+        if translation.x > 0 { // Swipe right - go to previous tab
+            if currentIndex > 0 {
+                let newIndex = currentIndex - 1
+                segmentControl.setSelectedSegmentIndex(newIndex, animated: true)
+                switchToTab(newIndex)
+            }
+        } else { // Swipe left - go to next tab
+            if currentIndex < 1 { // We have 2 tabs (0 and 1)
+                let newIndex = currentIndex + 1
+                segmentControl.setSelectedSegmentIndex(newIndex, animated: true)
+                switchToTab(newIndex)
+            }
+        }
     }
     
     private func configureCollectionView() {
@@ -130,7 +238,7 @@ final class CoinListVC: UIViewController {
         // Used so the CollectionView knows what identifier to associate with custom cell class
         collectionView.register(CoinCell.self, forCellWithReuseIdentifier: CoinCell.reuseID())
         collectionView.backgroundColor = .systemBackground
-        view.addSubview(collectionView)
+        coinsContainerView.addSubview(collectionView)
         
         // Pull to refresh
         refreshControl.addTarget(self, action: #selector(handleRefresh), for: .valueChanged)
@@ -138,9 +246,9 @@ final class CoinListVC: UIViewController {
         
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: sortHeaderView.bottomAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            collectionView.leadingAnchor.constraint(equalTo: coinsContainerView.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: coinsContainerView.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: coinsContainerView.bottomAnchor)
         ])
     }
     
@@ -384,6 +492,13 @@ final class CoinListVC: UIViewController {
         viewModel.clearUpdatedCoinIds()
     }
     
+    // MARK: - Tab Management
+    
+    func switchToTab(_ index: Int) {
+        segmentControl.setSelectedSegmentIndex(index, animated: true)
+        segmentControl(segmentControl, didSelectSegmentAt: index)
+    }
+    
     private func updateSortHeaderForCurrentFilter() {
         let priceChangeTitle = viewModel.filterState.priceChangeFilter.shortDisplayName + "%"
         sortHeaderView.updatePriceChangeColumnTitle(priceChangeTitle)
@@ -512,5 +627,43 @@ extension CoinListVC: FilterModalVCDelegate {
     func filterModalVCDidCancel(_ modalVC: FilterModalVC) {
         // Handle cancellation if needed
         print("Filter modal was cancelled")
+    }
+}
+
+// MARK: - SegmentControlDelegate
+
+extension CoinListVC: SegmentControlDelegate {
+    func segmentControl(_ segmentControl: SegmentControl, didSelectSegmentAt index: Int) {
+        print("🔄 Segment control selected index: \(index)")
+        
+        // Animate the container view transition
+        UIView.transition(with: view, duration: 0.3, options: .transitionCrossDissolve) {
+            switch index {
+            case 0: // Coins
+                self.coinsContainerView.isHidden = false
+                self.watchlistContainerView.isHidden = true
+                self.navigationItem.title = "Markets"
+                
+            case 1: // Watchlist
+                self.coinsContainerView.isHidden = true
+                self.watchlistContainerView.isHidden = false
+                self.navigationItem.title = "Watchlist"
+                
+            default:
+                break
+            }
+        }
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate
+
+extension CoinListVC {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Allow pan gestures to work simultaneously with collection view scroll gestures
+        if gestureRecognizer is UIPanGestureRecognizer && otherGestureRecognizer is UIPanGestureRecognizer {
+            return true
+        }
+        return false
     }
 }

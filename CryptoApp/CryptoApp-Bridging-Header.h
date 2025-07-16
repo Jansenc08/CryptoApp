@@ -13,3 +13,4 @@
 #import "SegmentView.h"
 #import "FilterButton.h"
 #import "SortHeaderView.h"
+#import "SegmentControl.h"
