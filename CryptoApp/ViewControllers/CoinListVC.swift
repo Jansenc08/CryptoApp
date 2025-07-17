@@ -21,6 +21,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private var segmentControl: SegmentControl!                             // Segment control for Coins/Watchlist tabs
     private var coinsContainerView: UIView!                                 // Container for coins tab content
     private var watchlistContainerView: UIView!                             // Container for watchlist tab content
+    private var watchlistVC: WatchlistVC!                                   // Watchlist view controller
     private var filterHeaderView: FilterHeaderView!                         // Filter buttons container
     private var sortHeaderView: SortHeaderView!                             // Sort column headers
     
@@ -164,23 +165,29 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             watchlistContainerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
         
-        // Add placeholder label to watchlist container
-        let watchlistLabel = UILabel()
-        watchlistLabel.text = "Watchlist\nComing Soon"
-        watchlistLabel.font = UIFont.systemFont(ofSize: 24, weight: .medium)
-        watchlistLabel.textColor = .secondaryLabel
-        watchlistLabel.textAlignment = .center
-        watchlistLabel.numberOfLines = 0
-        watchlistLabel.translatesAutoresizingMaskIntoConstraints = false
-        watchlistContainerView.addSubview(watchlistLabel)
-        
-        NSLayoutConstraint.activate([
-            watchlistLabel.centerXAnchor.constraint(equalTo: watchlistContainerView.centerXAnchor),
-            watchlistLabel.centerYAnchor.constraint(equalTo: watchlistContainerView.centerYAnchor)
-        ])
+        // Setup watchlist view controller
+        setupWatchlistViewController()
         
         // Add pan gesture recognizers for swipe-to-switch functionality
         setupSwipeGestures()
+    }
+    
+    private func setupWatchlistViewController() {
+        // Create and add watchlist view controller as child
+        watchlistVC = WatchlistVC()
+        addChild(watchlistVC)
+        
+        watchlistVC.view.translatesAutoresizingMaskIntoConstraints = false
+        watchlistContainerView.addSubview(watchlistVC.view)
+        
+        NSLayoutConstraint.activate([
+            watchlistVC.view.topAnchor.constraint(equalTo: watchlistContainerView.topAnchor),
+            watchlistVC.view.leadingAnchor.constraint(equalTo: watchlistContainerView.leadingAnchor),
+            watchlistVC.view.trailingAnchor.constraint(equalTo: watchlistContainerView.trailingAnchor),
+            watchlistVC.view.bottomAnchor.constraint(equalTo: watchlistContainerView.bottomAnchor)
+        ])
+        
+        watchlistVC.didMove(toParent: self)
     }
     
     private func setupSwipeGestures() {
@@ -400,6 +407,62 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         present(alert, animated: true)
     }
     
+    private func showWatchlistFeedback(message: String, isAdding: Bool) {
+        // Create a toast-like feedback view
+        let feedbackView = UIView()
+        feedbackView.backgroundColor = isAdding ? .systemGreen : .systemOrange
+        feedbackView.layer.cornerRadius = 8
+        feedbackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let imageView = UIImageView(image: UIImage(systemName: isAdding ? "star.fill" : "star.slash"))
+        imageView.tintColor = .white
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let label = UILabel()
+        label.text = message
+        label.textColor = .white
+        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        let stackView = UIStackView(arrangedSubviews: [imageView, label])
+        stackView.axis = .horizontal
+        stackView.spacing = 8
+        stackView.alignment = .center
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        feedbackView.addSubview(stackView)
+        view.addSubview(feedbackView)
+        
+        NSLayoutConstraint.activate([
+            imageView.widthAnchor.constraint(equalToConstant: 16),
+            imageView.heightAnchor.constraint(equalToConstant: 16),
+            
+            stackView.topAnchor.constraint(equalTo: feedbackView.topAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: feedbackView.leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: feedbackView.trailingAnchor, constant: -16),
+            stackView.bottomAnchor.constraint(equalTo: feedbackView.bottomAnchor, constant: -12),
+            
+            feedbackView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            feedbackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20)
+        ])
+        
+        // Animate the feedback view
+        feedbackView.alpha = 0
+        feedbackView.transform = CGAffineTransform(translationX: 0, y: 50)
+        
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
+            feedbackView.alpha = 1
+            feedbackView.transform = .identity
+        } completion: { _ in
+            UIView.animate(withDuration: 0.3, delay: 2.0, options: .curveEaseIn) {
+                feedbackView.alpha = 0
+                feedbackView.transform = CGAffineTransform(translationX: 0, y: -50)
+            } completion: { _ in
+                feedbackView.removeFromSuperview()
+            }
+        }
+    }
+    
     // MARK: - Auto-Refresh Logic
     // The timer runs independently every 15 seconds
     // It triggers viewModel.fetchPriceUpdatesForVisibleCoins(...)
@@ -539,8 +602,54 @@ extension CoinListVC: UICollectionViewDelegate {
         let detailsVC = CoinDetailsVC(coin: selectedCoin)
         navigationController?.pushViewController(detailsVC, animated: true)
         
-        collectionView.deselectItem(at: indexPath, animated: true)
+                collectionView.deselectItem(at: indexPath, animated: true)
+    }
+    
+    // MARK: - Context Menu for Add to Watchlist
+    
+    func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        let coin = viewModel.coins[indexPath.item]
+        let watchlistManager = WatchlistManager.shared
         
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            var actions: [UIAction] = []
+            
+            if watchlistManager.isInWatchlist(coinId: coin.id) {
+                // Coin is already in watchlist - show remove option
+                let removeAction = UIAction(
+                    title: "Remove from Watchlist",
+                    image: UIImage(systemName: "star.slash"),
+                    attributes: .destructive
+                ) { _ in
+                    watchlistManager.removeFromWatchlist(coinId: coin.id)
+                    self.showWatchlistFeedback(message: "Removed \(coin.symbol) from watchlist", isAdding: false)
+                }
+                actions.append(removeAction)
+            } else {
+                // Coin is not in watchlist - show add option
+                let addAction = UIAction(
+                    title: "Add to Watchlist",
+                    image: UIImage(systemName: "star")
+                ) { _ in
+                    let logoURL = self.viewModel.coinLogos[coin.id]
+                    watchlistManager.addToWatchlist(coin, logoURL: logoURL)
+                    self.showWatchlistFeedback(message: "Added \(coin.symbol) to watchlist", isAdding: true)
+                }
+                actions.append(addAction)
+            }
+            
+            // Add view details action
+            let detailsAction = UIAction(
+                title: "View Details",
+                image: UIImage(systemName: "info.circle")
+            ) { _ in
+                let detailsVC = CoinDetailsVC(coin: coin)
+                self.navigationController?.pushViewController(detailsVC, animated: true)
+            }
+            actions.append(detailsAction)
+            
+            return UIMenu(title: coin.name, children: actions)
+        }
     }
     
     // This function is called every time the user scrolls the collection view.

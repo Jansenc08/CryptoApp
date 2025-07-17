@@ -11,6 +11,7 @@
 		9716CA7F2E1FD00D002D2C8F /* mock_logos.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA7E2E1FD007002D2C8F /* mock_logos.json */; };
 		9716CA812E1FD020002D2C8F /* mock_quotes.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA802E1FD019002D2C8F /* mock_quotes.json */; };
 		9716CAE72E25F5DC002D2C8F /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 9716CAE62E25F5DC002D2C8F /* DGCharts */; };
+		9716CD492E28AD17002D2C8F /* WatchlistModel.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 9716CD472E28AD17002D2C8F /* WatchlistModel.xcdatamodeld */; };
 		977F770D2E1B72100043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F770C2E1B72100043D04C /* DGCharts */; };
 		977F77182E1B74960043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F77172E1B74960043D04C /* DGCharts */; };
 /* End PBXBuildFile section */
@@ -19,6 +20,7 @@
 		9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_top_coins.json; sourceTree = "<group>"; };
 		9716CA7E2E1FD007002D2C8F /* mock_logos.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_logos.json; sourceTree = "<group>"; };
 		9716CA802E1FD019002D2C8F /* mock_quotes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_quotes.json; sourceTree = "<group>"; };
+		9716CD482E28AD17002D2C8F /* WatchlistModel.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = WatchlistModel.xcdatamodel; sourceTree = "<group>"; };
 		97CA70B82E0BAEEB00E42811 /* CryptoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CryptoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -57,21 +59,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		977F77162E1B74960043D04C /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
 		97CA70AF2E0BAEEB00E42811 = {
 			isa = PBXGroup;
 			children = (
+				9716CD472E28AD17002D2C8F /* WatchlistModel.xcdatamodeld */,
 				9716CA802E1FD019002D2C8F /* mock_quotes.json */,
 				9716CA7E2E1FD007002D2C8F /* mock_logos.json */,
 				9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */,
 				97CA70BA2E0BAEEB00E42811 /* CryptoApp */,
-				977F77162E1B74960043D04C /* Frameworks */,
 				97CA70B92E0BAEEB00E42811 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -163,6 +158,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9716CD492E28AD17002D2C8F /* WatchlistModel.xcdatamodeld in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -400,6 +396,19 @@
 			productName = DGCharts;
 		};
 /* End XCSwiftPackageProductDependency section */
+
+/* Begin XCVersionGroup section */
+		9716CD472E28AD17002D2C8F /* WatchlistModel.xcdatamodeld */ = {
+			isa = XCVersionGroup;
+			children = (
+				9716CD482E28AD17002D2C8F /* WatchlistModel.xcdatamodel */,
+			);
+			currentVersion = 9716CD482E28AD17002D2C8F /* WatchlistModel.xcdatamodel */;
+			path = WatchlistModel.xcdatamodeld;
+			sourceTree = "<group>";
+			versionGroupType = wrapper.xcdatamodel;
+		};
+/* End XCVersionGroup section */
 	};
 	rootObject = 97CA70B02E0BAEEB00E42811 /* Project object */;
 }
