@@ -87,6 +87,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private func configureView() {
         view.backgroundColor = .systemBackground
         navigationItem.title = "Markets"
+        setupNavigationItems()
         setupSegmentControl()
         setupContainerViews()
         setupFilterHeaderView()
@@ -123,6 +124,28 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         
         // Ensure ViewModel and SortHeaderView start in sync
         syncViewModelWithSortHeader()
+    }
+    
+    private func setupNavigationItems() {
+        // Add search icon to the right of navigation bar
+        let searchButton = UIBarButtonItem(
+            image: UIImage(systemName: "magnifyingglass"),
+            style: .plain,
+            target: self,
+            action: #selector(searchButtonTapped)
+        )
+        searchButton.tintColor = .systemGreen
+        
+        navigationItem.rightBarButtonItem = searchButton
+    }
+    
+    @objc private func searchButtonTapped() {
+        // Create SearchVC and present it with keyboard
+        let searchVC = SearchVC()
+        searchVC.setShouldPresentKeyboard(true) // Auto-present keyboard when coming from icon
+        
+        // Present modally or push to navigation stack
+        navigationController?.pushViewController(searchVC, animated: true)
     }
     
     private func setupSegmentControl() {

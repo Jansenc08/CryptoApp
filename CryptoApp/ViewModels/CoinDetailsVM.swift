@@ -266,13 +266,12 @@ final class CoinDetailsVM: ObservableObject {
         self.coinManager = coinManager
 
         // ID MAPPING: Convert CMC slug to CoinGecko ID for chart API
-        if let slug = coin.slug {
+        if let slug = coin.slug, !slug.isEmpty {
             self.geckoID = slug.lowercased()
             print("✅ Using coin slug for \(coin.symbol): \(slug)")
-            
-
         } else {
-            print("❌ No slug found for \(coin.symbol)")
+            print("❌ No slug found for \(coin.symbol) - chart data will not be available")
+            self.geckoID = nil
         }
     }
 
@@ -287,6 +286,8 @@ final class CoinDetailsVM: ObservableObject {
 
         guard let geckoID = geckoID else {
             print("❌ No CoinGecko ID found for \(coin.symbol)")
+            errorMessage = "Chart data not available for \(coin.symbol)"
+            isLoading = false
             return
         }
         

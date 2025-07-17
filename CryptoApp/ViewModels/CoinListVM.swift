@@ -64,7 +64,7 @@ final class CoinListVM: ObservableObject {
     // MARK: - Dependencies
     
     /**
-     *  DEPENDENCY INJECTION PATTERN
+     * DEPENDENCY INJECTION PATTERN
      * 
      * Dependencies are injected through the initializer, making the code testable and modular.
      * - CoinManager: Handles all API calls and network logic
@@ -116,7 +116,13 @@ final class CoinListVM: ObservableObject {
      */
     init(coinManager: CoinManager = CoinManager()) {
         self.coinManager = coinManager
-
+        
+        // 🔧 SMART CACHE MANAGEMENT: Clear cache if it has insufficient data
+        if let cachedCoins = persistenceService.loadCoinList(), 
+           cachedCoins.count < 100 { // Less than 100 coins = insufficient data
+            persistenceService.clearCache()
+            print("🗑️ Cleared insufficient cache (\(cachedCoins.count) coins) to force fresh data fetch")
+        }
     }
     
     // MARK: - Utility Methods
@@ -338,7 +344,6 @@ final class CoinListVM: ObservableObject {
            isDefaultSort { // Only use cache with default sort to preserve custom sort views
             print("💾 VM.fetchCoins | Using cached offline data (default filters + default sort)")
             currentPage = 1
-            canLoadMore = true
             
             // Apply current sorting to cached data BEFORE setting coins (prevents UI flash)
             let sortedCachedCoins = sortCoins(offlineData.coins)
@@ -361,14 +366,37 @@ final class CoinListVM: ObservableObject {
                         return true
                     }
                 }
-                coins = deduplicatedCachedCoins  // 🎯 Triggers UI update with clean data
+                
+                // 🔧 PAGINATION FIX: Set fullFilteredCoins for proper pagination
+                fullFilteredCoins = deduplicatedCachedCoins
+                
+                // Show first page only
+                let pageSize = itemsPerPage
+                let initialCoins = Array(deduplicatedCachedCoins.prefix(pageSize))
+                coins = initialCoins  // 🎯 Triggers UI update with clean data
+                
+                // Enable pagination if we have more data
+                canLoadMore = deduplicatedCachedCoins.count > pageSize
+                
+                print("📱 UI: Displaying \(initialCoins.count) coins (page 1 of \(deduplicatedCachedCoins.count) total from cache)")
             } else {
-                coins = sortedCachedCoins  // 🎯 Triggers UI update
+                // 🔧 PAGINATION FIX: Set fullFilteredCoins for proper pagination
+                fullFilteredCoins = sortedCachedCoins
+                
+                // Show first page only  
+                let pageSize = itemsPerPage
+                let initialCoins = Array(sortedCachedCoins.prefix(pageSize))
+                coins = initialCoins  // 🎯 Triggers UI update
+                
+                // Enable pagination if we have more data
+                canLoadMore = sortedCachedCoins.count > pageSize
+                
+                print("📱 UI: Displaying \(initialCoins.count) coins (page 1 of \(sortedCachedCoins.count) total from cache)")
             }
             coinLogos = offlineData.logos
             
             // Fetch any missing logos after loading cached data
-            let displayedIds = sortedCachedCoins.map { $0.id }
+            let displayedIds = coins.map { $0.id }
             fetchCoinLogosIfNeeded(forIDs: displayedIds)
             
             onFinish?()
@@ -522,15 +550,38 @@ final class CoinListVM: ObservableObject {
                                 return true
                             }
                         }
-                        self?.coins = deduplicatedFallbackCoins  // 🎯 Update UI with clean fallback data
+                        
+                        // 🔧 PAGINATION FIX: Set fullFilteredCoins for proper fallback pagination
+                        self?.fullFilteredCoins = deduplicatedFallbackCoins
+                        
+                        // Show first page only
+                        let pageSize = self?.itemsPerPage ?? 20
+                        let initialFallbackCoins = Array(deduplicatedFallbackCoins.prefix(pageSize))
+                        self?.coins = initialFallbackCoins  // 🎯 Update UI with clean fallback data
+                        
+                        // Enable pagination if we have more data
+                        self?.canLoadMore = deduplicatedFallbackCoins.count > pageSize
+                        
+                        print("📱 UI: Displaying \(initialFallbackCoins.count) fallback coins (page 1 of \(deduplicatedFallbackCoins.count) total)")
                     } else {
-                        self?.coins = sortedFallbackCoins  // 🎯 Update UI with fallback data
+                        // 🔧 PAGINATION FIX: Set fullFilteredCoins for proper fallback pagination
+                        self?.fullFilteredCoins = sortedFallbackCoins
+                        
+                        // Show first page only
+                        let pageSize = self?.itemsPerPage ?? 20
+                        let initialFallbackCoins = Array(sortedFallbackCoins.prefix(pageSize))
+                        self?.coins = initialFallbackCoins  // 🎯 Update UI with fallback data
+                        
+                        // Enable pagination if we have more data
+                        self?.canLoadMore = sortedFallbackCoins.count > pageSize
+                        
+                        print("📱 UI: Displaying \(initialFallbackCoins.count) fallback coins (page 1 of \(sortedFallbackCoins.count) total)")
                     }
                     self?.coinLogos = offlineData.logos
                     self?.errorMessage = "Using offline data due to network error"
                     
                     // Fetch missing logos for fallback data
-                    let displayedIds = sortedFallbackCoins.map { $0.id }
+                    let displayedIds = self?.coins.map { $0.id } ?? []
                     self?.fetchCoinLogosIfNeeded(forIDs: displayedIds)
                 }
             }
@@ -579,9 +630,14 @@ final class CoinListVM: ObservableObject {
             let ids = initialCoins.map { $0.id }
             self.fetchCoinLogosIfNeeded(forIDs: ids)
             
-            // 💾 OFFLINE STORAGE: Save for offline use (only default filters to avoid stale data)
+            // 💾 OFFLINE STORAGE: Save FULL dataset for offline use (only default filters to avoid stale data)
             if self.filterState == .defaultState {
-                self.persistenceService.saveCoinList(initialCoins)
+                self.persistenceService.saveCoinList(filteredAndSortedCoins)  // Save FULL dataset, not just first page
+                print("💾 Saved \(filteredAndSortedCoins.count) coins to cache (full dataset)")
+                
+                // 📢 NOTIFY SEARCH: Tell SearchVM that fresh data is available
+                NotificationCenter.default.post(name: Notification.Name("coinListCacheUpdated"), object: nil)
+                print("📢 Posted cache update notification for SearchVM")
             }
         }
         .store(in: &cancellables)  //  Store subscription for memory management

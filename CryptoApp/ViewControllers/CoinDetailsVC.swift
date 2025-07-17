@@ -52,6 +52,11 @@ final class CoinDetailsVC: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        
+        // Ensure proper navigation bar configuration
+        navigationController?.navigationBar.prefersLargeTitles = false
+        navigationItem.largeTitleDisplayMode = .never
+        
         isViewVisible = true
         startSmartAutoRefresh()  // Begin optimized auto-refresh
     }
@@ -79,7 +84,10 @@ final class CoinDetailsVC: UIViewController {
     
     private func setupTableView() {
         view.backgroundColor = .systemBackground
-        navigationItem.title = coin.symbol
+        navigationItem.title = coin.name
+        
+        // Ensure normal navigation bar display (no large titles)
+        navigationItem.largeTitleDisplayMode = .never
         
         tableView.dataSource = self
         tableView.delegate = self
@@ -293,7 +301,7 @@ extension CoinDetailsVC: UITableViewDataSource {
         switch indexPath.section {
         case 0: // Info section
             let cell = tableView.dequeueReusableCell(withIdentifier: "InfoCell", for: indexPath) as! InfoCell
-            cell.configure(name: coin.symbol, rank: coin.cmcRank, price: coin.priceString)
+            cell.configure(name: coin.name, rank: coin.cmcRank, price: coin.priceString)
             cell.selectionStyle = .none
             return cell
         case 1: // Filter section (Segmented control)

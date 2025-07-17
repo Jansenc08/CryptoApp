@@ -28,14 +28,13 @@
 }
 
 - (UINavigationController *)createSearchNC {
-    UIViewController *searchPlaceholderVC = [[UIViewController alloc] init];
-    searchPlaceholderVC.view.backgroundColor = [UIColor systemBackgroundColor];
-    searchPlaceholderVC.title = @"Search";
-    searchPlaceholderVC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Search"
-                                                                   image:[UIImage systemImageNamed:@"magnifyingglass"]
-                                                                     tag:1];
+    SearchVC *searchVC = [[SearchVC alloc] init];
+    searchVC.title = @"Search";
+    searchVC.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Search"
+                                                        image:[UIImage systemImageNamed:@"magnifyingglass"]
+                                                          tag:1];
     
-    return [[UINavigationController alloc] initWithRootViewController:searchPlaceholderVC];
+    return [[UINavigationController alloc] initWithRootViewController:searchVC];
 }
 
 @end
