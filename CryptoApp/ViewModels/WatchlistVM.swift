@@ -29,6 +29,7 @@ final class WatchlistVM: ObservableObject {
     private let watchlistManager = WatchlistManager.shared
     private let coinManager: CoinManager
     private var cancellables = Set<AnyCancellable>()
+    private var requestCancellables = Set<AnyCancellable>()  // Separate for API requests
     private var updateTimer: Timer?
     
     // MARK: - Optimization Properties
@@ -71,8 +72,10 @@ final class WatchlistVM: ObservableObject {
     }
     
     deinit {
-        stopPeriodicUpdates()
+        updateTimer?.invalidate()
+        updateTimer = nil
         cancellables.removeAll()
+        requestCancellables.removeAll()
     }
     
     // MARK: - Optimized Public Methods
@@ -341,7 +344,7 @@ final class WatchlistVM: ObservableObject {
                         completion(updatedCoins)
                     }
                 )
-                .store(in: &self.cancellables)
+                .store(in: &self.requestCancellables)
         }
     }
     
@@ -380,7 +383,7 @@ final class WatchlistVM: ObservableObject {
                     self?.coinLogos.merge(logos) { _, new in new }
                     self?.logoRequestsInProgress.subtract(coinIds)
                 }
-                .store(in: &self.cancellables)
+                .store(in: &self.requestCancellables)
         }
     }
     
@@ -395,7 +398,7 @@ final class WatchlistVM: ObservableObject {
                 self?.coinLogos.merge(logos) { _, new in new }
                 self?.logoRequestsInProgress.remove(coinId)
             }
-            .store(in: &cancellables)
+            .store(in: &requestCancellables)
     }
     
     /**
@@ -417,10 +420,7 @@ final class WatchlistVM: ObservableObject {
         }
     }
     
-    private func stopPeriodicUpdates() {
-        updateTimer?.invalidate()
-        updateTimer = nil
-    }
+
     
     // Skips updates if nothing has changed or another fetch is in progress
     // Only updates watchlistCoins if prices actually changed
@@ -497,6 +497,41 @@ final class WatchlistVM: ObservableObject {
     
     func clearUpdatedCoinIds() {
         updatedCoinIds.removeAll()
+    }
+    
+    // MARK: - Public Lifecycle Methods
+    
+    /**
+     * PUBLIC TIMER CONTROL
+     * 
+     * These methods allow the view controller to control periodic updates
+     * based on the tab's visibility state for better performance.
+     */
+    
+    func startPeriodicUpdates() {
+        startOptimizedPeriodicUpdates()
+        #if DEBUG
+        print("🔄 WatchlistVM: Started periodic price updates (15s interval)")
+        #endif
+    }
+    
+    func stopPeriodicUpdates() {
+        updateTimer?.invalidate()
+        updateTimer = nil
+        #if DEBUG
+        print("⏸️ WatchlistVM: Stopped periodic price updates")
+        #endif
+    }
+    
+    func cancelAllRequests() {
+        // Cancel any in-flight API requests (but keep UI bindings)
+        requestCancellables.removeAll()
+        isPriceUpdateInProgress = false
+        isLoading = false
+        logoRequestsInProgress.removeAll()
+        #if DEBUG
+        print("🚫 WatchlistVM: Cancelled all in-flight API requests")
+        #endif
     }
     
     // MARK: - Sorting Management

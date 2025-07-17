@@ -33,6 +33,11 @@ final class WatchlistVC: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        
+        // Resume periodic price updates when tab becomes active
+        viewModel.startPeriodicUpdates()
+        
+        // Refresh data when returning to tab
         viewModel.refreshWatchlist()
         
         #if DEBUG
@@ -43,6 +48,23 @@ final class WatchlistVC: UIViewController {
         // Print performance metrics
         let metrics = viewModel.getPerformanceMetrics()
         print("📊 Performance Metrics: \(metrics)")
+        print("🔄 Resumed watchlist price updates")
+        #endif
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        
+        // Stop periodic price updates when tab becomes inactive
+        viewModel.stopPeriodicUpdates()
+        
+        // Cancel any in-flight API requests to save resources
+        viewModel.cancelAllRequests()
+        
+        #if DEBUG
+        print("📱 Leaving Watchlist Tab")
+        print("⏸️ Stopped watchlist price updates")
+        print("🚫 Cancelled in-flight API requests")
         #endif
     }
     
