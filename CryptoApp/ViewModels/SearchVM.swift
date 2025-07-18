@@ -245,8 +245,13 @@ final class SearchVM: ObservableObject {
             
             // Update UI on main queue
             DispatchQueue.main.async { [weak self] in
-                self?.searchResultsSubject.send(Array(sortedResults))
-                print("🔍 Search: Found \(Array(sortedResults).count) results for '\(trimmedText)'")
+                guard let self = self else { return }
+                let results = Array(sortedResults)
+                self.searchResultsSubject.send(results)
+                print("🔍 Search: Found \(results.count) results for '\(trimmedText)'")
+                
+                // Fetch missing logos for search results
+                self.fetchLogosIfNeeded(for: results)
             }
         }
     }
@@ -300,10 +305,57 @@ final class SearchVM: ObservableObject {
             
             // Re-perform current search with refreshed data
             performSearch(for: currentSearchText)
+            
+            // Also fetch logos for any existing search results
+            let existingResults = currentSearchResults
+            if !existingResults.isEmpty {
+                fetchLogosIfNeeded(for: existingResults)
+            }
         } else {
             print("🔍 Search: No cached data available for refresh")
             self.allCoins = []
             searchResultsSubject.send([])
         }
+    }
+    
+    // MARK: - Logo Management
+    
+    /**
+     * FETCH MISSING LOGOS FOR SEARCH RESULTS
+     * 
+     * Fetches logos for coins that appear in search results but don't have cached logos.
+     * Uses low priority to avoid interfering with main data requests.
+     */
+    private func fetchLogosIfNeeded(for coins: [Coin]) {
+        // Filter out coins that already have logos cached
+        let coinsNeedingLogos = coins.filter { coin in
+            currentCoinLogos[coin.id] == nil
+        }
+        
+        guard !coinsNeedingLogos.isEmpty else {
+            print("🔍 Search: All \(coins.count) result logos already cached")
+            return
+        }
+        
+        let coinIds = coinsNeedingLogos.map { $0.id }
+        print("🔍 Search: Fetching \(coinIds.count) missing logos for search results")
+        
+        // Fetch missing logos with low priority
+        coinManager.getCoinLogos(forIDs: coinIds, priority: .low)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newLogos in
+                guard let self = self else { return }
+                
+                print("🔍 Search: Received \(newLogos.count) new logos")
+                
+                // Merge new logos with existing cache
+                let currentLogos = self.currentCoinLogos
+                let mergedLogos = currentLogos.merging(newLogos) { _, new in new }
+                self.coinLogosSubject.send(mergedLogos)
+                
+                // Update persistence cache with new logos
+                self.persistenceService.saveCoinLogos(mergedLogos)
+            }
+            .store(in: &cancellables)
     }
 } 
