@@ -141,11 +141,15 @@
                  sparklineData:(NSArray<NSNumber *> *)sparklineData
              isPositiveChange:(BOOL)isPositiveChange {
     
+    __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.priceLabel.text = price;
-        self.percentChangeLabel.text = percentChange24h;
-        self.percentChangeLabel.textColor = isPositiveChange ? [UIColor systemGreenColor] : [UIColor systemRedColor];
-        [self.sparklineView configureWith:sparklineData isPositive:isPositiveChange];
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return; // Cell was deallocated - skip update
+        
+        strongSelf.priceLabel.text = price;
+        strongSelf.percentChangeLabel.text = percentChange24h;
+        strongSelf.percentChangeLabel.textColor = isPositiveChange ? [UIColor systemGreenColor] : [UIColor systemRedColor];
+        [strongSelf.sparklineView configureWith:sparklineData isPositive:isPositiveChange];
     });
 }
 

@@ -589,7 +589,7 @@ final class CoinListVM: ObservableObject {
             self?.isLoadingSubject.send(false)  // 🎯 Hide loading spinner
             if case let .failure(error) = completion {
                 print("❌ VM.fetchCoins | Error: \(error.localizedDescription)")
-                self?.errorMessageSubject.send(error.localizedDescription)
+                self?.errorMessageSubject.send(ErrorMessageProvider.shared.getCoinListErrorMessage(for: error))
                 self?.canLoadMore = false
                 
                 // 🛡️ OFFLINE FALLBACK: Try to load cached data on network error
@@ -969,7 +969,7 @@ final class CoinListVM: ObservableObject {
                 self?.isUpdatingPrices = false  // 🔓 Unlock after completion
                 if case .failure(let error) = completionResult {
                     if !error.localizedDescription.contains("throttled") {
-                        self?.errorMessageSubject.send(error.localizedDescription)
+                        self?.errorMessageSubject.send(ErrorMessageProvider.shared.getPriceUpdateErrorMessage(for: error))
                     }
                 }
                 completion()

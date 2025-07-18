@@ -155,9 +155,9 @@ final class WatchlistVM: ObservableObject {
         let coins = watchlistManager.getWatchlistCoins()
         
         if coins.isEmpty {
-            DispatchQueue.main.async {
-                self.watchlistCoinsSubject.send([])
-                self.isLoadingSubject.send(false)
+            DispatchQueue.main.async { [weak self] in
+                self?.watchlistCoinsSubject.send([])
+                self?.isLoadingSubject.send(false)
             }
             return
         }
@@ -366,7 +366,7 @@ final class WatchlistVM: ObservableObject {
                     receiveCompletion: { [weak self] completionResult in
                         if case .failure(let error) = completionResult {
                             DispatchQueue.main.async {
-                                self?.errorMessageSubject.send("Failed to update prices: \(error.localizedDescription)")
+                                self?.errorMessageSubject.send(ErrorMessageProvider.shared.getWatchlistErrorMessage(for: error))
                                 self?.isLoadingSubject.send(false)
                                 self?.isPriceUpdateInProgress = false
                                 

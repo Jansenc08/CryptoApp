@@ -244,8 +244,8 @@ final class SearchVM: ObservableObject {
                 .prefix(self.maxSearchResults)
             
             // Update UI on main queue
-            DispatchQueue.main.async {
-                self.searchResultsSubject.send(Array(sortedResults))
+            DispatchQueue.main.async { [weak self] in
+                self?.searchResultsSubject.send(Array(sortedResults))
                 print("🔍 Search: Found \(Array(sortedResults).count) results for '\(trimmedText)'")
             }
         }

@@ -350,7 +350,7 @@ final class CoinDetailsVM: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     self?.isLoadingSubject.send(false)
                     if case .failure(let error) = completion {
-                        let userFriendlyMessage = self?.getUserFriendlyErrorMessage(for: error) ?? error.localizedDescription
+                        let userFriendlyMessage = ErrorMessageProvider.shared.getChartErrorMessage(for: error, symbol: self?.coin.symbol ?? "Unknown")
                         self?.errorMessageSubject.send(userFriendlyMessage)
                         print("📊 Chart fetch failed: \(error)")
                     }
@@ -586,8 +586,8 @@ final class CoinDetailsVM: ObservableObject {
         print("📅 Loading more historical data for \(range) before \(beforeDate)")
         
         // 🔄 SIMULATED ASYNC OPERATION (placeholder for real implementation)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.isLoadingMoreData = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.isLoadingMoreData = false
             // Real implementation would call: appendHistoricalData(newOlderData)
         }
     }
@@ -612,49 +612,7 @@ final class CoinDetailsVM: ObservableObject {
         print("📈 Appended \(olderData.count) historical points. Total: \(updatedPoints.count)")
     }
     
-    // MARK: - Error Handling
-    
-    /**
-     * USER-FRIENDLY ERROR MESSAGE GENERATOR
-     * 
-     * Converts technical error messages into user-friendly explanations
-     * with actionable advice for common issues like rate limiting.
-     */
-    private func getUserFriendlyErrorMessage(for error: Error) -> String {
-        // Check for rate limiting errors
-        if let requestError = error as? RequestError {
-            switch requestError {
-            case .rateLimited:
-                return "Chart data temporarily unavailable due to high demand. Please wait a moment and try again."
-            case .throttled:
-                return "Please wait a moment before switching chart ranges again."
-            default:
-                break
-            }
-        }
-        
-        // Check for network errors
-        if let networkError = error as? NetworkError {
-            switch networkError {
-            case .badURL:
-                return "Chart data is not available for \(coin.symbol) at this time."
-            case .invalidResponse:
-                return "Unable to load chart data. The service may be temporarily busy. Please try again in a few moments."
-            case .decodingError:
-                return "There was an issue processing the chart data. Please try again."
-            case .unknown:
-                return "Unable to load chart data. Please check your internet connection and try again."
-            }
-        }
-        
-        // Check for generic connectivity issues
-        if (error as NSError).domain == NSURLErrorDomain {
-            return "Please check your internet connection and try again."
-        }
-        
-        // Fallback for unknown errors
-        return "Unable to load chart data at this time. Please try again."
-    }
+
     
     // MARK: - Utility Methods
     

@@ -173,8 +173,8 @@ final class ChartView: LineChartView {
         addSubview(arrowNudgeView)
 
         // Show animation after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.showHintLabel()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.showHintLabel()
         }
     }
 
@@ -331,8 +331,8 @@ extension ChartView: ChartViewDelegate {
     
     // Auto-clear highlight tooltip after delay
     func chartValueSelected(_ chartView: ChartViewBase, entry: ChartDataEntry, highlight: Highlight) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            chartView.highlightValue(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak chartView] in
+            chartView?.highlightValue(nil)
         }
     }
 
