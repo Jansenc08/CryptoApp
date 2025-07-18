@@ -146,7 +146,7 @@ final class CoinDetailsVC: UIViewController {
                 // Skip unnecessary updates
                 guard self.shouldUpdateChart(newPoints: newPoints) else { return }
                 
-                self.updateChartCell(with: newPoints) // Update UI
+                self.updateChartCell(newPoints) // Update UI
                 self.previousChartPointsCount = newPoints.count
                 self.lastChartUpdateTime = Date()
             }
@@ -205,7 +205,7 @@ final class CoinDetailsVC: UIViewController {
         return true
     }
     
-    private func updateChartCell(with points: [Double]) {
+    private func updateChartCell(_ points: [Double]) {
         guard let chartCell = getChartCell() else {
             // Fallback to section reload if cell not found
             tableView.reloadSections(IndexSet(integer: 2), with: .none)
@@ -231,7 +231,7 @@ final class CoinDetailsVC: UIViewController {
         }
         
         // Update stats cell with new data and preserve selected segment
-        statsCell.configure(with: viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
+        statsCell.configure(viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
             print("📊 Selected stats filter: \(selectedRange)")
             self?.viewModel.updateStatsRange(selectedRange)
         }
@@ -340,7 +340,7 @@ extension CoinDetailsVC: UITableViewDataSource {
             return cell
         case 3: // Stats section
             let cell = tableView.dequeueReusableCell(withIdentifier: "StatsCell", for: indexPath) as! StatsCell
-            cell.configure(with: viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
+            cell.configure(viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
                 print("📊 Selected stats filter: \(selectedRange)")
                 self?.viewModel.updateStatsRange(selectedRange)
             }

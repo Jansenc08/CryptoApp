@@ -974,7 +974,7 @@ final class CoinListVM: ObservableObject {
                 }
                 completion()
             } receiveValue: { [weak self] updatedQuotes in
-                self?.updateCoinPrices(with: updatedQuotes)
+                self?.updateCoinPrices(updatedQuotes)
             }
             .store(in: &cancellables)
     }
@@ -982,7 +982,7 @@ final class CoinListVM: ObservableObject {
     /**
      * Update coin prices with new quote data
      */
-    private func updateCoinPrices(with updatedQuotes: [Int: Quote]) {
+    private func updateCoinPrices(_ updatedQuotes: [Int: Quote]) {
         var changedCoinIds = Set<Int>()
         var updatedCoins = currentCoins // Create a copy to avoid modifying during iteration
         

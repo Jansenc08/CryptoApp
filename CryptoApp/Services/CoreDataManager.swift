@@ -51,7 +51,7 @@ final class CoreDataManager {
         }
     }
     
-    func fetchWithPredicate<T: NSManagedObject>(_ objectType: T.Type, predicate: NSPredicate) -> [T] {
+    func fetch<T: NSManagedObject>(_ objectType: T.Type, where predicate: NSPredicate) -> [T] {
         let entityName = String(describing: objectType)
         let request = NSFetchRequest<T>(entityName: entityName)
         request.predicate = predicate
@@ -76,7 +76,7 @@ final class CoreDataManager {
         }
     }
     
-    func fetchWatchlistItems(with predicate: NSPredicate) -> [WatchlistItem] {
+    func fetchWatchlistItems(where predicate: NSPredicate) -> [WatchlistItem] {
         let request: NSFetchRequest<WatchlistItem> = WatchlistItem.fetchRequest()
         request.predicate = predicate
         

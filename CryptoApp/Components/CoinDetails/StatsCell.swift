@@ -86,7 +86,7 @@ final class StatsCell: UITableViewCell {
         ])
     }
 
-    func configure(with stats: [StatItem], selectedRange: String = "24h", onSegmentChange: @escaping (String) -> Void) {
+    func configure(_ stats: [StatItem], selectedRange: String = "24h", onSegmentChange: @escaping (String) -> Void) {
         self.onSegmentChange = onSegmentChange
 
         // Configure segment view with selected range

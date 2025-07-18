@@ -709,7 +709,7 @@ extension CoinListVC: UICollectionViewDelegate {
 // MARK: - SortHeaderViewDelegate
 
 extension CoinListVC: SortHeaderViewDelegate {
-    func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, with order: CryptoSortOrder) {
+    func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, order: CryptoSortOrder) {
         print("🔄 Sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
         viewModel.updateSorting(column: column, order: order)
     }

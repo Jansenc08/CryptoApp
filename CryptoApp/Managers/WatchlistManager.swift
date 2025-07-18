@@ -244,7 +244,7 @@ final class WatchlistManager: ObservableObject {
             
             let startTime = CFAbsoluteTimeGetCurrent()
             let predicate = NSPredicate(format: "id == %d", coinId)
-            let items = self.coreDataManager.fetchWatchlistItems(with: predicate)
+            let items = self.coreDataManager.fetchWatchlistItems(where: predicate)
             
             guard let item = items.first else {
                 print("⚠️ Database inconsistency: coin not found")
@@ -390,7 +390,7 @@ final class WatchlistManager: ObservableObject {
             
             let startTime = CFAbsoluteTimeGetCurrent()
             let predicate = NSPredicate(format: "id IN %@", validIds)
-            let items = self.coreDataManager.fetchWatchlistItems(with: predicate)
+            let items = self.coreDataManager.fetchWatchlistItems(where: predicate)
             
             let context = self.coreDataManager.context
             items.forEach { context.delete($0) }

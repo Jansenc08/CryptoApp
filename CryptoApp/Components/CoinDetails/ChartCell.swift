@@ -19,7 +19,7 @@ final class ChartCell: UITableViewCell {
 
     // Configure chart with new data
     func configure(points: [Double], range: String) {
-        chartView.update(with: points, range: range)
+        chartView.update(points, range: range)
     }
     
     // Allows setting a scroll callback

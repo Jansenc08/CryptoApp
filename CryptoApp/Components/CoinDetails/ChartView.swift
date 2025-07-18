@@ -199,7 +199,7 @@ final class ChartView: LineChartView {
 
     // MARK: - Public Update Method
 
-    func update(with dataPoints: [Double], range: String) {
+    func update(_ dataPoints: [Double], range: String) {
         guard !dataPoints.isEmpty else { return }
 
         self.allDataPoints = dataPoints

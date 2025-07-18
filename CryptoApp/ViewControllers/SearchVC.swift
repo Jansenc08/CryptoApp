@@ -288,7 +288,7 @@ import Combine
                 // Track current search results for saving recent searches
                 self?.currentSearchResults = results
                 
-                self?.updateDataSource(with: results)
+                self?.updateDataSource(results)
                 // Get current search text from the search controller instead of ViewModel
                 let currentSearchText = self?.searchController.searchBar.text ?? ""
                 self?.updateEmptyState(isEmpty: results.isEmpty, searchText: currentSearchText)
@@ -330,7 +330,7 @@ import Combine
     
     // MARK: - Data Source Updates
     
-    private func updateDataSource(with coins: [Coin]) {
+    private func updateDataSource(_ coins: [Coin]) {
         var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
         snapshot.appendSections([.main])
         snapshot.appendItems(coins)
@@ -673,8 +673,8 @@ extension SearchVC {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     if case .failure = completion {
-                        print("⚠️ Search timeout for \(searchItem.symbol) - using fallback navigation")
-                        self?.navigateWithFallback(searchItem: searchItem, originalSearchText: originalSearchText)
+                                            print("⚠️ Search timeout for \(searchItem.symbol) - using fallback navigation")
+                    self?.navigate(searchItem: searchItem, fallbackText: originalSearchText)
                     }
                 },
                 receiveValue: { [weak self] searchResults in
@@ -694,8 +694,8 @@ extension SearchVC {
                         let detailsVC = CoinDetailsVC(coin: matchingCoin)
                         self.navigationController?.pushViewController(detailsVC, animated: true)
                     } else {
-                        print("⚠️ Coin not found in search results - using fallback")
-                        self.navigateWithFallback(searchItem: searchItem, originalSearchText: originalSearchText)
+                                            print("⚠️ Coin not found in search results - using fallback")
+                    self.navigate(searchItem: searchItem, fallbackText: originalSearchText)
                     }
                 }
             )
@@ -705,7 +705,7 @@ extension SearchVC {
     /**
      * Fallback navigation when real coin data cannot be found
      */
-    private func navigateWithFallback(searchItem: RecentSearchItem, originalSearchText: String) {
+    private func navigate(searchItem: RecentSearchItem, fallbackText originalSearchText: String) {
         // Restore original search text
         searchController.searchBar.text = originalSearchText
         viewModel.updateSearchText(originalSearchText)

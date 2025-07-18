@@ -141,8 +141,8 @@
     [self updateSortIndicators];
     
     // Notify delegate
-    if (self.delegate && [self.delegate respondsToSelector:@selector(sortHeaderView:didSelect:with:)]) {
-        [self.delegate sortHeaderView:self didSelect:column with:self.currentSortOrder];
+    if (self.delegate && [self.delegate respondsToSelector:@selector(sortHeaderView:didSelect:order:)]) {
+        [self.delegate sortHeaderView:self didSelect:column order:self.currentSortOrder];
     }
 }
 

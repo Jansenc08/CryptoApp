@@ -27,7 +27,7 @@ class SparklineView: UIView {
         contentMode = .redraw
     }
     
-    func configure(with dataPoints: [Double], isPositive: Bool) {
+    func configure(_ dataPoints: [Double], isPositive: Bool) {
         self.dataPoints = dataPoints
         self.isPositiveChange = isPositive
         setNeedsDisplay()
@@ -35,7 +35,7 @@ class SparklineView: UIView {
     
     @objc func configureWith(_ dataPoints: [NSNumber], isPositive: Bool) {
         let doubleArray = dataPoints.map { $0.doubleValue }
-        configure(with: doubleArray, isPositive: isPositive)
+        configure(doubleArray, isPositive: isPositive)
     }
     
     // This is where the UIBezierPath plots the sparkline based on the values

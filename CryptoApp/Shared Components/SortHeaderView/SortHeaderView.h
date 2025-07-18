@@ -24,7 +24,7 @@ typedef NS_ENUM(NSUInteger, CryptoSortOrder) {
 @class SortHeaderView;
 
 @protocol SortHeaderViewDelegate <NSObject>
-- (void)sortHeaderView:(SortHeaderView *)headerView didSelect:(CryptoSortColumn)column with:(CryptoSortOrder)order;
+- (void)sortHeaderView:(SortHeaderView *)headerView didSelect:(CryptoSortColumn)column order:(CryptoSortOrder)order;
 @end
 
 @interface SortHeaderView : UIView

@@ -368,7 +368,7 @@ final class WatchlistVC: UIViewController {
         viewModel.watchlistCoins
             .receive(on: DispatchQueue.main)
             .sink { [weak self] coins in
-                self?.updateDataSource(with: coins)
+                self?.updateDataSource(coins)
                 self?.updateEmptyState(isEmpty: coins.isEmpty)
                 self?.updateNavigationItems(hasCoins: !coins.isEmpty)
             }
@@ -417,7 +417,7 @@ final class WatchlistVC: UIViewController {
             .store(in: &cancellables)
     }
     
-    private func updateDataSource(with coins: [Coin]) {
+    private func updateDataSource(_ coins: [Coin]) {
         // Filter out invalid coins and remove duplicates to prevent crashes
         let validCoins = coins
             .filter { $0.id > 0 && !$0.name.isEmpty && !$0.symbol.isEmpty } // Remove invalid coins
@@ -560,7 +560,7 @@ extension WatchlistVC: UICollectionViewDelegate {
                 image: UIImage(systemName: "trash"),
                 attributes: .destructive
             ) { [weak self] _ in
-                self?.removeWithAnimation(coin: coin, at: indexPath)
+                                    self?.remove(coin, at: indexPath)
             }
             
             let detailsAction = UIAction(
@@ -575,7 +575,7 @@ extension WatchlistVC: UICollectionViewDelegate {
         }
     }
     
-    private func removeWithAnimation(coin: Coin, at indexPath: IndexPath) {
+    private func remove(_ coin: Coin, at indexPath: IndexPath, animated: Bool = true) {
         // Show confirmation alert for removal
         let alert = UIAlertController(
             title: "Remove from Watchlist",
@@ -683,7 +683,7 @@ extension WatchlistVC: UICollectionViewDelegate {
 // MARK: - SortHeaderViewDelegate
 
 extension WatchlistVC: SortHeaderViewDelegate {
-    func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, with order: CryptoSortOrder) {
+    func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, order: CryptoSortOrder) {
         #if DEBUG
         print("🔄 Watchlist sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
         #endif
