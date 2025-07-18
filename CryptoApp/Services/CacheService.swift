@@ -45,7 +45,7 @@ final class CacheService: NSObject {
     static let coinListTTL: TimeInterval = 30           // 30s - Rankings change frequently  
     static let logoTTL: TimeInterval = 86400            // 24h - Logos rarely change
     static let priceUpdateTTL: TimeInterval = 15        // 15s - Balance freshness vs performance
-    static let chartDataTTL: TimeInterval = 300         // 5min - Good for active trading
+    static let chartDataTTL: TimeInterval = 900         // 15min - Reduced API calls while maintaining reasonable freshness
     
     // Additional crypto-specific TTLs
     static let marketStatsTTL: TimeInterval = 60        // 1min - Market cap, volume

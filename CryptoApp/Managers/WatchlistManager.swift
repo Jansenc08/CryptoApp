@@ -163,7 +163,7 @@ final class WatchlistManager: ObservableObject {
             
             let startTime = CFAbsoluteTimeGetCurrent()
             let context = self.coreDataManager.context
-            let watchlistItem = WatchlistItem(context: context, coin: coin, logoURL: logoURL)
+            let _ = WatchlistItem(context: context, coin: coin, logoURL: logoURL)
             
             do {
                 try context.save()
@@ -321,7 +321,7 @@ final class WatchlistManager: ObservableObject {
             let context = self.coreDataManager.context
             
             // Create all items in single transaction
-            let watchlistItems = coinsToAdd.map { coin in
+            let _ = coinsToAdd.map { coin in
                 WatchlistItem(context: context, coin: coin, logoURL: logoURLs[coin.id])
             }
             

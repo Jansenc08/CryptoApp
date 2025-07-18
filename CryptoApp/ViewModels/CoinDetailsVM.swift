@@ -8,23 +8,26 @@
  *   FEATURES:
  * - Multi-timeframe chart data (24h, 7d, 30d, 1y)
  * - Priority-based API request system (high priority for user actions)
- * - Background prefetching of common chart ranges
+ * - Intelligent caching with extended TTL (15min) for reduced API calls
+ * - Debounced filter changes to prevent rapid API requests
  * - Data processing (smoothing, optimization, validation)
  * - Dynamic statistics generation based on selected timeframe
- * - Error handling with auto-retry
+ * - Exponential backoff retry logic for rate limiting
+ * - User-friendly error messages
  * - Memory-efficient chart data management
  * 
  * 📊 CHART DATA PIPELINE:
- * 1. User selects timeframe → High priority API request
- * 2. Raw data processing → Smoothing → Optimization
- * 3. Chart points updated → UI automatically refreshes
- * 4. Background prefetching for other common ranges
+ * 1. User selects timeframe → Debounced (500ms) → High priority API request
+ * 2. Cache check → Instant return if available (15min TTL)
+ * 3. API call with retry logic → Raw data processing → Smoothing → Optimization
+ * 4. Chart points updated → UI automatically refreshes
  * 
  * PERFORMANCE OPTIMIZATIONS:
- * - Background prefetching reduces filter switching delays
+ * - Extended caching (15min) dramatically reduces API dependency
+ * - Debouncing eliminates unnecessary requests from rapid filter changes
+ * - Exponential backoff retry handles rate limiting gracefully
  * - Data processing happens on background threads
  * - Chart data optimization reduces UI rendering load
- * - Smart caching prevents redundant API calls
  */
 
 import Foundation
@@ -32,19 +35,65 @@ import Combine
 
 final class CoinDetailsVM: ObservableObject {
 
-    // MARK: - Published Properties (Reactive UI Binding)
+    // MARK: - Private Subjects (Internal State Management)
+    
+    /**
+     * REACTIVE STATE MANAGEMENT WITH SUBJECTS
+     * 
+     * Using CurrentValueSubject for state that needs current values
+     * This gives us more control over when and how values are published
+     */
+    
+    private let chartPointsSubject = CurrentValueSubject<[Double], Never>([])
+    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
+    private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
+    private let selectedStatsRangeSubject = CurrentValueSubject<String, Never>("24h")
+
+    // MARK: - Published AnyPublisher Properties (Reactive UI Binding)
     
     /**
      * CHART AND UI STATE PROPERTIES
      * 
-     * These @Published properties automatically trigger UI updates when changed.
+     * These AnyPublisher properties automatically trigger UI updates when changed.
      * The chart view subscribes to these and updates instantly when new data arrives.
      */
     
-    @Published var chartPoints: [Double] = []              // Chart data points for visualization
-    @Published var isLoading: Bool = false                 // Loading state for chart area
-    @Published var errorMessage: String?                   // Error messages
-    @Published var selectedStatsRange: String = "24h"     //  Current stats timeframe filter
+    var chartPoints: AnyPublisher<[Double], Never> {
+        chartPointsSubject.eraseToAnyPublisher()
+    }
+    
+    var isLoading: AnyPublisher<Bool, Never> {
+        isLoadingSubject.eraseToAnyPublisher()
+    }
+    
+    var errorMessage: AnyPublisher<String?, Never> {
+        errorMessageSubject.eraseToAnyPublisher()
+    }
+    
+    var selectedStatsRange: AnyPublisher<String, Never> {
+        selectedStatsRangeSubject.eraseToAnyPublisher()
+    }
+    
+    // MARK: - Current Value Accessors (For Internal Logic)
+    
+    /**
+     * INTERNAL STATE ACCESS
+     * 
+     * These computed properties provide access to current values
+     * for both internal logic and ViewController access
+     */
+    
+    var currentChartPoints: [Double] {
+        chartPointsSubject.value
+    }
+    
+    var currentIsLoading: Bool {
+        isLoadingSubject.value
+    }
+    
+    var currentSelectedStatsRange: String {
+        selectedStatsRangeSubject.value
+    }
 
     /**
      * CHART RELOAD CONTROL
@@ -83,23 +132,20 @@ final class CoinDetailsVM: ObservableObject {
     private var currentRange: String = "24h"              // Currently displayed timeframe
     private var isLoadingMoreData = false                 // Prevents duplicate historical data requests
 
-    // MARK: - Smart Prefetching System
+    // MARK: - Rate Limiting & Caching System
     
     /**
-     * PREFETCHING ARCHITECTURE
+     * INTELLIGENT CACHING & RATE LIMITING ARCHITECTURE
      * 
-     * This system proactively downloads chart data for commonly accessed timeframes
-     * in the background, making filter switches feel instant to users.
+     * This system optimizes chart data loading through smart caching and request management:
      * 
-     * FLOW:
-     * - When user opens coin details, immediately load selected range (high priority)
-     * - Start background prefetching of 24h, 7d, 30d after staggered delays
-     * - Mark prefetched ranges to avoid duplicate requests
-     * - Use low priority for prefetching to not interfere with user actions
+     * FEATURES:
+     * - Extended cache TTL (15min) reduces API dependency significantly
+     * - Debounced filter changes prevent rapid successive API calls
+     * - Exponential backoff retry handles rate limiting gracefully
+     * - Priority-based request queuing ensures user actions get precedence
+     * - User-friendly error messages guide users during issues
      */
-    
-
-    private let commonRanges = ["24h", "7d", "30d"]       // Most frequently accessed timeframes
 
     // MARK: - Dynamic Statistics System
     
@@ -117,7 +163,7 @@ final class CoinDetailsVM: ObservableObject {
      * FORMATTING: Uses abbreviatedString() for user-friendly display (1.2B, 999M)
      */
     var currentStats: [StatItem] {
-        return getStats(for: selectedStatsRange)
+        return getStats(for: currentSelectedStatsRange)
     }
     
     /**
@@ -240,26 +286,25 @@ final class CoinDetailsVM: ObservableObject {
      * This changes which percentage change metrics are displayed.
      */
     func updateStatsRange(_ range: String) {
-        selectedStatsRange = range  // 🎯 Triggers UI update via @Published
+        selectedStatsRangeSubject.send(range)  // 🎯 Triggers UI update via AnyPublisher
         print("📊 Stats range updated to: \(range)")
     }
 
     // MARK: - Initialization & Setup
     
     /**
-     * INITIALIZATION WITH  PREFETCHING
+     * INITIALIZATION
      *
-     * The initializer sets up the ViewModel and immediately starts optimizing
-     * the user experience through background prefetching.
+     * The initializer sets up the ViewModel with optimized chart data loading.
      * 
      * INITIALIZATION FLOW:
      * 1. Store coin data and dependencies
      * 2. Map coin slug to CoinGecko ID for API calls
-     * 3. Start background prefetching of common ranges
+     * 3. Ready for on-demand chart data fetching with intelligent caching
      * 
-     * PREFETCHING STRATEGY:
-     * Users typically view 24h first, then switch to 7d or 30d.
-     * By prefetching these ranges, switching will be instant.
+     * OPTIMIZATION STRATEGY:
+     * Filter changes are debounced, cached data provides instant responses,
+     * and retry logic handles rate limiting gracefully.
      */
     init(coin: Coin, coinManager: CoinManager = CoinManager()) {
         self.coin = coin
@@ -286,14 +331,14 @@ final class CoinDetailsVM: ObservableObject {
 
         guard let geckoID = geckoID else {
             print("❌ No CoinGecko ID found for \(coin.symbol)")
-            errorMessage = "Chart data not available for \(coin.symbol)"
-            isLoading = false
+            errorMessageSubject.send("Chart data not available for \(coin.symbol)")
+            isLoadingSubject.send(false)
             return
         }
         
         
-        isLoading = true
-        errorMessage = nil
+        isLoadingSubject.send(true)
+        errorMessageSubject.send(nil)
         
         coinManager.fetchChartData(for: geckoID, range: days, priority: .high)
             .subscribe(on: DispatchQueue.global(qos: .userInitiated))
@@ -303,14 +348,15 @@ final class CoinDetailsVM: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
-                    self?.isLoading = false
+                    self?.isLoadingSubject.send(false)
                     if case .failure(let error) = completion {
-                        self?.errorMessage = error.localizedDescription
+                        let userFriendlyMessage = self?.getUserFriendlyErrorMessage(for: error) ?? error.localizedDescription
+                        self?.errorMessageSubject.send(userFriendlyMessage)
                         print("📊 Chart fetch failed: \(error)")
                     }
                 },
                 receiveValue: { [weak self] processedData in
-                    self?.chartPoints = processedData
+                    self?.chartPointsSubject.send(processedData)
                     print("📊 ✅ Chart updated with \(processedData.count) points for \(range)")
                 }
             )
@@ -476,7 +522,7 @@ final class CoinDetailsVM: ObservableObject {
             userFriendlyMessage = "Unable to load chart data. Please try again."
         }
         
-        self.errorMessage = userFriendlyMessage  // 🎯 Show user-friendly message
+        self.errorMessageSubject.send(userFriendlyMessage)  // 🎯 Show user-friendly message
         print("❌ Chart fetch failed: \(error.localizedDescription)")
         
         // AUTO-RECOVERY: Retry for recoverable errors
@@ -558,10 +604,56 @@ final class CoinDetailsVM: ObservableObject {
      * - Enables smooth infinite scrolling experience
      */
     func appendHistoricalData(_ newData: [Double]) {
-        let olderData = newData.prefix(max(0, newData.count - chartPoints.count))
+        let currentPoints = currentChartPoints
+        let olderData = newData.prefix(max(0, newData.count - currentPoints.count))
         shouldReloadChart = false                    // 🚫 Prevents jarring chart reset
-        chartPoints = Array(olderData) + chartPoints // 📈 Seamless data integration
-        print("📈 Appended \(olderData.count) historical points. Total: \(chartPoints.count)")
+        let updatedPoints = Array(olderData) + currentPoints
+        chartPointsSubject.send(updatedPoints) // 📈 Seamless data integration
+        print("📈 Appended \(olderData.count) historical points. Total: \(updatedPoints.count)")
+    }
+    
+    // MARK: - Error Handling
+    
+    /**
+     * USER-FRIENDLY ERROR MESSAGE GENERATOR
+     * 
+     * Converts technical error messages into user-friendly explanations
+     * with actionable advice for common issues like rate limiting.
+     */
+    private func getUserFriendlyErrorMessage(for error: Error) -> String {
+        // Check for rate limiting errors
+        if let requestError = error as? RequestError {
+            switch requestError {
+            case .rateLimited:
+                return "Chart data temporarily unavailable due to high demand. Please wait a moment and try again."
+            case .throttled:
+                return "Please wait a moment before switching chart ranges again."
+            default:
+                break
+            }
+        }
+        
+        // Check for network errors
+        if let networkError = error as? NetworkError {
+            switch networkError {
+            case .badURL:
+                return "Chart data is not available for \(coin.symbol) at this time."
+            case .invalidResponse:
+                return "Unable to load chart data. The service may be temporarily busy. Please try again in a few moments."
+            case .decodingError:
+                return "There was an issue processing the chart data. Please try again."
+            case .unknown:
+                return "Unable to load chart data. Please check your internet connection and try again."
+            }
+        }
+        
+        // Check for generic connectivity issues
+        if (error as NSError).domain == NSURLErrorDomain {
+            return "Please check your internet connection and try again."
+        }
+        
+        // Fallback for unknown errors
+        return "Unable to load chart data at this time. Please try again."
     }
     
     // MARK: - Utility Methods
@@ -611,7 +703,7 @@ final class CoinDetailsVM: ObservableObject {
      * Prevents loading when already in progress or when no data exists.
      */
     var canLoadMoreData: Bool {
-        return !isLoadingMoreData && !chartPoints.isEmpty
+        return !isLoadingMoreData && !currentChartPoints.isEmpty
     }
     
     // MARK: - Lifecycle Management
@@ -631,7 +723,7 @@ final class CoinDetailsVM: ObservableObject {
     func cancelAllRequests() {
         print("🛑 Cancelling all ongoing API calls for \(coin.symbol)")
         cancellables.removeAll()    // 🔗 Cancel all Combine subscriptions
-        isLoading = false          // 🧹 Reset loading states
+        isLoadingSubject.send(false)          // 🧹 Reset loading states
         isLoadingMoreData = false
     }
     

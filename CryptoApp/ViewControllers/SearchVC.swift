@@ -44,6 +44,10 @@ import Combine
     private var hasAppeared = false
     private var emptyStateView: UIView?
     
+    // MARK: - Search State
+    
+    private var currentSearchResults: [Coin] = [] // Track current search results for saving recent searches
+    
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
@@ -262,7 +266,7 @@ import Combine
             )
             
             // Load coin logo if available
-            if let urlString = self?.viewModel.coinLogos[coin.id] {
+            if let urlString = self?.viewModel.currentCoinLogos[coin.id] {
                 cell.coinImageView.downloadImage(fromURL: urlString)
             } else {
                 cell.coinImageView.setPlaceholder()
@@ -278,16 +282,21 @@ import Combine
     
     private func bindViewModel() {
         // Bind search results
-        viewModel.$searchResults
+        viewModel.searchResults
             .receive(on: DispatchQueue.main)
             .sink { [weak self] results in
+                // Track current search results for saving recent searches
+                self?.currentSearchResults = results
+                
                 self?.updateDataSource(with: results)
-                self?.updateEmptyState(isEmpty: results.isEmpty, searchText: self?.viewModel.searchText ?? "")
+                // Get current search text from the search controller instead of ViewModel
+                let currentSearchText = self?.searchController.searchBar.text ?? ""
+                self?.updateEmptyState(isEmpty: results.isEmpty, searchText: currentSearchText)
             }
             .store(in: &cancellables)
         
         // Bind loading state
-        viewModel.$isLoading
+        viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
                 if isLoading {
@@ -299,7 +308,7 @@ import Combine
             .store(in: &cancellables)
         
         // Bind error messages
-        viewModel.$errorMessage
+        viewModel.errorMessage
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
@@ -308,7 +317,7 @@ import Combine
             .store(in: &cancellables)
         
         // Bind logo updates
-        viewModel.$coinLogos
+        viewModel.coinLogos
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 // Reload visible cells to update logos
@@ -492,8 +501,8 @@ import Combine
             self?.loadRecentSearches() // Refresh the UI
             
             // Update empty state since there are no recent searches now
-            self?.updateEmptyState(isEmpty: self?.viewModel.searchResults.isEmpty ?? true, 
-                                  searchText: self?.viewModel.searchText ?? "")
+            self?.updateEmptyState(isEmpty: self?.currentSearchResults.isEmpty ?? true, 
+                                  searchText: self?.searchController.searchBar.text ?? "")
             
             print("🗑️ User cleared all recent searches")
         })
@@ -511,7 +520,7 @@ extension SearchVC: UISearchResultsUpdating {
         let searchText = searchController.searchBar.text ?? ""
         
         // Update the view model's search text which triggers the debounced search
-        viewModel.searchText = searchText
+        viewModel.updateSearchText(searchText)
         
         // Show/hide recent searches based on search text
         if searchText.isEmpty {
@@ -530,7 +539,7 @@ extension SearchVC: UISearchBarDelegate {
         
         // Save search term if it has results
         let searchText = searchBar.text ?? ""
-        if !searchText.isEmpty && !viewModel.searchResults.isEmpty {
+        if !searchText.isEmpty && !currentSearchResults.isEmpty {
             saveRecentSearch(searchText)
         }
     }
@@ -553,10 +562,10 @@ extension SearchVC: UICollectionViewDelegate {
         searchController.searchBar.resignFirstResponder()
         
         // Navigate to coin details
-        let selectedCoin = viewModel.searchResults[indexPath.item]
+        let selectedCoin = currentSearchResults[indexPath.item]
         
         // Save this as a recent search since user selected it
-        let logoUrl = viewModel.coinLogos[selectedCoin.id]
+        let logoUrl = viewModel.currentCoinLogos[selectedCoin.id]
         recentSearchManager.addRecentSearch(
             coinId: selectedCoin.id,
             symbol: selectedCoin.symbol,
@@ -650,13 +659,14 @@ extension SearchVC {
      */
     private func searchForCoinAndNavigate(searchItem: RecentSearchItem) {
         // Store the original search text to restore later
-        let originalSearchText = viewModel.searchText
+        let originalSearchText = searchController.searchBar.text ?? ""
         
         // Trigger search for this specific coin
-        viewModel.searchText = searchItem.symbol
+        searchController.searchBar.text = searchItem.symbol
+        viewModel.updateSearchText(searchItem.symbol)
         
         // Wait for search results and then navigate
-        viewModel.$searchResults
+        viewModel.searchResults
             .receive(on: DispatchQueue.main)
             .first { !$0.isEmpty } // Wait for non-empty results
             .timeout(.seconds(3), scheduler: DispatchQueue.main) // 3 second timeout
@@ -677,7 +687,8 @@ extension SearchVC {
                         print("✅ Found real coin data for \(searchItem.symbol)")
                         
                         // Restore original search text
-                        self.viewModel.searchText = originalSearchText
+                        self.searchController.searchBar.text = originalSearchText
+                        self.viewModel.updateSearchText(originalSearchText)
                         
                         // Navigate with real coin data
                         let detailsVC = CoinDetailsVC(coin: matchingCoin)
@@ -696,7 +707,8 @@ extension SearchVC {
      */
     private func navigateWithFallback(searchItem: RecentSearchItem, originalSearchText: String) {
         // Restore original search text
-        viewModel.searchText = originalSearchText
+        searchController.searchBar.text = originalSearchText
+        viewModel.updateSearchText(originalSearchText)
         
         // Show alert that coin details may be limited
         let alert = UIAlertController(
@@ -727,7 +739,7 @@ extension SearchVC {
         
         // Find the best matching coin from search results
         if let matchingCoin = findBestMatchingCoin(for: trimmed) {
-            let logoUrl = viewModel.coinLogos[matchingCoin.id]
+            let logoUrl = viewModel.currentCoinLogos[matchingCoin.id]
             recentSearchManager.addRecentSearch(
                 coinId: matchingCoin.id,
                 symbol: matchingCoin.symbol,
@@ -746,7 +758,7 @@ extension SearchVC {
      */
     private func findCoinInCache(coinId: Int) -> Coin? {
         // Check current search results first
-        return viewModel.searchResults.first(where: { $0.id == coinId })
+        return currentSearchResults.first(where: { $0.id == coinId })
     }
     
     /**
@@ -756,17 +768,17 @@ extension SearchVC {
         let lowercaseSearch = searchTerm.lowercased()
         
         // First try exact symbol match
-        if let exactMatch = viewModel.searchResults.first(where: { $0.symbol.lowercased() == lowercaseSearch }) {
+        if let exactMatch = currentSearchResults.first(where: { $0.symbol.lowercased() == lowercaseSearch }) {
             return exactMatch
         }
         
         // Then try exact name match
-        if let exactMatch = viewModel.searchResults.first(where: { $0.name.lowercased() == lowercaseSearch }) {
+        if let exactMatch = currentSearchResults.first(where: { $0.name.lowercased() == lowercaseSearch }) {
             return exactMatch
         }
         
         // Finally return first result if any
-        return viewModel.searchResults.first
+        return currentSearchResults.first
     }
     
     /**

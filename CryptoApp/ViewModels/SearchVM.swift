@@ -31,13 +31,70 @@ extension Notification.Name {
  */
 final class SearchVM: ObservableObject {
     
-    // MARK: - Published Properties
+    // MARK: - Private Subjects (Internal State Management)
     
-    @Published var searchText: String = ""
-    @Published var searchResults: [Coin] = []
-    @Published var isLoading: Bool = false
-    @Published var errorMessage: String?
-    @Published var coinLogos: [Int: String] = [:]
+    /**
+     * REACTIVE STATE MANAGEMENT WITH SUBJECTS
+     * 
+     * Using CurrentValueSubject for state that needs current values
+     * This gives us more control over when and how values are published
+     */
+    
+    private let searchTextSubject = CurrentValueSubject<String, Never>("")
+    private let searchResultsSubject = CurrentValueSubject<[Coin], Never>([])
+    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
+    private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
+    private let coinLogosSubject = CurrentValueSubject<[Int: String], Never>([:])
+    
+    // MARK: - Published AnyPublisher Properties
+    
+    /**
+     * REACTIVE UI BINDING WITH ANYPUBLISHER
+     * 
+     * These AnyPublisher properties provide the same functionality as @Published
+     * but give us more control over publishing behavior and transformations
+     */
+    
+    var searchText: AnyPublisher<String, Never> {
+        searchTextSubject.eraseToAnyPublisher()
+    }
+    
+    var searchResults: AnyPublisher<[Coin], Never> {
+        searchResultsSubject.eraseToAnyPublisher()
+    }
+    
+    var isLoading: AnyPublisher<Bool, Never> {
+        isLoadingSubject.eraseToAnyPublisher()
+    }
+    
+    var errorMessage: AnyPublisher<String?, Never> {
+        errorMessageSubject.eraseToAnyPublisher()
+    }
+    
+    var coinLogos: AnyPublisher<[Int: String], Never> {
+        coinLogosSubject.eraseToAnyPublisher()
+    }
+    
+    // MARK: - Current Value Accessors (For Internal Logic and ViewController Access)
+    
+    /**
+     * INTERNAL STATE ACCESS
+     * 
+     * These computed properties provide access to current values
+     * for both internal logic and ViewController access
+     */
+    
+    private var currentSearchText: String {
+        searchTextSubject.value
+    }
+    
+    var currentSearchResults: [Coin] {
+        searchResultsSubject.value
+    }
+    
+    var currentCoinLogos: [Int: String] {
+        coinLogosSubject.value
+    }
     
     // MARK: - Private Properties
     
@@ -89,7 +146,7 @@ final class SearchVM: ObservableObject {
      * - Updates UI on main queue
      */
     private func setupSearchDebounce() {
-        $searchText
+        searchTextSubject
             .debounce(for: .milliseconds(Int(debounceInterval * 1000)), scheduler: DispatchQueue.main)
             .removeDuplicates()
             .sink { [weak self] searchText in
@@ -114,7 +171,7 @@ final class SearchVM: ObservableObject {
             
             // Load cached logos
             if let cachedLogos = persistenceService.loadCoinLogos() {
-                self.coinLogos = cachedLogos
+                coinLogosSubject.send(cachedLogos)
             }
         } else {
             print("🔍 Search: No cached coins available - search will be empty until main list loads data")
@@ -146,7 +203,7 @@ final class SearchVM: ObservableObject {
         
         // Clear results if search text is too short
         guard trimmedText.count >= minimumSearchLength else {
-            searchResults = []
+            searchResultsSubject.send([])
             return
         }
         
@@ -188,8 +245,8 @@ final class SearchVM: ObservableObject {
             
             // Update UI on main queue
             DispatchQueue.main.async {
-                self.searchResults = Array(sortedResults)
-                print("🔍 Search: Found \(self.searchResults.count) results for '\(trimmedText)'")
+                self.searchResultsSubject.send(Array(sortedResults))
+                print("🔍 Search: Found \(Array(sortedResults).count) results for '\(trimmedText)'")
             }
         }
     }
@@ -202,7 +259,7 @@ final class SearchVM: ObservableObject {
      * Allows manual triggering of search (useful for initial load or refresh)
      */
     func triggerSearch() {
-        performSearch(for: searchText)
+        performSearch(for: currentSearchText)
     }
     
     /**
@@ -211,8 +268,17 @@ final class SearchVM: ObservableObject {
      * Clears search text and results
      */
     func clearSearch() {
-        searchText = ""
-        searchResults = []
+        searchTextSubject.send("")
+        searchResultsSubject.send([])
+    }
+    
+    /**
+     * UPDATE SEARCH TEXT
+     * 
+     * Updates the search text which will trigger debounced search
+     */
+    func updateSearchText(_ text: String) {
+        searchTextSubject.send(text)
     }
     
     /**
@@ -229,15 +295,15 @@ final class SearchVM: ObservableObject {
             
             // Load updated logos
             if let cachedLogos = persistenceService.loadCoinLogos() {
-                self.coinLogos = cachedLogos
+                coinLogosSubject.send(cachedLogos)
             }
             
             // Re-perform current search with refreshed data
-            performSearch(for: searchText)
+            performSearch(for: currentSearchText)
         } else {
             print("🔍 Search: No cached data available for refresh")
             self.allCoins = []
-            self.searchResults = []
+            searchResultsSubject.send([])
         }
     }
 } 

@@ -237,7 +237,7 @@ final class WatchlistVC: UIViewController {
     }
     
     private func showPerformanceComparison() {
-        let metrics = viewModel.getPerformanceMetrics()
+        let _ = viewModel.getPerformanceMetrics()
         let managerMetrics = WatchlistManager.shared.getPerformanceMetrics()
         
         let message = """
@@ -351,7 +351,7 @@ final class WatchlistVC: UIViewController {
             )
             
             // Load coin logo if available
-            if let urlString = self?.viewModel.coinLogos[coin.id] {
+            if let urlString = self?.viewModel.currentCoinLogos[coin.id] {
                 cell.coinImageView.downloadImage(fromURL: urlString)
             } else {
                 cell.coinImageView.setPlaceholder()
@@ -365,7 +365,7 @@ final class WatchlistVC: UIViewController {
     
     private func bindViewModel() {
         // Bind watchlist coins
-        viewModel.$watchlistCoins
+        viewModel.watchlistCoins
             .receive(on: DispatchQueue.main)
             .sink { [weak self] coins in
                 self?.updateDataSource(with: coins)
@@ -375,7 +375,7 @@ final class WatchlistVC: UIViewController {
             .store(in: &cancellables)
         
         // Bind logo updates
-        viewModel.$coinLogos
+        viewModel.coinLogos
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 // Reload visible cells to update logos
@@ -384,7 +384,7 @@ final class WatchlistVC: UIViewController {
             .store(in: &cancellables)
         
         // Bind loading state
-        viewModel.$isLoading
+        viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
                 if isLoading {
@@ -399,7 +399,7 @@ final class WatchlistVC: UIViewController {
             .store(in: &cancellables)
         
         // Bind error messages
-        viewModel.$errorMessage
+        viewModel.errorMessage
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
@@ -408,7 +408,7 @@ final class WatchlistVC: UIViewController {
             .store(in: &cancellables)
         
         // Bind price updates
-        viewModel.$updatedCoinIds
+        viewModel.updatedCoinIds
             .receive(on: DispatchQueue.main)
             .filter { !$0.isEmpty }
             .sink { [weak self] updatedCoinIds in
@@ -439,7 +439,7 @@ final class WatchlistVC: UIViewController {
         guard !updatedCoinIds.isEmpty else { return }
         
         for indexPath in collectionView.indexPathsForVisibleItems {
-            guard let coin = viewModel.watchlistCoins[safe: indexPath.item],
+            guard let coin = viewModel.currentWatchlistCoins[safe: indexPath.item],
                   updatedCoinIds.contains(coin.id),
                   let cell = collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
             
@@ -544,7 +544,7 @@ extension WatchlistVC: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
                 collectionView.deselectItem(at: indexPath, animated: true)
         
-        let selectedCoin = viewModel.watchlistCoins[indexPath.item]
+        let selectedCoin = viewModel.currentWatchlistCoins[indexPath.item]
         let detailsVC = CoinDetailsVC(coin: selectedCoin)
         navigationController?.pushViewController(detailsVC, animated: true)
     }
@@ -552,7 +552,7 @@ extension WatchlistVC: UICollectionViewDelegate {
     // MARK: - Swipe to Remove
     
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        let coin = viewModel.watchlistCoins[indexPath.item]
+        let coin = viewModel.currentWatchlistCoins[indexPath.item]
         
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
             let removeAction = UIAction(

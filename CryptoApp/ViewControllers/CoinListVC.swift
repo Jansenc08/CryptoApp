@@ -48,7 +48,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         
         // Only fetch data on initial load, not on every view appear
         // Pull-to-refresh and auto-refresh handle data updates
-        if viewModel.coins.isEmpty {
+        if viewModel.currentCoins.isEmpty {
             print("📱 Initial load - fetching data")
             viewModel.fetchCoins()
         } else {
@@ -341,7 +341,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             )
             
             // Load the coin logo image if available
-            if let urlString = self?.viewModel.coinLogos[coin.id] {
+            if let urlString = self?.viewModel.currentCoinLogos[coin.id] {
                 // Removed verbose logo loading logs - only log if debugging needed
                 // print("🖼️ CoinListVC | Loading logo for \(coin.name) (ID: \(coin.id)): \(urlString)")
                 cell.coinImageView.downloadImage(fromURL: urlString)
@@ -362,13 +362,13 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     // MARK: - ViewModel Bindings with Combine
 
     // Combine handles threading
-    // Combines listens for changes to ui updates such as coins. (since they are @Published)
+    // Combines listens for changes to ui updates such as coins. (now using AnyPublisher)
     // even if data comes from the background thread, it sends it back on the main thread
     // handles async-queue switching
     // Combine uses GCD queues
     private func bindViewModel() {
         // Bind coin list changes
-        viewModel.$coins
+        viewModel.coins
             .receive(on: DispatchQueue.main) // ensures UI updates happens on the main thread
             .sink { [weak self] coins in // Creates a combine subscription
                 var snapshot = NSDiffableDataSourceSnapshot<CoinSection, Coin>()
@@ -379,7 +379,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             .store(in: &cancellables) // Keeps this subscription alive
         
         // Bind logo updates (e.g fetched after coin data)
-        viewModel.$coinLogos
+        viewModel.coinLogos
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.collectionView.reloadData()
@@ -387,7 +387,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             .store(in: &cancellables)
         
         // Bind error message to show alert
-        viewModel.$errorMessage
+        viewModel.errorMessage
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
@@ -396,7 +396,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             .store(in: &cancellables)
         
         // Bind price updates - only update cells that actually changed
-        viewModel.$updatedCoinIds
+        viewModel.updatedCoinIds
             .receive(on: DispatchQueue.main)
             .filter { !$0.isEmpty }  // Only process when there are actual changes
             .sink { [weak self] updatedCoinIds in
@@ -405,7 +405,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             .store(in: &cancellables)
         
         // Bind loading state to show/hide LoadingView in collection view
-        viewModel.$isLoading
+        viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
                 guard let self = self else { return }
@@ -511,7 +511,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // - If data is already loading (initial load or pagination)
         // - Or if another refresh (pull-to-refresh or timer) is already in progress
         // => Skip this cycle to prevent multiple concurrent fetches
-        guard !viewModel.isLoading && !isRefreshing else { return }
+        guard !viewModel.currentIsLoading && !isRefreshing else { return }
         
         //  Throttle refreshes (rate-limiting)
         // - If the last refresh happened < 10 seconds ago, skip
@@ -529,7 +529,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // - Only refresh prices for those visible coins (optimization)
         let visibleIndexPaths = collectionView.indexPathsForVisibleItems
         let visibleCoinIds = visibleIndexPaths.compactMap { indexPath in
-            viewModel.coins[safe: indexPath.item]?.id
+            viewModel.currentCoins[safe: indexPath.item]?.id
         }
         
         //   Trigger price update for visible coin IDs
@@ -552,7 +552,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         var updatedCellsCount = 0
         
         for indexPath in collectionView.indexPathsForVisibleItems {
-            guard let coin = viewModel.coins[safe: indexPath.item],
+            guard let coin = viewModel.currentCoins[safe: indexPath.item],
                   updatedCoinIds.contains(coin.id),
                   let cell = collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
             
@@ -586,7 +586,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     }
     
     private func updateSortHeaderForCurrentFilter() {
-        let priceChangeTitle = viewModel.filterState.priceChangeFilter.shortDisplayName + "%"
+        let priceChangeTitle = viewModel.currentFilterState.priceChangeFilter.shortDisplayName + "%"
         sortHeaderView.updatePriceChangeColumnTitle(priceChangeTitle)
     }
     
@@ -621,7 +621,7 @@ extension CoinListVC: UICollectionViewDelegate {
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         // Navigate to coin details screen when user taps a coin
-        let selectedCoin = viewModel.coins[indexPath.item]
+        let selectedCoin = viewModel.currentCoins[indexPath.item]
         let detailsVC = CoinDetailsVC(coin: selectedCoin)
         navigationController?.pushViewController(detailsVC, animated: true)
         
@@ -631,7 +631,7 @@ extension CoinListVC: UICollectionViewDelegate {
     // MARK: - Context Menu for Add to Watchlist
     
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        let coin = viewModel.coins[indexPath.item]
+        let coin = viewModel.currentCoins[indexPath.item]
         let watchlistManager = WatchlistManager.shared
         
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
@@ -654,7 +654,7 @@ extension CoinListVC: UICollectionViewDelegate {
                     title: "Add to Watchlist",
                     image: UIImage(systemName: "star")
                 ) { _ in
-                    let logoURL = self.viewModel.coinLogos[coin.id]
+                    let logoURL = self.viewModel.currentCoinLogos[coin.id]
                     watchlistManager.addToWatchlist(coin, logoURL: logoURL)
                     self.showWatchlistFeedback(message: "Added \(coin.symbol) to watchlist", isAdding: true)
                 }
@@ -719,13 +719,13 @@ extension CoinListVC: SortHeaderViewDelegate {
 
 extension CoinListVC: FilterHeaderViewDelegate {
     func filterHeaderView(_ headerView: FilterHeaderView, didTapPriceChangeButton button: FilterButton) {
-        let modalVC = FilterModalVC(filterType: .priceChange, currentState: viewModel.filterState)
+        let modalVC = FilterModalVC(filterType: .priceChange, currentState: viewModel.currentFilterState)
         modalVC.delegate = self
         present(modalVC, animated: true)
     }
     
     func filterHeaderView(_ headerView: FilterHeaderView, didTapTopCoinsButton button: FilterButton) {
-        let modalVC = FilterModalVC(filterType: .topCoins, currentState: viewModel.filterState)
+        let modalVC = FilterModalVC(filterType: .topCoins, currentState: viewModel.currentFilterState)
         modalVC.delegate = self
         present(modalVC, animated: true)
     }
@@ -741,7 +741,7 @@ extension CoinListVC: FilterModalVCDelegate {
         viewModel.updatePriceChangeFilter(filter)
         
         // Update header view state to reflect the new filter
-        filterHeaderView.updateFilterState(viewModel.filterState)
+        filterHeaderView.updateFilterState(viewModel.currentFilterState)
         updateSortHeaderForCurrentFilter() // Also update sort header
     }
     
@@ -752,7 +752,7 @@ extension CoinListVC: FilterModalVCDelegate {
         viewModel.updateTopCoinsFilter(filter)
         
         // Update header view state to reflect the new filter
-        filterHeaderView.updateFilterState(viewModel.filterState)
+        filterHeaderView.updateFilterState(viewModel.currentFilterState)
         updateSortHeaderForCurrentFilter() // Also update sort header
     }
     

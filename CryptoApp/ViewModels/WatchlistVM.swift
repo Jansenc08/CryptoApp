@@ -4,13 +4,70 @@ import CoreData
 
 final class WatchlistVM: ObservableObject {
     
-    // MARK: - Published Properties
+    // MARK: - Private Subjects (Internal State Management)
     
-    @Published var watchlistCoins: [Coin] = []
-    @Published var coinLogos: [Int: String] = [:]
-    @Published var isLoading: Bool = false
-    @Published var errorMessage: String?
-    @Published var updatedCoinIds: Set<Int> = []
+    /**
+     * REACTIVE STATE MANAGEMENT WITH SUBJECTS
+     * 
+     * Using CurrentValueSubject for state that needs current values
+     * This gives us more control over when and how values are published
+     */
+    
+    private let watchlistCoinsSubject = CurrentValueSubject<[Coin], Never>([])
+    private let coinLogosSubject = CurrentValueSubject<[Int: String], Never>([:])
+    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
+    private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
+    private let updatedCoinIdsSubject = CurrentValueSubject<Set<Int>, Never>([])
+    
+    // MARK: - Published AnyPublisher Properties
+    
+    /**
+     * REACTIVE UI BINDING WITH ANYPUBLISHER
+     * 
+     * These AnyPublisher properties provide the same functionality as @Published
+     * but give us more control over publishing behavior and transformations
+     */
+    
+    var watchlistCoins: AnyPublisher<[Coin], Never> {
+        watchlistCoinsSubject.eraseToAnyPublisher()
+    }
+    
+    var coinLogos: AnyPublisher<[Int: String], Never> {
+        coinLogosSubject.eraseToAnyPublisher()
+    }
+    
+    var isLoading: AnyPublisher<Bool, Never> {
+        isLoadingSubject.eraseToAnyPublisher()
+    }
+    
+    var errorMessage: AnyPublisher<String?, Never> {
+        errorMessageSubject.eraseToAnyPublisher()
+    }
+    
+    var updatedCoinIds: AnyPublisher<Set<Int>, Never> {
+        updatedCoinIdsSubject.eraseToAnyPublisher()
+    }
+    
+    // MARK: - Current Value Accessors (For Internal Logic and ViewController Access)
+    
+    /**
+     * INTERNAL STATE ACCESS
+     * 
+     * These computed properties provide access to current values
+     * for both internal logic and ViewController access
+     */
+    
+    var currentWatchlistCoins: [Coin] {
+        watchlistCoinsSubject.value
+    }
+    
+    var currentCoinLogos: [Int: String] {
+        coinLogosSubject.value
+    }
+    
+    var currentIsLoading: Bool {
+        isLoadingSubject.value
+    }
     
     // MARK: - Sorting Properties
     
@@ -99,8 +156,8 @@ final class WatchlistVM: ObservableObject {
         
         if coins.isEmpty {
             DispatchQueue.main.async {
-                self.watchlistCoins = []
-                self.isLoading = false
+                self.watchlistCoinsSubject.send([])
+                self.isLoadingSubject.send(false)
             }
             return
         }
@@ -119,8 +176,8 @@ final class WatchlistVM: ObservableObject {
         #endif
         
         if coins.isEmpty {
-            watchlistCoins = []
-            isLoading = false
+            watchlistCoinsSubject.send([])
+            isLoadingSubject.send(false)
         } else {
             // Always fetch fresh price data to ensure we have complete information
             refreshPriceData(for: coins)
@@ -134,8 +191,8 @@ final class WatchlistVM: ObservableObject {
     }
     
     func removeFromWatchlist(at index: Int) {
-        guard index < watchlistCoins.count else { return }
-        let coin = watchlistCoins[index]
+        guard index < currentWatchlistCoins.count else { return }
+        let coin = currentWatchlistCoins[index]
         removeFromWatchlist(coin)
     }
     
@@ -185,7 +242,7 @@ final class WatchlistVM: ObservableObject {
     }
     
     private func handleWatchlistChange(newCoins: [Coin]) {
-        let oldCoinIds = Set(watchlistCoins.map { $0.id })
+        let oldCoinIds = Set(currentWatchlistCoins.map { $0.id })
         let newCoinIds = Set(newCoins.map { $0.id })
         
         // Only update if there's an actual change
@@ -196,16 +253,18 @@ final class WatchlistVM: ObservableObject {
                 refreshPriceData(for: newCoins)
             } else {
                 // If empty, update immediately
-                watchlistCoins = newCoins
+                watchlistCoinsSubject.send(newCoins)
             }
             
             // Clean up logos for removed coins
             let removedCoinIds = oldCoinIds.subtracting(newCoinIds)
-            removedCoinIds.forEach { coinLogos.removeValue(forKey: $0) }
+            var updatedLogos = currentCoinLogos
+            removedCoinIds.forEach { updatedLogos.removeValue(forKey: $0) }
+            coinLogosSubject.send(updatedLogos)
         } else if !newCoins.isEmpty {
             // Same coins but maybe need sorting applied
-            let currentCoins = watchlistCoins
-            watchlistCoins = newCoins
+            let currentCoins = currentWatchlistCoins
+            watchlistCoinsSubject.send(newCoins)
             if currentCoins != newCoins {
                 applySortingToWatchlist()
             }
@@ -221,7 +280,7 @@ final class WatchlistVM: ObservableObject {
             }
         case "batch_add", "batch_remove":
             // Refresh all logos for batch operations
-            fetchMissingLogos(for: watchlistCoins)
+            fetchMissingLogos(for: currentWatchlistCoins)
         default:
             break
         }
@@ -244,13 +303,13 @@ final class WatchlistVM: ObservableObject {
     
     private func refreshPriceData(for coins: [Coin]) {
         guard !coins.isEmpty else {
-            watchlistCoins = []
-            isLoading = false
+            watchlistCoinsSubject.send([])
+            isLoadingSubject.send(false)
             return
         }
         
-        isLoading = true
-        errorMessage = nil
+        isLoadingSubject.send(true)
+        errorMessageSubject.send(nil)
         
         let coinIds = coins.map { $0.id }
         
@@ -272,8 +331,8 @@ final class WatchlistVM: ObservableObject {
                 }
                 #endif
                 
-                self?.watchlistCoins = updatedCoins
-                self?.isLoading = false
+                self?.watchlistCoinsSubject.send(updatedCoins)
+                self?.isLoadingSubject.send(false)
                 self?.lastPriceUpdate = Date()
                 
                 // Apply current sorting after price update
@@ -307,14 +366,14 @@ final class WatchlistVM: ObservableObject {
                     receiveCompletion: { [weak self] completionResult in
                         if case .failure(let error) = completionResult {
                             DispatchQueue.main.async {
-                                self?.errorMessage = "Failed to update prices: \(error.localizedDescription)"
-                                self?.isLoading = false
+                                self?.errorMessageSubject.send("Failed to update prices: \(error.localizedDescription)")
+                                self?.isLoadingSubject.send(false)
                                 self?.isPriceUpdateInProgress = false
                                 
                                 // Fallback: show coins without price data rather than empty list
                                 let baseCoins = self?.watchlistManager.getWatchlistCoins() ?? []
                                 if !baseCoins.isEmpty {
-                                    self?.watchlistCoins = baseCoins
+                                    self?.watchlistCoinsSubject.send(baseCoins)
                                     #if DEBUG
                                     print("⚠️ Price fetch failed, showing \(baseCoins.count) coins without price data")
                                     #endif
@@ -365,7 +424,7 @@ final class WatchlistVM: ObservableObject {
     
     private func fetchMissingLogos(for coins: [Coin]) {
         let coinsNeedingLogos = coins.filter { coin in
-            coinLogos[coin.id] == nil && !logoRequestsInProgress.contains(coin.id)
+            currentCoinLogos[coin.id] == nil && !logoRequestsInProgress.contains(coin.id)
         }
         
         guard !coinsNeedingLogos.isEmpty else { return }
@@ -380,23 +439,29 @@ final class WatchlistVM: ObservableObject {
             self.coinManager.getCoinLogos(forIDs: coinIds)
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] logos in
-                    self?.coinLogos.merge(logos) { _, new in new }
-                    self?.logoRequestsInProgress.subtract(coinIds)
+                    guard let self = self else { return }
+                    let currentLogos = self.currentCoinLogos
+                    let mergedLogos = currentLogos.merging(logos) { _, new in new }
+                    self.coinLogosSubject.send(mergedLogos)
+                    self.logoRequestsInProgress.subtract(coinIds)
                 }
                 .store(in: &self.requestCancellables)
         }
     }
     
     private func fetchLogoIfNeeded(for coinId: Int) {
-        guard coinLogos[coinId] == nil && !logoRequestsInProgress.contains(coinId) else { return }
+        guard currentCoinLogos[coinId] == nil && !logoRequestsInProgress.contains(coinId) else { return }
         
         logoRequestsInProgress.insert(coinId)
         
         coinManager.getCoinLogos(forIDs: [coinId])
             .receive(on: DispatchQueue.main)
             .sink { [weak self] logos in
-                self?.coinLogos.merge(logos) { _, new in new }
-                self?.logoRequestsInProgress.remove(coinId)
+                guard let self = self else { return }
+                let currentLogos = self.currentCoinLogos
+                let mergedLogos = currentLogos.merging(logos) { _, new in new }
+                self.coinLogosSubject.send(mergedLogos)
+                self.logoRequestsInProgress.remove(coinId)
             }
             .store(in: &requestCancellables)
     }
@@ -430,14 +495,14 @@ final class WatchlistVM: ObservableObject {
         guard !isPriceUpdateInProgress else { return }
         
         // Only update if we have coins and not currently loading
-        guard !watchlistCoins.isEmpty && !isLoading else { return }
+        guard !currentWatchlistCoins.isEmpty && !currentIsLoading else { return }
         
         // Check if enough time has passed (unless forced)
         let timeSinceLastUpdate = Date().timeIntervalSince(lastPriceUpdate)
         guard force || timeSinceLastUpdate >= priceUpdateInterval else { return }
         
         isPriceUpdateInProgress = true
-        let coinIds = watchlistCoins.map { $0.id }
+        let coinIds = currentWatchlistCoins.map { $0.id }
         
         // Background price update
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -449,13 +514,13 @@ final class WatchlistVM: ObservableObject {
                     
                     // Efficient change detection
                     let changedCoinIds = self.findChangedCoins(
-                        current: self.watchlistCoins,
+                        current: self.currentWatchlistCoins,
                         updated: updatedCoins
                     )
                     
                     if !changedCoinIds.isEmpty {
-                        self.watchlistCoins = updatedCoins
-                        self.updatedCoinIds = changedCoinIds
+                        self.watchlistCoinsSubject.send(updatedCoins)
+                        self.updatedCoinIdsSubject.send(changedCoinIds)
                         self.lastPriceUpdate = Date()
                         
                         // Apply current sorting after periodic price update
@@ -496,7 +561,7 @@ final class WatchlistVM: ObservableObject {
     
     
     func clearUpdatedCoinIds() {
-        updatedCoinIds.removeAll()
+        updatedCoinIdsSubject.send([])
     }
     
     // MARK: - Public Lifecycle Methods
@@ -527,7 +592,7 @@ final class WatchlistVM: ObservableObject {
         // Cancel any in-flight API requests (but keep UI bindings)
         requestCancellables.removeAll()
         isPriceUpdateInProgress = false
-        isLoading = false
+        isLoadingSubject.send(false)
         logoRequestsInProgress.removeAll()
         #if DEBUG
         print("🚫 WatchlistVM: Cancelled all in-flight API requests")
@@ -591,15 +656,15 @@ final class WatchlistVM: ObservableObject {
      * Maintains the current coins array and applies new sort order.
      */
     private func applySortingToWatchlist() {
-        guard !watchlistCoins.isEmpty else { return }
+        guard !currentWatchlistCoins.isEmpty else { return }
         
         #if DEBUG
-        print("🔧 Sorting \(watchlistCoins.count) watchlist coins by \(columnName(for: currentSortColumn))")
+        print("🔧 Sorting \(currentWatchlistCoins.count) watchlist coins by \(columnName(for: currentSortColumn))")
         #endif
         
         // Sort the watchlist coins
-        let sortedCoins = sortCoins(watchlistCoins)
-        watchlistCoins = sortedCoins  // This triggers UI update via @Published
+        let sortedCoins = sortCoins(currentWatchlistCoins)
+        watchlistCoinsSubject.send(sortedCoins)  // This triggers UI update via AnyPublisher
         
         #if DEBUG
         if sortedCoins.count > 0 {
@@ -680,12 +745,12 @@ final class WatchlistVM: ObservableObject {
     
     func getPerformanceMetrics() -> [String: Any] {
         return [
-            "watchlistCount": watchlistCoins.count,
-            "logosCached": coinLogos.count,
+            "watchlistCount": currentWatchlistCoins.count,
+            "logosCached": currentCoinLogos.count,
             "logoRequestsInProgress": logoRequestsInProgress.count,
             "lastPriceUpdate": lastPriceUpdate.timeIntervalSince1970,
             "isPriceUpdateInProgress": isPriceUpdateInProgress,
-            "isLoading": isLoading,
+            "isLoading": currentIsLoading,
             "watchlistManagerMetrics": watchlistManager.getPerformanceMetrics()
         ]
     }

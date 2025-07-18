@@ -18,6 +18,10 @@ final class CoinDetailsVC: UIViewController {
     private var lastChartUpdateTime: Date?
     private var isUserInteracting = false
     private var previousChartPointsCount = 0
+    
+    // MARK: - Rate Limiting & Debouncing Properties
+    private var filterChangeWorkItem: DispatchWorkItem?                   // Debouncing for filter changes
+    private let filterDebounceInterval: TimeInterval = 0.5                // 500ms debounce delay
 
     // MARK: - Init
     
@@ -37,6 +41,7 @@ final class CoinDetailsVC: UIViewController {
         print("🧹 CoinDetailsVC deinit - cleaning up resources for \(coin.symbol)")
         refreshTimer?.invalidate()
         refreshTimer = nil
+        filterChangeWorkItem?.cancel() // Cancel pending debounced filter changes
         cancellables.removeAll()
     }
     
@@ -133,7 +138,7 @@ final class CoinDetailsVC: UIViewController {
     private func bindViewModel() {
         
         // Chart updates - only update when meaningful changes occur
-        viewModel.$chartPoints
+        viewModel.chartPoints
             .receive(on: DispatchQueue.main) // Switch to main thread for UI updates
             .sink { [weak self] newPoints in //  consume updates
                 guard let self = self else { return }
@@ -148,7 +153,7 @@ final class CoinDetailsVC: UIViewController {
             .store(in: &cancellables) // Memory Management 
         
         // Loading state updates
-        viewModel.$isLoading
+        viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
                 guard let self = self else { return }
@@ -161,7 +166,7 @@ final class CoinDetailsVC: UIViewController {
             .store(in: &cancellables)
         
         // Error handling
-        viewModel.$errorMessage
+        viewModel.errorMessage
             .receive(on: DispatchQueue.main)
             .compactMap { $0 }
             .sink { [weak self] errorMessage in
@@ -170,7 +175,7 @@ final class CoinDetailsVC: UIViewController {
             .store(in: &cancellables)
         
         // Stats range updates - reload stats section when range changes
-        viewModel.$selectedStatsRange
+        viewModel.selectedStatsRange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateStatsCell()
@@ -226,12 +231,12 @@ final class CoinDetailsVC: UIViewController {
         }
         
         // Update stats cell with new data and preserve selected segment
-        statsCell.configure(with: viewModel.currentStats, selectedRange: viewModel.selectedStatsRange) { [weak self] selectedRange in
+        statsCell.configure(with: viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
             print("📊 Selected stats filter: \(selectedRange)")
             self?.viewModel.updateStatsRange(selectedRange)
         }
         
-        print("📊 Updated stats cell for range: \(viewModel.selectedStatsRange)")
+        print("📊 Updated stats cell for range: \(viewModel.currentSelectedStatsRange)")
     }
     
     private func showErrorAlert(message: String) {
@@ -241,7 +246,7 @@ final class CoinDetailsVC: UIViewController {
     }
 
     private func bindFilter() {
-        // When user taps a new range (24h, 7d, etc.), fetch chart data for that range
+        // When user taps a new range (24h, 7d, etc.), debounce and fetch chart data for that range
         selectedRange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] range in
@@ -249,12 +254,26 @@ final class CoinDetailsVC: UIViewController {
                 
                 print("🔄 Filter changed to: \(range)")
                 
-                // Reset chart state for new range
-                self.previousChartPointsCount = 0
-                self.lastChartUpdateTime = nil
+                // Cancel any pending filter change request
+                self.filterChangeWorkItem?.cancel()
                 
-                // Fetch data for new range
-                self.viewModel.fetchChartData(for: range)
+                // Create new debounced work item
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self = self else { return }
+                    
+                    print("⚡ Debounced filter change executing: \(range)")
+                    
+                    // Reset chart state for new range
+                    self.previousChartPointsCount = 0
+                    self.lastChartUpdateTime = nil
+                    
+                    // Fetch data for new range with high priority (user action)
+                    self.viewModel.fetchChartData(for: range)
+                }
+                
+                // Store work item and schedule with debounce delay
+                self.filterChangeWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + self.filterDebounceInterval, execute: workItem)
             }
             .store(in: &cancellables)
     }
@@ -313,7 +332,7 @@ extension CoinDetailsVC: UITableViewDataSource {
             return cell
         case 2: // Chart section
             let cell = tableView.dequeueReusableCell(withIdentifier: "ChartCell", for: indexPath) as! ChartCell
-            cell.configure(points: viewModel.chartPoints, range: selectedRange.value)
+            cell.configure(points: viewModel.currentChartPoints, range: selectedRange.value)
             cell.onScrollToEdge = { [weak self] dir in
                 self?.viewModel.loadMoreHistoricalData(for: self?.selectedRange.value ?? "24h", beforeDate: Date())
             }
@@ -321,7 +340,7 @@ extension CoinDetailsVC: UITableViewDataSource {
             return cell
         case 3: // Stats section
             let cell = tableView.dequeueReusableCell(withIdentifier: "StatsCell", for: indexPath) as! StatsCell
-            cell.configure(with: viewModel.currentStats, selectedRange: viewModel.selectedStatsRange) { [weak self] selectedRange in
+            cell.configure(with: viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
                 print("📊 Selected stats filter: \(selectedRange)")
                 self?.viewModel.updateStatsRange(selectedRange)
             }

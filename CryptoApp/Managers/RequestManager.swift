@@ -6,13 +6,13 @@ import Combine
 enum RequestPriority {
     case high      // User-initiated (filter changes, immediate needs)
     case normal    // Regular app functionality (coin list loading, etc.)
-    case low       // Background prefetching, auto-refresh - These can wait
+    case low       // Background operations, auto-refresh - These can wait
     
     var delayInterval: TimeInterval {
         switch self {
-        case .high:   return 2.0  // 2 seconds for user requests
-        case .normal: return 5.0  // 5 seconds for regular requests
-        case .low:    return 8.0  // 8 seconds for background requests
+        case .high:   return 1.0  // 1 second for user requests - more responsive for filter changes
+        case .normal: return 3.0  // 3 seconds for regular requests - balanced approach
+        case .low:    return 6.0  // 6 seconds for background requests - conservative for non-urgent tasks
         }
     }
     
@@ -37,14 +37,20 @@ final class RequestManager {
     private var lastRequestTimes: [String: Date] = [:]
     private var coinGeckoRequestCount: Int = 0
     private var coinGeckoWindowStart: Date = Date()
-    private let coinGeckoMaxRequests: Int = 7                // conservative (25% of 30/min limit)
+    private let coinGeckoMaxRequests: Int = 10               // conservative (33% of 30/min limit) - optimized for better UX
     private let coinGeckoWindowDuration: TimeInterval = 60.0 // 1 minute window
+    
+    // Exponential backoff for rate limiting
+    private var retryAttempts: [String: Int] = [:]           // Track retry attempts per request
+    private let maxRetryAttempts: Int = 3                    // Maximum retry attempts
+    private let baseRetryDelay: TimeInterval = 2.0          // Base delay in seconds
+    private let maxRetryDelay: TimeInterval = 30.0          // Maximum delay cap
     
     // Priority queue system
     // Separated requests into different queues so high priority requests jump the line
     private var highPriorityQueue: [() -> Void] = []        // Filter changes will be processed first
     private var normalPriorityQueue: [() -> Void] = []      // Regular requests
-    private var lowPriorityQueue: [() -> Void] = []         // Background stuff gets processed last
+    private var lowPriorityQueue: [() -> Void] = []         // Background operations get processed last
     private var isProcessingQueue = false
     
     private init() {}
@@ -279,11 +285,13 @@ final class RequestManager {
                 // Add request to appropriate priority queue
                 // High priority requests (filter changes) go to the front of the line
                 let requestAction = {
-                    self.executeRequest(key: key, priority: priority) {
-                        apiCall()
-                            .map { $0 as [Double] }
-                            .mapError { $0 as Error }
-                            .eraseToAnyPublisher()
+                    self.executeWithRetry(key: key, priority: priority) {
+                        self.executeRequest(key: key, priority: priority) {
+                            apiCall()
+                                .map { $0 as [Double] }
+                                .mapError { $0 as Error }
+                                .eraseToAnyPublisher()
+                        }
                     }
                     .sink(
                         receiveCompletion: { completion in
@@ -308,7 +316,7 @@ final class RequestManager {
                 case .normal:
                     self.normalPriorityQueue.append(requestAction)
                 case .low:
-                    self.lowPriorityQueue.append(requestAction) // Background prefetch goes here
+                    self.lowPriorityQueue.append(requestAction) // Background operations
                 }
                 
                 // Process queue if not already processing
@@ -374,12 +382,86 @@ final class RequestManager {
         isProcessingQueue = false
     }
     
+    // MARK: - Exponential Backoff Methods
+    
+    private func calculateRetryDelay(for attempt: Int) -> TimeInterval {
+        let exponentialDelay = baseRetryDelay * pow(2.0, Double(attempt))
+        return min(exponentialDelay, maxRetryDelay)
+    }
+    
+    private func executeWithRetry<T>(
+        key: String,
+        priority: RequestPriority,
+        request: @escaping () -> AnyPublisher<T, Error>
+    ) -> AnyPublisher<T, Error> {
+        return request()
+            .catch { [weak self] error -> AnyPublisher<T, Error> in
+                guard let self = self else {
+                    return Fail(error: error).eraseToAnyPublisher()
+                }
+                
+                // Check if this is a rate limiting error that should be retried
+                if self.shouldRetryForError(error) {
+                    let currentAttempt = self.retryAttempts[key] ?? 0
+                    
+                    if currentAttempt < self.maxRetryAttempts {
+                        let retryDelay = self.calculateRetryDelay(for: currentAttempt)
+                        
+                        print("🔄 Retry attempt \(currentAttempt + 1)/\(self.maxRetryAttempts) for \(key) in \(String(format: "%.1f", retryDelay))s")
+                        
+                        // Update retry count
+                        self.queue.async(flags: .barrier) {
+                            self.retryAttempts[key] = currentAttempt + 1
+                        }
+                        
+                        return Just(())
+                            .delay(for: .seconds(retryDelay), scheduler: DispatchQueue.global())
+                            .flatMap { _ in
+                                self.executeWithRetry(key: key, priority: priority, request: request)
+                            }
+                            .eraseToAnyPublisher()
+                    } else {
+                        print("❌ Max retry attempts reached for \(key)")
+                        // Clean up retry count
+                        self.queue.async(flags: .barrier) {
+                            self.retryAttempts.removeValue(forKey: key)
+                        }
+                    }
+                }
+                
+                return Fail(error: error).eraseToAnyPublisher()
+            }
+            .handleEvents(
+                receiveOutput: { [weak self] _ in
+                    // Clear retry count on success
+                    self?.queue.async(flags: .barrier) {
+                        self?.retryAttempts.removeValue(forKey: key)
+                    }
+                }
+            )
+            .eraseToAnyPublisher()
+    }
+    
+    private func shouldRetryForError(_ error: Error) -> Bool {
+        // Retry for rate limiting and invalid response errors
+        if let requestError = error as? RequestError {
+            return requestError == .rateLimited
+        }
+        
+        if let networkError = error as? NetworkError {
+            return networkError == .invalidResponse
+        }
+        
+        return false
+    }
+    
     // MARK: - Utility Methods
     
     func cancelAllRequests() {
         queue.async {
             self.activeRequests.removeAll()
             self.cancellables.removeAll()
+            self.retryAttempts.removeAll() // Clear retry tracking
             // Clear all priority queues when canceling
             self.highPriorityQueue.removeAll()
             self.normalPriorityQueue.removeAll()
@@ -408,7 +490,7 @@ final class RequestManager {
 }
 
 // MARK: - Request Error
-enum RequestError: Error {
+enum RequestError: Error, Equatable {
     case throttled
     case castingError
     case duplicateRequest

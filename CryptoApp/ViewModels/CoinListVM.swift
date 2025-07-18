@@ -14,10 +14,10 @@ import Combine
  *  ARCHITECTURE PATTERN: MVVM (Model-View-ViewModel)
  * - This ViewModel sits between the UI (CoinListVC) and business logic (CoinManager)
  * - It handles all state management, data transformation, and business logic
- * - Uses @Published properties to automatically notify the UI of changes via Combine
+ * - Uses AnyPublisher properties to automatically notify the UI of changes via Combine
  * 
  *  REACTIVE PROGRAMMING: Uses Combine framework for data flow
- * - @Published properties trigger UI updates automatically when data changes
+ * - AnyPublisher properties trigger UI updates automatically when data changes
  * - Combine publishers chain API calls and handle async operations
  * - Automatic memory management via cancellables
  * 
@@ -31,23 +31,87 @@ import Combine
  */
 final class CoinListVM: ObservableObject {
 
-    // MARK: - Published Properties (Observed by the UI)
+    // MARK: - Private Subjects (Internal State Management)
     
     /**
-     * REACTIVE UI BINDING: These @Published properties automatically trigger UI updates
-     *
-     * When any of these values change, the UI subscribes via Combine and updates automatically.
-     * This eliminates the need for manual UI refresh calls and prevents UI-data inconsistencies.
+     * REACTIVE STATE MANAGEMENT WITH SUBJECTS
+     * 
+     * Using CurrentValueSubject for state that needs current values
+     * Using PassthroughSubject for events and notifications
+     * This gives us more control over when and how values are published
      */
     
-    @Published var coins: [Coin] = []                      //  Coins currently displayed in collection view
-    @Published var coinLogos: [Int: String] = [:]          //  Coin ID → Logo URL mapping for image loading
-    @Published var isLoading: Bool = false                 //  Shows/hides loading spinner in collection view
-    @Published var isLoadingMore: Bool = false             //  Shows pagination loading at bottom
-    @Published var errorMessage: String?                   //  Error alerts - auto-shown when set
+    private let coinsSubject = CurrentValueSubject<[Coin], Never>([])
+    private let coinLogosSubject = CurrentValueSubject<[Int: String], Never>([:])
+    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
+    private let isLoadingMoreSubject = CurrentValueSubject<Bool, Never>(false)
+    private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
+    private let updatedCoinIdsSubject = CurrentValueSubject<Set<Int>, Never>([])
+    private let filterStateSubject = CurrentValueSubject<FilterState, Never>(.defaultState)
+    
+    // MARK: - Published AnyPublisher Properties (Observed by the UI)
+    
+    /**
+     * REACTIVE UI BINDING WITH ANYPUBLISHER
+     *
+     * These AnyPublisher properties provide the same functionality as @Published
+     * but give us more control over publishing behavior and transformations
+     */
+    
+    var coins: AnyPublisher<[Coin], Never> {
+        coinsSubject.eraseToAnyPublisher()
+    }
+    
+    var coinLogos: AnyPublisher<[Int: String], Never> {
+        coinLogosSubject.eraseToAnyPublisher()
+    }
+    
+    var isLoading: AnyPublisher<Bool, Never> {
+        isLoadingSubject.eraseToAnyPublisher()
+    }
+    
+    var isLoadingMore: AnyPublisher<Bool, Never> {
+        isLoadingMoreSubject.eraseToAnyPublisher()
+    }
+    
+    var errorMessage: AnyPublisher<String?, Never> {
+        errorMessageSubject.eraseToAnyPublisher()
+    }
+    
+    var updatedCoinIds: AnyPublisher<Set<Int>, Never> {
+        updatedCoinIdsSubject.eraseToAnyPublisher()
+    }
+    
+    var filterState: AnyPublisher<FilterState, Never> {
+        filterStateSubject.eraseToAnyPublisher()
+    }
+    
+    // MARK: - Current Value Accessors (For Internal Logic and ViewController Access)
+    
+    /**
+     * INTERNAL STATE ACCESS
+     * 
+     * These computed properties provide access to current values
+     * for both internal logic and ViewController access
+     */
+    
+    var currentCoins: [Coin] {
+        coinsSubject.value
+    }
+    
+    var currentCoinLogos: [Int: String] {
+        coinLogosSubject.value
+    }
+    
+    var currentIsLoading: Bool {
+        isLoadingSubject.value
+    }
+    
+    var currentFilterState: FilterState {
+        filterStateSubject.value
+    }
+    
     private var isUpdatingPrices: Bool = false             //  Prevents race conditions during price updates
-    @Published var updatedCoinIds: Set<Int> = []           //  Tracks which coins had price changes (for selective UI updates)
-    @Published var filterState: FilterState = .defaultState // Current filter settings (Top 100, 24h, etc.)
 
     // MARK: - Sorting Properties
     
@@ -140,7 +204,7 @@ final class CoinListVM: ObservableObject {
     
     func updateTopCoinsFilter(_ filter: TopCoinsFilter) {
         let newState = FilterState(
-            priceChangeFilter: filterState.priceChangeFilter,
+            priceChangeFilter: currentFilterState.priceChangeFilter,
             topCoinsFilter: filter
         )
         updateFilter(to: newState)
@@ -149,16 +213,16 @@ final class CoinListVM: ObservableObject {
     func updatePriceChangeFilter(_ filter: PriceChangeFilter) {
         let newState = FilterState(
             priceChangeFilter: filter,
-            topCoinsFilter: filterState.topCoinsFilter
+            topCoinsFilter: currentFilterState.topCoinsFilter
         )
         updateFilter(to: newState)
     }
     
     private func updateFilter(to newState: FilterState) {
-        guard newState != filterState else { return }
+        guard newState != currentFilterState else { return }
         
-        let oldState = filterState
-        filterState = newState
+        let oldState = currentFilterState
+        filterStateSubject.send(newState)
         
         print("🎯 FILTER CHANGE: \(oldState.topCoinsFilter.displayName) + \(oldState.priceChangeFilter.displayName) → \(newState.topCoinsFilter.displayName) + \(newState.priceChangeFilter.displayName)")
         
@@ -212,7 +276,7 @@ final class CoinListVM: ObservableObject {
         case .price:
             return "Price"
         case .priceChange:
-            return "\(filterState.priceChangeFilter.shortDisplayName) Change"  // Updated based on current filter -> Dynamic: "1h Change", "24h Change", etc.
+            return "\(currentFilterState.priceChangeFilter.shortDisplayName) Change"  // Updated based on current filter -> Dynamic: "1h Change", "24h Change", etc.
         default:
             return "Unknown"
         }
@@ -225,12 +289,12 @@ final class CoinListVM: ObservableObject {
      * It maintains pagination by showing only the first page after sorting.
      */
     private func applySortingToCurrentData() {
-        print("🔧 applySortingToCurrentData | fullFilteredCoins: \(fullFilteredCoins.count), coins: \(coins.count)")
+        print("🔧 applySortingToCurrentData | fullFilteredCoins: \(fullFilteredCoins.count), coins: \(currentCoins.count)")
         
         // Fallback: If we have no full dataset, use currently displayed coins
-        if fullFilteredCoins.isEmpty && !coins.isEmpty {
-            print("🔧 Using displayed coins for sorting (\(coins.count) coins)")
-            fullFilteredCoins = coins
+        if fullFilteredCoins.isEmpty && !currentCoins.isEmpty {
+            print("🔧 Using displayed coins for sorting (\(currentCoins.count) coins)")
+            fullFilteredCoins = currentCoins
         }
         
         // Guard: Can't sort empty data
@@ -247,7 +311,7 @@ final class CoinListVM: ObservableObject {
         // Update UI with first page of sorted results
         let pageSize = itemsPerPage
         let sortedDisplayCoins = Array(fullFilteredCoins.prefix(pageSize))
-        coins = sortedDisplayCoins  // This triggers UI update via @Published
+        coinsSubject.send(sortedDisplayCoins)  // This triggers UI update via AnyPublisher
         
         // Fetch logos for newly visible coins after sorting
         let displayedIds = sortedDisplayCoins.map { $0.id }
@@ -267,10 +331,10 @@ final class CoinListVM: ObservableObject {
      */
     private func updateFilterState(_ newState: FilterState) {
         // Performance: Don't trigger unnecessary updates
-        guard newState != filterState else { return }
+        guard newState != currentFilterState else { return }
         
-        let oldState = filterState
-        filterState = newState  //  This triggers UI update via @Published
+        let oldState = currentFilterState
+        filterStateSubject.send(newState)  //  This triggers UI update via AnyPublisher
         
         print("🎯 FILTER CHANGE: \(oldState.topCoinsFilter.displayName) + \(oldState.priceChangeFilter.displayName) → \(newState.topCoinsFilter.displayName) + \(newState.priceChangeFilter.displayName)")
         
@@ -284,7 +348,7 @@ final class CoinListVM: ObservableObject {
         // Reset pagination state for fresh start
         currentPage = 1
         canLoadMore = true
-        coins = []  // 🎯 Clear UI immediately (triggers loading spinner)
+        coinsSubject.send([])  // 🎯 Clear UI immediately (triggers loading spinner)
         fullFilteredCoins = []
         
         // Clear optimization state to prevent stale requests
@@ -340,7 +404,7 @@ final class CoinListVM: ObservableObject {
         
         if !persistenceService.isCacheExpired(), 
             let offlineData = persistenceService.getOfflineData(), // Offline support with cached data
-           filterState == .defaultState,
+           currentFilterState == .defaultState,
            isDefaultSort { // Only use cache with default sort to preserve custom sort views
             print("💾 VM.fetchCoins | Using cached offline data (default filters + default sort)")
             currentPage = 1
@@ -373,7 +437,7 @@ final class CoinListVM: ObservableObject {
                 // Show first page only
                 let pageSize = itemsPerPage
                 let initialCoins = Array(deduplicatedCachedCoins.prefix(pageSize))
-                coins = initialCoins  // 🎯 Triggers UI update with clean data
+                coinsSubject.send(initialCoins)  // 🎯 Triggers UI update with clean data
                 
                 // Enable pagination if we have more data
                 canLoadMore = deduplicatedCachedCoins.count > pageSize
@@ -386,17 +450,17 @@ final class CoinListVM: ObservableObject {
                 // Show first page only  
                 let pageSize = itemsPerPage
                 let initialCoins = Array(sortedCachedCoins.prefix(pageSize))
-                coins = initialCoins  // 🎯 Triggers UI update
+                coinsSubject.send(initialCoins)  // 🎯 Triggers UI update
                 
                 // Enable pagination if we have more data
                 canLoadMore = sortedCachedCoins.count > pageSize
                 
                 print("📱 UI: Displaying \(initialCoins.count) coins (page 1 of \(sortedCachedCoins.count) total from cache)")
             }
-            coinLogos = offlineData.logos
+            coinLogosSubject.send(offlineData.logos)
             
             // Fetch any missing logos after loading cached data
-            let displayedIds = coins.map { $0.id }
+            let displayedIds = currentCoins.map { $0.id }
             fetchCoinLogosIfNeeded(forIDs: displayedIds)
             
             onFinish?()
@@ -404,8 +468,8 @@ final class CoinListVM: ObservableObject {
         }
         
         // FRESH DATA PATH: For filters, expired cache, or custom sort
-        if filterState != .defaultState {
-            print("🎯 VM.fetchCoins | Filters applied (\(filterState.topCoinsFilter.displayName) + \(filterState.priceChangeFilter.displayName)) - fetching fresh data")
+        if currentFilterState != .defaultState {
+            print("🎯 VM.fetchCoins | Filters applied (\(currentFilterState.topCoinsFilter.displayName) + \(currentFilterState.priceChangeFilter.displayName)) - fetching fresh data")
         } else if !isDefaultSort {
             print("🔄 VM.fetchCoins | Custom sort detected (\(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")) - fetching fresh data to preserve sort")
         }
@@ -414,9 +478,9 @@ final class CoinListVM: ObservableObject {
         print("\n🌟 Initial Load | Fetching coin data...")
         currentPage = 1
         canLoadMore = true
-        coins = []  // 🎯 Clear UI (triggers loading spinner via @Published)
-        isLoading = true  // 🎯 Show loading spinner
-        errorMessage = nil
+        coinsSubject.send([])  // 🎯 Clear UI (triggers loading spinner via AnyPublisher)
+        isLoadingSubject.send(true)  // 🎯 Show loading spinner
+        errorMessageSubject.send(nil)
         lastFetchTime = Date()
 
         // BACKEND FILTERING STRATEGY:
@@ -425,8 +489,8 @@ final class CoinListVM: ObservableObject {
         // 2. Local: Sort by user's selected metric (instant response)
         // This ensures we get the top coins while providing instant sort feedback
         
-        let topCoinsLimit = filterState.topCoinsFilter.rawValue
-        let filterDescription = "\(filterState.topCoinsFilter.displayName) sorted by \(filterState.priceChangeFilter.displayName)"
+        let topCoinsLimit = currentFilterState.topCoinsFilter.rawValue
+        let filterDescription = "\(currentFilterState.topCoinsFilter.displayName) sorted by \(currentFilterState.priceChangeFilter.displayName)"
         
         // BUFFER SYSTEM: Request extra coins to handle API data gaps
         // The API sometimes has missing ranks (e.g., rank 100 might be missing)
@@ -522,10 +586,10 @@ final class CoinListVM: ObservableObject {
         .receive(on: DispatchQueue.main)  // 🎯 Switch to main thread for UI updates
         .sink { [weak self] completion in
             // COMPLETION HANDLER: Handle success/failure
-            self?.isLoading = false  // 🎯 Hide loading spinner
+            self?.isLoadingSubject.send(false)  // 🎯 Hide loading spinner
             if case let .failure(error) = completion {
                 print("❌ VM.fetchCoins | Error: \(error.localizedDescription)")
-                self?.errorMessage = error.localizedDescription
+                self?.errorMessageSubject.send(error.localizedDescription)
                 self?.canLoadMore = false
                 
                 // 🛡️ OFFLINE FALLBACK: Try to load cached data on network error
@@ -557,7 +621,7 @@ final class CoinListVM: ObservableObject {
                         // Show first page only
                         let pageSize = self?.itemsPerPage ?? 20
                         let initialFallbackCoins = Array(deduplicatedFallbackCoins.prefix(pageSize))
-                        self?.coins = initialFallbackCoins  // 🎯 Update UI with clean fallback data
+                        self?.coinsSubject.send(initialFallbackCoins)  // 🎯 Update UI with clean fallback data
                         
                         // Enable pagination if we have more data
                         self?.canLoadMore = deduplicatedFallbackCoins.count > pageSize
@@ -570,18 +634,18 @@ final class CoinListVM: ObservableObject {
                         // Show first page only
                         let pageSize = self?.itemsPerPage ?? 20
                         let initialFallbackCoins = Array(sortedFallbackCoins.prefix(pageSize))
-                        self?.coins = initialFallbackCoins  // 🎯 Update UI with fallback data
+                        self?.coinsSubject.send(initialFallbackCoins)  // 🎯 Update UI with fallback data
                         
                         // Enable pagination if we have more data
                         self?.canLoadMore = sortedFallbackCoins.count > pageSize
                         
                         print("📱 UI: Displaying \(initialFallbackCoins.count) fallback coins (page 1 of \(sortedFallbackCoins.count) total)")
                     }
-                    self?.coinLogos = offlineData.logos
-                    self?.errorMessage = "Using offline data due to network error"
+                    self?.coinLogosSubject.send(offlineData.logos)
+                    self?.errorMessageSubject.send("Using offline data due to network error")
                     
                     // Fetch missing logos for fallback data
-                    let displayedIds = self?.coins.map { $0.id } ?? []
+                    let displayedIds = self?.currentCoins.map { $0.id } ?? []
                     self?.fetchCoinLogosIfNeeded(forIDs: displayedIds)
                 }
             }
@@ -613,9 +677,9 @@ final class CoinListVM: ObservableObject {
                         return true
                     }
                 }
-                self.coins = deduplicatedCoins  // 🎯 Triggers UI update with clean data
+                self.coinsSubject.send(deduplicatedCoins)  // 🎯 Triggers UI update with clean data
             } else {
-                self.coins = initialCoins  // 🎯 Triggers UI update
+                self.coinsSubject.send(initialCoins)  // 🎯 Triggers UI update
             }
 
             // Store complete dataset for pagination and instant sorting
@@ -631,7 +695,7 @@ final class CoinListVM: ObservableObject {
             self.fetchCoinLogosIfNeeded(forIDs: ids)
             
             // 💾 OFFLINE STORAGE: Save FULL dataset for offline use (only default filters to avoid stale data)
-            if self.filterState == .defaultState {
+            if self.currentFilterState == .defaultState {
                 self.persistenceService.saveCoinList(filteredAndSortedCoins)  // Save FULL dataset, not just first page
                 print("💾 Saved \(filteredAndSortedCoins.count) coins to cache (full dataset)")
                 
@@ -698,7 +762,7 @@ final class CoinListVM: ObservableObject {
     private func getPriceChangeValue(for coin: Coin) -> Double {
         guard let quote = coin.quote?["USD"] else { return 0.0 }
         
-        switch filterState.priceChangeFilter {
+        switch currentFilterState.priceChangeFilter {
         case .oneHour:
             return quote.percentChange1h ?? 0.0
         case .twentyFourHours:
@@ -752,13 +816,13 @@ final class CoinListVM: ObservableObject {
      */
     func loadMoreCoins(convert: String = "USD") {
         // GUARD CONDITIONS: Prevent invalid or duplicate pagination calls + race conditions
-        guard canLoadMore && !isLoadingMore && !isLoading && !isUpdatingPrices else { 
-            print("🚫 Pagination | Blocked | CanLoad: \(canLoadMore) | Loading: \(isLoading) | LoadingMore: \(isLoadingMore) | UpdatingPrices: \(isUpdatingPrices)")
+        guard canLoadMore && !isLoadingMoreSubject.value && !currentIsLoading && !isUpdatingPrices else { 
+            print("🚫 Pagination | Blocked | CanLoad: \(canLoadMore) | Loading: \(currentIsLoading) | LoadingMore: \(isLoadingMoreSubject.value) | UpdatingPrices: \(isUpdatingPrices)")
             return 
         }
 
         // PAGINATION CALCULATION: Calculate if more data is available
-        let currentCount = coins.count
+        let currentCount = currentCoins.count
         let totalAvailable = fullFilteredCoins.count
         
         if currentCount >= totalAvailable {
@@ -769,18 +833,18 @@ final class CoinListVM: ObservableObject {
 
         // PAGINATION STATE UPDATE
         currentPage += 1
-        isLoadingMore = true  // Show pagination loading indicator
-        errorMessage = nil
+        isLoadingMoreSubject.send(true)  // Show pagination loading indicator
+        errorMessageSubject.send(nil)
         
-        print("📖 Pagination | Loading page \(currentPage) | Current: \(coins.count) coins")
+        print("📖 Pagination | Loading page \(currentPage) | Current: \(currentCoins.count) coins")
 
         // CALCULATE NEW SLICE: Get next batch of coins from cached data
-        let startIndex = coins.count
+        let startIndex = currentCoins.count
         let endIndex = min(startIndex + itemsPerPage, fullFilteredCoins.count)
         
         guard startIndex < fullFilteredCoins.count else {
             // 🛡️ EDGE CASE: No more items available
-            isLoadingMore = false
+            isLoadingMoreSubject.send(false)
             canLoadMore = false
             print("🛑 Pagination | No more items available")
             return
@@ -788,10 +852,11 @@ final class CoinListVM: ObservableObject {
         
         // INSTANT UPDATE: Extract new coins and append to display list
         let newCoins = Array(fullFilteredCoins[startIndex..<endIndex])
-        coins.append(contentsOf: newCoins)  // 🎯 Triggers UI update via @Published
-        isLoadingMore = false  // 🎯 Hide pagination loading indicator
+        let updatedCoins = currentCoins + newCoins
+        coinsSubject.send(updatedCoins)  // 🎯 Triggers UI update via AnyPublisher
+        isLoadingMoreSubject.send(false)  // 🎯 Hide pagination loading indicator
         
-        let totalCoins = coins.count
+        let totalCoins = updatedCoins.count
         print("✅ Pagination | Added \(newCoins.count) coins | Total: \(totalCoins)")
 
         // UPDATE PAGINATION STATE
@@ -817,7 +882,9 @@ final class CoinListVM: ObservableObject {
         coinManager.getCoinLogos(forIDs: ids, priority: .low)
             .sink { [weak self] logos in
                 // 🔗 MERGE STRATEGY: New logos override old ones if same ID
-                self?.coinLogos.merge(logos) { _, new in new }
+                let currentLogos = self?.currentCoinLogos ?? [:]
+                let mergedLogos = currentLogos.merging(logos) { _, new in new }
+                self?.coinLogosSubject.send(mergedLogos)
             }
             .store(in: &cancellables)
     }
@@ -834,13 +901,13 @@ final class CoinListVM: ObservableObject {
      * - Uses low priority to not interfere with data requests
      * - Automatic offline storage
      * 
-     * UI IMPACT: When logos are downloaded, the @Published coinLogos property
+     * UI IMPACT: When logos are downloaded, the AnyPublisher coinLogos property
      * triggers automatic UI updates in the collection view cells.
      */
     private func fetchCoinLogosIfNeeded(forIDs ids: [Int]) {
         // OPTIMIZATION: Filter out logos we already have or are downloading
         let missingLogoIds = ids.filter { id in
-            coinLogos[id] == nil && !pendingLogoRequests.contains(id)
+            currentCoinLogos[id] == nil && !pendingLogoRequests.contains(id)
         }
         
         print("🖼️ CoinListVM.fetchCoinLogosIfNeeded | Total IDs: \(ids.count), Missing: \(missingLogoIds.count), Pending: \(pendingLogoRequests.count)")
@@ -858,18 +925,20 @@ final class CoinListVM: ObservableObject {
         // API CALL: Use low priority so logos don't interfere with data requests
         coinManager.getCoinLogos(forIDs: missingLogoIds, priority: .low)
             .sink { [weak self] logos in
-                let totalLogos = (self?.coinLogos.count ?? 0) + logos.count
+                let totalLogos = (self?.currentCoinLogos.count ?? 0) + logos.count
                 print("✅ CoinListVM | Received \(logos.count) new logos (total: \(totalLogos) cached)")
                 
                 // CLEANUP: Remove from pending requests
                 self?.pendingLogoRequests.subtract(missingLogoIds)
                 
                 // MERGE: Combine new logos with existing cache
-                self?.coinLogos.merge(logos) { _, new in new }  // 🎯 Triggers UI update
-                print("📊 CoinListVM | Total logos after merge: \(self?.coinLogos.count ?? 0)")
+                let currentLogos = self?.currentCoinLogos ?? [:]
+                let mergedLogos = currentLogos.merging(logos) { _, new in new }
+                self?.coinLogosSubject.send(mergedLogos)  // 🎯 Triggers UI update
+                print("📊 CoinListVM | Total logos after merge: \(mergedLogos.count)")
                 
                 // PERSISTENCE: Save updated logos for offline use
-                self?.persistenceService.saveCoinLogos(self?.coinLogos ?? [:])
+                self?.persistenceService.saveCoinLogos(mergedLogos)
             }
             .store(in: &cancellables)
     }
@@ -880,13 +949,13 @@ final class CoinListVM: ObservableObject {
      * 🔄 PERIODIC PRICE UPDATES (Background Auto-Refresh)
      */
     func fetchPriceUpdates(completion: @escaping () -> Void) {
-        guard !isLoading && !isLoadingMore && !isUpdatingPrices else {
+        guard !currentIsLoading && !isLoadingMoreSubject.value && !isUpdatingPrices else {
             print("🚫 Price updates blocked - loading/updating in progress")
             completion()
             return
         }
         
-        let ids = coins.map { $0.id }
+        let ids = currentCoins.map { $0.id }
         guard !ids.isEmpty else {
             completion()
             return
@@ -900,7 +969,7 @@ final class CoinListVM: ObservableObject {
                 self?.isUpdatingPrices = false  // 🔓 Unlock after completion
                 if case .failure(let error) = completionResult {
                     if !error.localizedDescription.contains("throttled") {
-                        self?.errorMessage = error.localizedDescription
+                        self?.errorMessageSubject.send(error.localizedDescription)
                     }
                 }
                 completion()
@@ -915,7 +984,7 @@ final class CoinListVM: ObservableObject {
      */
     private func updateCoinPrices(with updatedQuotes: [Int: Quote]) {
         var changedCoinIds = Set<Int>()
-        var updatedCoins = coins // Create a copy to avoid modifying during iteration
+        var updatedCoins = currentCoins // Create a copy to avoid modifying during iteration
         
         // 🛡️ SAFETY CHECK: Verify no duplicate IDs exist before processing
         let coinIds = updatedCoins.map { $0.id }
@@ -958,10 +1027,10 @@ final class CoinListVM: ObservableObject {
         }
         
         // Update the original array only once, atomically
-        coins = updatedCoins
+        coinsSubject.send(updatedCoins)
         
         if !changedCoinIds.isEmpty {
-            updatedCoinIds = changedCoinIds
+            updatedCoinIdsSubject.send(changedCoinIds)
         }
     }
     
@@ -977,7 +1046,7 @@ final class CoinListVM: ObservableObject {
      */
     func fetchPriceUpdatesForVisibleCoins(_ visibleIds: [Int], completion: @escaping () -> Void) {
         // RESPECT LOADING STATES + PREVENT RACE CONDITIONS
-        guard !isLoading && !isLoadingMore && !isUpdatingPrices else {
+        guard !currentIsLoading && !isLoadingMoreSubject.value && !isUpdatingPrices else {
             print("🚫 Visible price updates blocked - operations in progress")
             completion()
             return
@@ -999,7 +1068,7 @@ final class CoinListVM: ObservableObject {
                 if case .failure(let error) = completionResult {
                     //  QUIET ERROR HANDLING
                     if !error.localizedDescription.contains("throttled") {
-                        self?.errorMessage = error.localizedDescription
+                        self?.errorMessageSubject.send(error.localizedDescription)
                     }
                 }
                 completion()
@@ -1007,24 +1076,25 @@ final class CoinListVM: ObservableObject {
                 guard let self = self else { return }
 
                 var changedCoinIds = Set<Int>()
+                var updatedCoins = self.currentCoins
                 
                 print("🔍 Price Check | Analyzing \(visibleIds.count) visible coins...")
                 
                 // VISIBLE-ONLY UPDATE: Only process coins currently on screen
-                for i in 0..<self.coins.count {
-                    let id = self.coins[i].id
+                for i in 0..<updatedCoins.count {
+                    let id = updatedCoins[i].id
                     if visibleIds.contains(id), let updated = updatedQuotes[id] {
                         //  DETAILED CHANGE TRACKING WITH LOGGING
-                        let oldPrice = self.coins[i].quote?["USD"]?.price
+                        let oldPrice = updatedCoins[i].quote?["USD"]?.price
                         let newPrice = updated.price
-                        let oldPercentChange = self.coins[i].quote?["USD"]?.percentChange24h
+                        let oldPercentChange = updatedCoins[i].quote?["USD"]?.percentChange24h
                         let newPercentChange = updated.percentChange24h
                         
                         let priceChanged = oldPrice != newPrice
                         let percentChanged = oldPercentChange != newPercentChange
                         
                         if priceChanged || percentChanged {
-                            self.coins[i].quote?["USD"] = updated
+                            updatedCoins[i].quote?["USD"] = updated
                             changedCoinIds.insert(id)
                             
                             // 📊 DETAILED LOGGING: Show exactly what changed
@@ -1042,7 +1112,8 @@ final class CoinListVM: ObservableObject {
                 
                 // UI UPDATE TRIGGER
                 if !changedCoinIds.isEmpty {
-                    self.updatedCoinIds = changedCoinIds  // 🎯 Triggers selective cell updates
+                    self.coinsSubject.send(updatedCoins)
+                    self.updatedCoinIdsSubject.send(changedCoinIds)  // 🎯 Triggers selective cell updates
                     print("📱 UI Update | \(changedCoinIds.count) visible coins | IDs: \(Array(changedCoinIds).sorted())")
                     print("─────────────────────────────────────────")
                 } else {
@@ -1064,7 +1135,7 @@ final class CoinListVM: ObservableObject {
      * This prevents old change notifications from triggering duplicate UI updates.
      */
     func clearUpdatedCoinIds() {
-        updatedCoinIds.removeAll()
+        updatedCoinIdsSubject.send([])
     }
     
     // MARK: - Lifecycle Management
@@ -1081,8 +1152,8 @@ final class CoinListVM: ObservableObject {
     func cancelAllRequests() {
         print("🛑 Cancelling all ongoing API calls for coin list")
         cancellables.removeAll()  // Cancel all Combine subscriptions
-        isLoading = false
-        isLoadingMore = false
+        isLoadingSubject.send(false)
+        isLoadingMoreSubject.send(false)
     }
     
     /**
