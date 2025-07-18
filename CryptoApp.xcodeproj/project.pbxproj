@@ -16,11 +16,23 @@
 		977F77182E1B74960043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F77172E1B74960043D04C /* DGCharts */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		9716CD892E2A3740002D2C8F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97CA70B02E0BAEEB00E42811 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 97CA70B72E0BAEEB00E42811;
+			remoteInfo = CryptoApp;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_top_coins.json; sourceTree = "<group>"; };
 		9716CA7E2E1FD007002D2C8F /* mock_logos.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_logos.json; sourceTree = "<group>"; };
 		9716CA802E1FD019002D2C8F /* mock_quotes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_quotes.json; sourceTree = "<group>"; };
 		9716CD482E28AD17002D2C8F /* WatchlistModel.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = WatchlistModel.xcdatamodel; sourceTree = "<group>"; };
+		9716CD742E2A3739002D2C8F /* CryptoAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CryptoAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9716CD982E2A3FF3002D2C8F /* CryptoAppTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = CryptoAppTests.xctestplan; sourceTree = "<group>"; };
 		97CA70B82E0BAEEB00E42811 /* CryptoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CryptoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -35,6 +47,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		9716CD752E2A3739002D2C8F /* CryptoAppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CryptoAppTests;
+			sourceTree = "<group>";
+		};
 		97CA70BA2E0BAEEB00E42811 /* CryptoApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -46,6 +63,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		9716CD712E2A3739002D2C8F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97CA70B52E0BAEEB00E42811 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -62,11 +86,13 @@
 		97CA70AF2E0BAEEB00E42811 = {
 			isa = PBXGroup;
 			children = (
+				9716CD982E2A3FF3002D2C8F /* CryptoAppTests.xctestplan */,
 				9716CD472E28AD17002D2C8F /* WatchlistModel.xcdatamodeld */,
 				9716CA802E1FD019002D2C8F /* mock_quotes.json */,
 				9716CA7E2E1FD007002D2C8F /* mock_logos.json */,
 				9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */,
 				97CA70BA2E0BAEEB00E42811 /* CryptoApp */,
+				9716CD752E2A3739002D2C8F /* CryptoAppTests */,
 				97CA70B92E0BAEEB00E42811 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -75,6 +101,7 @@
 			isa = PBXGroup;
 			children = (
 				97CA70B82E0BAEEB00E42811 /* CryptoApp.app */,
+				9716CD742E2A3739002D2C8F /* CryptoAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -82,6 +109,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		9716CD732E2A3739002D2C8F /* CryptoAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9716CD782E2A3739002D2C8F /* Build configuration list for PBXNativeTarget "CryptoAppTests" */;
+			buildPhases = (
+				9716CD702E2A3739002D2C8F /* Sources */,
+				9716CD712E2A3739002D2C8F /* Frameworks */,
+				9716CD722E2A3739002D2C8F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9716CD8A2E2A3740002D2C8F /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				9716CD752E2A3739002D2C8F /* CryptoAppTests */,
+			);
+			name = CryptoAppTests;
+			packageProductDependencies = (
+			);
+			productName = CryptoAppTests;
+			productReference = 9716CD742E2A3739002D2C8F /* CryptoAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		97CA70B72E0BAEEB00E42811 /* CryptoApp */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97CA70CB2E0BAEEC00E42811 /* Build configuration list for PBXNativeTarget "CryptoApp" */;
@@ -112,6 +162,11 @@
 				LastSwiftUpdateCheck = 1620;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
+					9716CD732E2A3739002D2C8F = {
+						CreatedOnToolsVersion = 16.2;
+						LastSwiftMigration = 1620;
+						TestTargetID = 97CA70B72E0BAEEB00E42811;
+					};
 					97CA70B72E0BAEEB00E42811 = {
 						CreatedOnToolsVersion = 16.2;
 						LastSwiftMigration = 1620;
@@ -136,11 +191,19 @@
 			projectRoot = "";
 			targets = (
 				97CA70B72E0BAEEB00E42811 /* CryptoApp */,
+				9716CD732E2A3739002D2C8F /* CryptoAppTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		9716CD722E2A3739002D2C8F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97CA70B62E0BAEEB00E42811 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -154,6 +217,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		9716CD702E2A3739002D2C8F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97CA70B42E0BAEEB00E42811 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -164,7 +234,54 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		9716CD8A2E2A3740002D2C8F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 97CA70B72E0BAEEB00E42811 /* CryptoApp */;
+			targetProxy = 9716CD892E2A3740002D2C8F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		9716CD792E2A3739002D2C8F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Jansen.CryptoAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CryptoApp.app/CryptoApp";
+			};
+			name = Debug;
+		};
+		9716CD7A2E2A3739002D2C8F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Jansen.CryptoAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CryptoApp.app/CryptoApp";
+			};
+			name = Release;
+		};
 		97CA70CC2E0BAEEC00E42811 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -348,6 +465,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		9716CD782E2A3739002D2C8F /* Build configuration list for PBXNativeTarget "CryptoAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9716CD792E2A3739002D2C8F /* Debug */,
+				9716CD7A2E2A3739002D2C8F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		97CA70B32E0BAEEB00E42811 /* Build configuration list for PBXProject "CryptoApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

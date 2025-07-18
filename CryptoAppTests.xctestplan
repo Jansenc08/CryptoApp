@@ -1,0 +1,25 @@
+{
+  "configurations" : [
+    {
+      "id" : "C93C7AF5-F4B3-40FC-B63F-360E17420BEB",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:CryptoApp.xcodeproj",
+        "identifier" : "9716CD732E2A3739002D2C8F",
+        "name" : "CryptoAppTests"
+      }
+    }
+  ],
+  "version" : 1
+}

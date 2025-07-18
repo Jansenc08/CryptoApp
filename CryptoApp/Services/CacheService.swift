@@ -31,6 +31,8 @@ struct CacheEntry<T> {
 // A centralized caching service for coins, logos, price updates, and chart data
 final class CacheService: NSObject, CacheServiceProtocol {
 
+    // MARK: - Initialization
+    
     static let shared = CacheService() // Singleton access
 
     private let cache = NSCache<NSString, AnyObject>() // In-memory store
@@ -52,7 +54,15 @@ final class CacheService: NSObject, CacheServiceProtocol {
     static let trendingCoinsTTL: TimeInterval = 300     // 5min - Trending lists
     static let coinMetadataTTL: TimeInterval = 3600     // 1h - Name, symbol, description
 
-    private override init() {
+    /**
+     * DEPENDENCY INJECTION INITIALIZER
+     * 
+     * Internal access allows for:
+     * - Testing with fresh instances
+     * - Dependency injection in tests
+     * - Production singleton pattern
+     */
+    override init() {
         super.init()
         setupCache()
         setupMemoryPressureHandling()

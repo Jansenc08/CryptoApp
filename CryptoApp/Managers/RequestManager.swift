@@ -53,7 +53,45 @@ final class RequestManager: RequestManagerProtocol {
     private var lowPriorityQueue: [() -> Void] = []         // Background operations get processed last
     private var isProcessingQueue = false
     
-    private init() {}
+    /**
+     * DEPENDENCY INJECTION INITIALIZER
+     * 
+     * Internal access allows for:
+     * - Testing with fresh instances
+     * - Dependency injection in tests  
+     * - Production singleton pattern
+     */
+    init() {}
+    
+    // MARK: - Test Support
+    
+    /**
+     * RESET ALL STATE FOR TESTING
+     * 
+     * Clears all internal state to ensure test isolation.
+     * Should only be called from test code.
+     */
+    func resetForTesting() {
+        queue.sync(flags: .barrier) {
+            // Clear request tracking
+            activeRequests.removeAll()
+            lastRequestTimes.removeAll()
+            retryAttempts.removeAll()
+            
+            // Reset rate limiting
+            coinGeckoRequestCount = 0
+            coinGeckoWindowStart = Date()
+            
+            // Clear priority queues
+            highPriorityQueue.removeAll()
+            normalPriorityQueue.removeAll()
+            lowPriorityQueue.removeAll()
+            isProcessingQueue = false
+            
+            // Cancel all active subscriptions
+            cancellables.removeAll()
+        }
+    }
     
     // MARK: - Generic Request Deduplication with Priority
     // Core function
