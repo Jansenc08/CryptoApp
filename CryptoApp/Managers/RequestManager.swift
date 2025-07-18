@@ -10,9 +10,9 @@ enum RequestPriority {
     
     var delayInterval: TimeInterval {
         switch self {
-        case .high:   return 1.0  // 1 second for user requests - more responsive for filter changes
-        case .normal: return 3.0  // 3 seconds for regular requests - balanced approach
-        case .low:    return 6.0  // 6 seconds for background requests - conservative for non-urgent tasks
+        case .high:   return 2.0  // Increased to 2 seconds for CoinGecko compatibility  
+        case .normal: return 4.0  // Increased to 4 seconds for better rate limiting
+        case .low:    return 8.0  // Increased to 8 seconds for background requests
         }
     }
     
@@ -26,7 +26,7 @@ enum RequestPriority {
 }
 
 // MARK: - Request Manager
-final class RequestManager {
+final class RequestManager: RequestManagerProtocol {
     static let shared = RequestManager()
     
     private var activeRequests: [String: AnyPublisher<Any, Error>] = [:]
@@ -37,14 +37,14 @@ final class RequestManager {
     private var lastRequestTimes: [String: Date] = [:]
     private var coinGeckoRequestCount: Int = 0
     private var coinGeckoWindowStart: Date = Date()
-    private let coinGeckoMaxRequests: Int = 10               // conservative (33% of 30/min limit) - optimized for better UX
+    private let coinGeckoMaxRequests: Int = 25               // Increased to 25 requests per minute (more reasonable for free tier)
     private let coinGeckoWindowDuration: TimeInterval = 60.0 // 1 minute window
     
     // Exponential backoff for rate limiting
     private var retryAttempts: [String: Int] = [:]           // Track retry attempts per request
     private let maxRetryAttempts: Int = 3                    // Maximum retry attempts
-    private let baseRetryDelay: TimeInterval = 2.0          // Base delay in seconds
-    private let maxRetryDelay: TimeInterval = 30.0          // Maximum delay cap
+    private let baseRetryDelay: TimeInterval = 5.0          // Increased base delay for CoinGecko
+    private let maxRetryDelay: TimeInterval = 60.0          // Increased max delay for rate limits
     
     // Priority queue system
     // Separated requests into different queues so high priority requests jump the line
@@ -278,9 +278,7 @@ final class RequestManager {
                     return
                 }
                 
-                // Increment counter BEFORE making request to prevent race conditions
-                self.coinGeckoRequestCount += 1
-                print("📊 \(priority.description) CoinGecko request \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests) in current window")
+                print("📊 \(priority.description) CoinGecko request attempt \(self.coinGeckoRequestCount + 1)/\(self.coinGeckoMaxRequests) in current window")
                 
                 // Add request to appropriate priority queue
                 // High priority requests (filter changes) go to the front of the line
@@ -288,6 +286,13 @@ final class RequestManager {
                     self.executeWithRetry(key: key, priority: priority) {
                         self.executeRequest(key: key, priority: priority) {
                             apiCall()
+                                .handleEvents(receiveOutput: { _ in
+                                    // Only increment counter on successful requests
+                                    self.queue.async {
+                                        self.coinGeckoRequestCount += 1
+                                        print("✅ CoinGecko request successful - counter now: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests)")
+                                    }
+                                })
                                 .map { $0 as [Double] }
                                 .mapError { $0 as Error }
                                 .eraseToAnyPublisher()
@@ -384,7 +389,15 @@ final class RequestManager {
     
     // MARK: - Exponential Backoff Methods
     
-    private func calculateRetryDelay(for attempt: Int) -> TimeInterval {
+    private func calculateRetryDelay(for attempt: Int, error: Error? = nil) -> TimeInterval {
+        // Special handling for CoinGecko rate limiting (429 errors)
+        if let networkError = error as? NetworkError, networkError == .invalidResponse {
+            // For rate limiting, use longer delays
+            let rateLimitDelay = 15.0 * pow(2.0, Double(attempt)) // 15s, 30s, 60s
+            return min(rateLimitDelay, 60.0)
+        }
+        
+        // Standard exponential backoff for other errors
         let exponentialDelay = baseRetryDelay * pow(2.0, Double(attempt))
         return min(exponentialDelay, maxRetryDelay)
     }
@@ -405,7 +418,7 @@ final class RequestManager {
                     let currentAttempt = self.retryAttempts[key] ?? 0
                     
                     if currentAttempt < self.maxRetryAttempts {
-                        let retryDelay = self.calculateRetryDelay(for: currentAttempt)
+                        let retryDelay = self.calculateRetryDelay(for: currentAttempt, error: error)
                         
                         print("🔄 Retry attempt \(currentAttempt + 1)/\(self.maxRetryAttempts) for \(key) in \(String(format: "%.1f", retryDelay))s")
                         
@@ -449,6 +462,14 @@ final class RequestManager {
         }
         
         if let networkError = error as? NetworkError {
+            // Extend rate limit window when we hit 429 to give CoinGecko breathing room
+            if networkError == .invalidResponse {
+                queue.async {
+                    // Extend the current window by 30 seconds to space out requests more
+                    self.coinGeckoWindowStart = Date().addingTimeInterval(-30)
+                    print("⏸️ Extended CoinGecko rate limit window due to 429 error")
+                }
+            }
             return networkError == .invalidResponse
         }
         

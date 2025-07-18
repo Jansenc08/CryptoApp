@@ -9,11 +9,23 @@
 import Foundation
 import Combine
 
-final class CoinManager {
+final class CoinManager: CoinManagerProtocol {
     
-    private let coinService: CoinService
+    private let coinService: CoinServiceProtocol
     
-    init(coinService: CoinService = CoinService()) {
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts CoinServiceProtocol for:
+     * - Easy mocking in unit tests
+     * - Swappable service implementations
+     * - Better testability and modularity
+     * 
+     * Falls back to default CoinService for backward compatibility
+     */
+    init(coinService: CoinServiceProtocol = CoinService()) {
         self.coinService = coinService
     }
 

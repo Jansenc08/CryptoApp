@@ -116,7 +116,7 @@ final class CoinDetailsVM: ObservableObject {
      */
     
     private let coin: Coin                     // Coin data model
-    private let coinManager: CoinManager       // API management layer
+    private let coinManager: CoinManagerProtocol       // API management layer
     private var geckoID: String?               // CoinGecko API identifier
     var cancellables = Set<AnyCancellable>()   // Combine subscription storage
 
@@ -306,7 +306,15 @@ final class CoinDetailsVM: ObservableObject {
      * Filter changes are debounced, cached data provides instant responses,
      * and retry logic handles rate limiting gracefully.
      */
-    init(coin: Coin, coinManager: CoinManager = CoinManager()) {
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts CoinManagerProtocol for better testability and modularity.
+     * Falls back to default CoinManager for backward compatibility.
+     */
+    init(coin: Coin, coinManager: CoinManagerProtocol = CoinManager()) {
         self.coin = coin
         self.coinManager = coinManager
 
@@ -340,7 +348,7 @@ final class CoinDetailsVM: ObservableObject {
         isLoadingSubject.send(true)
         errorMessageSubject.send(nil)
         
-        coinManager.fetchChartData(for: geckoID, range: days, priority: .high)
+        coinManager.fetchChartData(for: geckoID, range: days, currency: "usd", priority: .high)
             .subscribe(on: DispatchQueue.global(qos: .userInitiated))
             .map { [weak self] rawData in
                 return self?.processChartData(rawData, for: days) ?? []

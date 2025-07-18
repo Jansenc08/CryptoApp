@@ -29,7 +29,7 @@ struct CacheEntry<T> {
 // MARK: - Cache Service
 
 // A centralized caching service for coins, logos, price updates, and chart data
-final class CacheService: NSObject {
+final class CacheService: NSObject, CacheServiceProtocol {
 
     static let shared = CacheService() // Singleton access
 
@@ -178,39 +178,55 @@ final class CacheService: NSObject {
         return get(key: key, type: [Coin].self)
     }
 
-    func setCoinList(_ coins: [Coin], limit: Int, start: Int, convert: String, sortType: String = "market_cap", sortDir: String = "desc") {
+    func storeCoinList(_ coins: [Coin], limit: Int, start: Int, convert: String, sortType: String, sortDir: String) {
         let key = "coins_\(limit)_\(start)_\(convert)_\(sortType)_\(sortDir)"
         set(key: key, value: coins, ttl: CacheService.coinListTTL)
     }
 
-    func getCoinLogos(forIDs ids: [Int]) -> [Int: String]? {
-        let key = "logos_\(ids.sorted().map(String.init).joined(separator: "_"))"
+    func getCoinLogos() -> [Int: String]? {
+        let key = "logos_all"
         return get(key: key, type: [Int: String].self)
     }
 
-    func setCoinLogos(_ logos: [Int: String], forIDs ids: [Int]) {
-        let key = "logos_\(ids.sorted().map(String.init).joined(separator: "_"))"
+    func storeCoinLogos(_ logos: [Int: String]) {
+        let key = "logos_all"
         set(key: key, value: logos, ttl: CacheService.logoTTL)
     }
 
-    func getPriceUpdates(forIDs ids: [Int], convert: String) -> [Int: Quote]? {
+    func getQuotes(for ids: [Int], convert: String) -> [Int: Quote]? {
         let key = "prices_\(ids.sorted().map(String.init).joined(separator: "_"))_\(convert)"
         return get(key: key, type: [Int: Quote].self)
     }
 
-    func setPriceUpdates(_ quotes: [Int: Quote], forIDs ids: [Int], convert: String) {
+    func storeQuotes(_ quotes: [Int: Quote], for ids: [Int], convert: String) {
         let key = "prices_\(ids.sorted().map(String.init).joined(separator: "_"))_\(convert)"
         set(key: key, value: quotes, ttl: CacheService.priceUpdateTTL)
     }
 
-    func getChartData(coinId: String, currency: String, days: String) -> [Double]? {
+    func getChartData(for coinId: String, currency: String, days: String) -> [Double]? {
         let key = "chart_\(coinId)_\(currency)_\(days)"
         return get(key: key, type: [Double].self)
     }
 
-    func setChartData(_ data: [Double], coinId: String, currency: String, days: String) {
+    func storeChartData(_ data: [Double], for coinId: String, currency: String, days: String) {
         let key = "chart_\(coinId)_\(currency)_\(days)"
         set(key: key, value: data, ttl: CacheService.chartDataTTL)
+    }
+    
+    func clearCache() {
+        queue.async(flags: .barrier) {
+            self.cache.removeAllObjects()
+            self.currentMemoryUsage = 0
+            print("🗑️ Cache cleared - all objects removed")
+        }
+    }
+    
+    func clearExpiredEntries() {
+        queue.async(flags: .barrier) {
+            // This method would iterate through cache and remove expired entries
+            // For NSCache, we rely on automatic eviction based on memory pressure
+            print("♻️ Expired entries cleanup requested (automatic for NSCache)")
+        }
     }
 
     deinit {

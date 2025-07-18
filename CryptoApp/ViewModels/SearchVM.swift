@@ -99,7 +99,7 @@ final class SearchVM: ObservableObject {
     // MARK: - Private Properties
     
     private var cancellables = Set<AnyCancellable>()
-    private let coinManager: CoinManager
+    private let coinManager: CoinManagerProtocol
     private let persistenceService = PersistenceService.shared
     private var allCoins: [Coin] = []
     private let debounceInterval: TimeInterval = 0.3 // 300ms debounce
@@ -111,7 +111,15 @@ final class SearchVM: ObservableObject {
     
     // MARK: - Init
     
-    init(coinManager: CoinManager = CoinManager()) {
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts CoinManagerProtocol for better testability and modularity.
+     * Falls back to default CoinManager for backward compatibility.
+     */
+    init(coinManager: CoinManagerProtocol = CoinManager()) {
         self.coinManager = coinManager
         setupSearchDebounce()
         loadInitialData()

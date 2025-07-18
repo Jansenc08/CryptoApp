@@ -84,7 +84,7 @@ final class WatchlistVM: ObservableObject {
     // MARK: - Dependencies
     
     private let watchlistManager = WatchlistManager.shared
-    private let coinManager: CoinManager
+    private let coinManager: CoinManagerProtocol
     private var cancellables = Set<AnyCancellable>()
     private var requestCancellables = Set<AnyCancellable>()  // Separate for API requests
     private var updateTimer: Timer?
@@ -117,7 +117,15 @@ final class WatchlistVM: ObservableObject {
     // Sets up Combine bindings to respond to watchlist changes
     // Triggers initial load and starts periodic updates
     
-    init(coinManager: CoinManager = CoinManager()) {
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts CoinManagerProtocol for better testability and modularity.
+     * Falls back to default CoinManager for backward compatibility.
+     */
+    init(coinManager: CoinManagerProtocol = CoinManager()) {
         self.coinManager = coinManager
         setupOptimizedBindings()
         loadInitialData()
@@ -209,7 +217,7 @@ final class WatchlistVM: ObservableObject {
     // MARK: - Optimized Private Methods
     
     /**
-     * OPTIMIZED BINDING SETUP
+     * BINDING SETUP
      * 
      * Performance Improvements:
      * - Eliminates redundant loadWatchlistCoins() calls
@@ -287,7 +295,7 @@ final class WatchlistVM: ObservableObject {
     }
     
     /**
-     * OPTIMIZED PRICE FETCHING
+     * PRICE FETCHING
      * 
      * Performance Improvements:
      * - Background processing
@@ -361,7 +369,7 @@ final class WatchlistVM: ObservableObject {
             
             print("🔄 Fetching fresh price data for \(coinIds.count) coins...")
             
-            self.coinManager.getQuotes(for: coinIds)
+            self.coinManager.getQuotes(for: coinIds, convert: "USD", priority: .normal)
                 .sink(
                     receiveCompletion: { [weak self] completionResult in
                         if case .failure(let error) = completionResult {
@@ -436,7 +444,7 @@ final class WatchlistVM: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self = self else { return }
             
-            self.coinManager.getCoinLogos(forIDs: coinIds)
+            self.coinManager.getCoinLogos(forIDs: coinIds, priority: .low)
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] logos in
                     guard let self = self else { return }
@@ -454,7 +462,7 @@ final class WatchlistVM: ObservableObject {
         
         logoRequestsInProgress.insert(coinId)
         
-        coinManager.getCoinLogos(forIDs: [coinId])
+        coinManager.getCoinLogos(forIDs: [coinId], priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] logos in
                 guard let self = self else { return }

@@ -136,7 +136,7 @@ final class CoinListVM: ObservableObject {
      * - PersistenceService: Handles offline data storage and caching
      */
 
-    private let coinManager: CoinManager                       //  API layer - handles all network requests
+    private let coinManager: CoinManagerProtocol               //  API layer - handles all network requests
     private var cancellables = Set<AnyCancellable>()           //  Combine subscription storage (prevents memory leaks)
     private let persistenceService = PersistenceService.shared //  Offline data storage and caching
 
@@ -178,7 +178,19 @@ final class CoinListVM: ObservableObject {
      * Default parameter allows normal usage while enabling dependency injection for testing.
      * - makes the code  convenient and testable.
      */
-    init(coinManager: CoinManager = CoinManager()) {
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts CoinManagerProtocol for:
+     * - Easy mocking in unit tests
+     * - Swappable business logic implementations
+     * - Better testability and modularity
+     * 
+     * Falls back to default CoinManager for backward compatibility
+     */
+    init(coinManager: CoinManagerProtocol = CoinManager()) {
         self.coinManager = coinManager
         
         // 🔧 SMART CACHE MANAGEMENT: Clear cache if it has insufficient data
@@ -968,7 +980,7 @@ final class CoinListVM: ObservableObject {
 
         isUpdatingPrices = true  // 🔒 Lock to prevent race conditions
         
-        coinManager.getQuotes(for: ids, priority: .low)
+        coinManager.getQuotes(for: ids, convert: "USD", priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completionResult in
                 self?.isUpdatingPrices = false  // 🔓 Unlock after completion
@@ -1066,7 +1078,7 @@ final class CoinListVM: ObservableObject {
         isUpdatingPrices = true  // 🔒 Lock to prevent race conditions
         
         // 🔽 LOW PRIORITY: Background updates are non-intrusive
-        coinManager.getQuotes(for: visibleIds, priority: .low)
+        coinManager.getQuotes(for: visibleIds, convert: "USD", priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completionResult in
                 self?.isUpdatingPrices = false  // 🔓 Unlock after completion

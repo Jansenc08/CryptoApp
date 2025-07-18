@@ -21,15 +21,35 @@ enum NetworkError: Error, Equatable {
     }
 }
 
-final class CoinService {
+final class CoinService: CoinServiceProtocol {
 
     private let baseURL = "https://pro-api.coinmarketcap.com/v1"
     private let apiKey = "9257c6de-ff87-48e2-886b-09f0cc34e666"
     private let coinGeckoBaseURL = "https://api.coingecko.com/api/v3" // CoinGecko Base URL
     
-    // Dependencies
-    private let cacheService = CacheService.shared       // Stores recent responses in memory
-    private let requestManager = RequestManager.shared  // Queues and Prioritizes requests
+    // Injected Dependencies
+    private let cacheService: CacheServiceProtocol
+    private let requestManager: RequestManagerProtocol
+    
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Allows injection of dependencies for:
+     * - Better testability with mock services
+     * - Flexibility to swap implementations
+     * - Cleaner separation of concerns
+     * 
+     * Falls back to shared instances for backward compatibility
+     */
+    init(
+        cacheService: CacheServiceProtocol = CacheService.shared,
+        requestManager: RequestManagerProtocol = RequestManager.shared
+    ) {
+        self.cacheService = cacheService
+        self.requestManager = requestManager
+    }
 
     
     
@@ -72,7 +92,7 @@ final class CoinService {
         }
         .handleEvents(receiveOutput: { [weak self] coins in
             // Cache the result for future use
-            self?.cacheService.setCoinList(coins, limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir)
+            self?.cacheService.storeCoinList(coins, limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir)
         })
         .eraseToAnyPublisher()
     }
@@ -136,26 +156,44 @@ final class CoinService {
     func fetchCoinLogos(forIDs ids: [Int], priority: RequestPriority = .low) -> AnyPublisher<[Int: String], Never> {
         print("🖼️ CoinService.fetchCoinLogos | Requested IDs: \(ids)")
         
-        // Check cache first for logos too
-        if let cachedLogos = cacheService.getCoinLogos(forIDs: ids) {
-            print("💾 Cache hit for coin logos (IDs: \(ids)) | Found \(cachedLogos.count) logos")
-            return Just(cachedLogos)
+        // PARTIAL CACHE LOGIC: Check which requested IDs are already cached
+        let allCachedLogos = cacheService.getCoinLogos() ?? [:]
+        let requestedCachedLogos = allCachedLogos.filter { ids.contains($0.key) }
+        let missingIds = ids.filter { allCachedLogos[$0] == nil }
+        
+        print("💾 CoinService.fetchCoinLogos | Cache status: \(requestedCachedLogos.count)/\(ids.count) cached, \(missingIds.count) missing")
+        
+        // If all requested logos are cached, return them immediately
+        if missingIds.isEmpty {
+            print("✅ CoinService.fetchCoinLogos | All requested logos cached, returning \(requestedCachedLogos.count) logos")
+            return Just(requestedCachedLogos)
                 .eraseToAnyPublisher()
         }
         
-        print("🌐 CoinService.fetchCoinLogos | Cache miss, fetching from API...")
+        // If some logos are missing, fetch missing ones and merge with cached
+        print("🌐 CoinService.fetchCoinLogos | Fetching \(missingIds.count) missing logos: \(missingIds)")
         
         // Use request manager with priority - logos get low priority since they're not urgent
-        return requestManager.fetchCoinLogos(ids: ids, priority: priority) { [weak self] in
-            self?.performCoinLogosRequest(forIDs: ids) ?? 
+        return requestManager.fetchCoinLogos(ids: missingIds, priority: priority) { [weak self] in
+            self?.performCoinLogosRequest(forIDs: missingIds) ?? 
             Just([:]).eraseToAnyPublisher()
         }
         .replaceError(with: [:])
-        .handleEvents(receiveOutput: { [weak self] logos in
-            print("📥 CoinService.fetchCoinLogos | Received \(logos.count) logos: \(logos)")
-            // Cache the result
-            self?.cacheService.setCoinLogos(logos, forIDs: ids)
+        .handleEvents(receiveOutput: { [weak self] newLogos in
+            print("📥 CoinService.fetchCoinLogos | Received \(newLogos.count) new logos for missing IDs")
+            // LOGO MERGE FIX: Merge new logos with existing cached logos instead of overwriting
+            let existingLogos = self?.cacheService.getCoinLogos() ?? [:]
+            let mergedLogos = existingLogos.merging(newLogos) { _, new in new }
+            print("🔄 CoinService.fetchCoinLogos | Merging \(newLogos.count) new with \(existingLogos.count) existing = \(mergedLogos.count) total")
+            // Cache the merged result
+            self?.cacheService.storeCoinLogos(mergedLogos)
         })
+        .map { newLogos in
+            // RESPONSE MERGE: Combine cached + newly fetched logos for complete response
+            let combinedResponse = requestedCachedLogos.merging(newLogos) { cached, _ in cached }
+            print("📤 CoinService.fetchCoinLogos | Returning combined response: \(combinedResponse.count) logos for requested IDs")
+            return combinedResponse
+        }
         .eraseToAnyPublisher()
     }
     
@@ -204,7 +242,7 @@ final class CoinService {
     
     func fetchQuotes(for ids: [Int], convert: String, priority: RequestPriority = .normal) -> AnyPublisher<[Int: Quote], NetworkError> {
         // Check cache first for price quotes
-        if let cachedQuotes = cacheService.getPriceUpdates(forIDs: ids, convert: convert) {
+        if let cachedQuotes = cacheService.getQuotes(for: ids, convert: convert) {
             print("💾 Cache hit for price quotes (IDs: \(ids))")
             return Just(cachedQuotes)
                 .setFailureType(to: NetworkError.self)
@@ -231,7 +269,7 @@ final class CoinService {
         }
         .handleEvents(receiveOutput: { [weak self] quotes in
             // Cache the result
-            self?.cacheService.setPriceUpdates(quotes, forIDs: ids, convert: convert)
+            self?.cacheService.storeQuotes(quotes, for: ids, convert: convert)
         })
         .eraseToAnyPublisher()
     }
@@ -290,7 +328,7 @@ final class CoinService {
     func fetchCoinGeckoChartData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[Double], NetworkError> {
         // Check cache first and return immediately if found
         // No rate limiting delays when data is cached. Makes filter switching instant
-        if let cachedData = cacheService.getChartData(coinId: coinId, currency: currency, days: days) {
+        if let cachedData = cacheService.getChartData(for: coinId, currency: currency, days: days) {
             print("💾 ⚡ Instant cache hit for chart data: \(coinId) - \(days) (\(cachedData.count) points)")
             return Just(cachedData)
                 .setFailureType(to: NetworkError.self)
@@ -321,7 +359,7 @@ final class CoinService {
         }
         .handleEvents(receiveOutput: { [weak self] data in
             // Cache the result for future filter changes.
-            self?.cacheService.setChartData(data, coinId: coinId, currency: currency, days: days)
+            self?.cacheService.storeChartData(data, for: coinId, currency: currency, days: days)
             print("💾 Cached chart data for \(coinId) - \(days): \(data.count) points")
         })
         .eraseToAnyPublisher()
