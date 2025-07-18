@@ -313,11 +313,16 @@ final class CoinListVM: ObservableObject {
         let sortedDisplayCoins = Array(fullFilteredCoins.prefix(pageSize))
         coinsSubject.send(sortedDisplayCoins)  // This triggers UI update via AnyPublisher
         
+        // Reset pagination state for sorted data
+        currentPage = 1
+        canLoadMore = fullFilteredCoins.count > pageSize
+        
         // Fetch logos for newly visible coins after sorting
         let displayedIds = sortedDisplayCoins.map { $0.id }
         fetchCoinLogosIfNeeded(forIDs: displayedIds)
         
-        print("✅ Sort applied: Displaying \(sortedDisplayCoins.count) coins")
+        print("✅ Sort applied: Displaying \(sortedDisplayCoins.count) coins of \(fullFilteredCoins.count) total")
+        print("📖 Pagination reset: canLoadMore = \(canLoadMore), currentPage = \(currentPage)")
     }
     
     /**
