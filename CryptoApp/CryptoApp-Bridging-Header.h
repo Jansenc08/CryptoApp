@@ -14,3 +14,5 @@
 #import "FilterButton.h"
 #import "SortHeaderView.h"
 #import "SegmentControl.h"
+#import "AddCoinCell.h"
+#import "SearchBarComponent.h"

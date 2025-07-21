@@ -383,55 +383,78 @@ final class WatchlistVM: ObservableObject {
             return
         }
         
-        // Background price fetching
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            
-            print("🔄 Fetching fresh price data for \(coinIds.count) coins...")
-            
-            self.coinManager.getQuotes(for: coinIds, convert: "USD", priority: .normal)
-                .sink(
-                    receiveCompletion: { [weak self] completionResult in
-                        if case .failure(let error) = completionResult {
-                            DispatchQueue.main.async {
-                                self?.errorMessageSubject.send(ErrorMessageProvider.shared.getWatchlistErrorMessage(for: error))
-                                self?.isLoadingSubject.send(false)
-                                self?.isPriceUpdateInProgress = false
-                                
-                                // Fallback: show coins without price data rather than empty list
-                                let baseCoins = self?.watchlistManager.getWatchlistCoins() ?? []
-                                if !baseCoins.isEmpty {
-                                    self?.watchlistCoinsSubject.send(baseCoins)
-                                    #if DEBUG
-                                    print("⚠️ Price fetch failed, showing \(baseCoins.count) coins without price data")
-                                    #endif
-                                }
-                            }
-                        }
-                    },
-                    receiveValue: { [weak self] quotes in
-                        guard let self = self else { return }
-                        
+        print("🔄 Fetching fresh price data for \(coinIds.count) coins...")
+        
+        // Create subscription on main queue to avoid race conditions
+        let subscription = coinManager.getQuotes(for: coinIds, convert: "USD", priority: .normal)
+            .receive(on: DispatchQueue.main) // Ensure all updates happen on main thread
+            .sink(
+                receiveCompletion: { [weak self] completionResult in
+                    guard let self = self else { return }
+                    
+                    self.isPriceUpdateInProgress = false
+                    
+                    if case .failure(let error) = completionResult {
                         #if DEBUG
-                        print("📊 Quote API returned data for \(quotes.count) coins")
+                        print("⚠️ Price fetch failed: \(error)")
                         #endif
                         
-                        // Use optimized manager's cached coins instead of redundant database calls
+                        // For newly added coins, don't show error - just show coins without price data
+                        // This prevents the decoding error from blocking the watchlist display
                         let baseCoins = self.watchlistManager.getWatchlistCoins()
-                        
-                        let updatedCoins = baseCoins.map { coin -> Coin in
-                            var updatedCoin = coin
-                            if let quote = quotes[coin.id] {
-                                updatedCoin.quote = ["USD": quote]
+                        if !baseCoins.isEmpty {
+                            self.watchlistCoinsSubject.send(baseCoins)
+                            self.isLoadingSubject.send(false)
+                            #if DEBUG
+                            print("⚠️ Showing \(baseCoins.count) coins without price data due to API error")
+                            #endif
+                            
+                            // Try to fetch prices again after a delay for newly added coins
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                                guard let self = self else { return }
+                                let retryCoins = self.watchlistManager.getWatchlistCoins()
+                                if !retryCoins.isEmpty {
+                                    self.refreshPriceData(for: retryCoins)
+                                }
                             }
-                            return updatedCoin
+                        } else {
+                            // Only show error message if we have no coins to display
+                            self.errorMessageSubject.send(ErrorMessageProvider.shared.getWatchlistErrorMessage(for: error))
+                            self.isLoadingSubject.send(false)
                         }
-                        
-                        self.isPriceUpdateInProgress = false
-                        completion(updatedCoins)
+                        completion(baseCoins)
                     }
-                )
-                .store(in: &self.requestCancellables)
+                },
+                receiveValue: { [weak self] quotes in
+                    guard let self = self else { 
+                        completion([])
+                        return 
+                    }
+                    
+                    #if DEBUG
+                    print("📊 Quote API returned data for \(quotes.count) coins")
+                    #endif
+                    
+                    // Use optimized manager's cached coins instead of redundant database calls
+                    let baseCoins = self.watchlistManager.getWatchlistCoins()
+                    
+                    let updatedCoins = baseCoins.map { coin -> Coin in
+                        var updatedCoin = coin
+                        if let quote = quotes[coin.id] {
+                            updatedCoin.quote = ["USD": quote]
+                        }
+                        return updatedCoin
+                    }
+                    
+                    self.isPriceUpdateInProgress = false
+                    completion(updatedCoins)
+                }
+            )
+        
+        // Store subscription safely on main queue
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            subscription.store(in: &self.requestCancellables)
         }
     }
     
@@ -460,20 +483,21 @@ final class WatchlistVM: ObservableObject {
         let coinIds = coinsNeedingLogos.map { $0.id }
         logoRequestsInProgress.formUnion(coinIds)
         
-        // Background logo fetching
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        // Create logo subscription safely on main queue
+        let logoSubscription = coinManager.getCoinLogos(forIDs: coinIds, priority: .low)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] logos in
+                guard let self = self else { return }
+                let currentLogos = self.currentCoinLogos
+                let mergedLogos = currentLogos.merging(logos) { _, new in new }
+                self.coinLogosSubject.send(mergedLogos)
+                self.logoRequestsInProgress.subtract(coinIds)
+            }
+        
+        // Store subscription safely on main queue
+        DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            
-            self.coinManager.getCoinLogos(forIDs: coinIds, priority: .low)
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] logos in
-                    guard let self = self else { return }
-                    let currentLogos = self.currentCoinLogos
-                    let mergedLogos = currentLogos.merging(logos) { _, new in new }
-                    self.coinLogosSubject.send(mergedLogos)
-                    self.logoRequestsInProgress.subtract(coinIds)
-                }
-                .store(in: &self.requestCancellables)
+            logoSubscription.store(in: &self.requestCancellables)
         }
     }
     
@@ -482,7 +506,7 @@ final class WatchlistVM: ObservableObject {
         
         logoRequestsInProgress.insert(coinId)
         
-        coinManager.getCoinLogos(forIDs: [coinId], priority: .low)
+        let logoSubscription = coinManager.getCoinLogos(forIDs: [coinId], priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] logos in
                 guard let self = self else { return }
@@ -491,7 +515,9 @@ final class WatchlistVM: ObservableObject {
                 self.coinLogosSubject.send(mergedLogos)
                 self.logoRequestsInProgress.remove(coinId)
             }
-            .store(in: &requestCancellables)
+        
+        // Store subscription safely
+        logoSubscription.store(in: &requestCancellables)
     }
     
     /**
@@ -834,3 +860,4 @@ final class WatchlistVM: ObservableObject {
         applySortingToWatchlist()
     }
 } 
+

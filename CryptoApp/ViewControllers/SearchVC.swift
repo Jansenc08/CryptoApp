@@ -19,7 +19,7 @@ import Combine
     // MARK: - Properties
     
     private var collectionView: UICollectionView!
-    private var searchController: UISearchController!
+    private var searchBarComponent: SearchBarComponent!
     private let viewModel = SearchVM()
     private var cancellables = Set<AnyCancellable>()
     private var dataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
@@ -53,7 +53,7 @@ import Combine
     override func viewDidLoad() {
         super.viewDidLoad()
         configureView()
-        configureSearchController()
+        configureSearchBar()
         configureRecentSearches()
         configureCollectionView()
         configureDataSource()
@@ -83,7 +83,7 @@ import Combine
             hasAppeared = true
             // Use longer delay for simulator compatibility
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.searchController.searchBar.becomeFirstResponder()
+                self?.searchBarComponent.becomeFirstResponder()
             }
             shouldPresentKeyboardOnLoad = false
         }
@@ -93,7 +93,7 @@ import Combine
         super.viewDidDisappear(animated)
         
         // Dismiss keyboard when leaving
-        searchController.searchBar.resignFirstResponder()
+        searchBarComponent.resignFirstResponder()
         
         // Reset navigation bar state when leaving search
         if isMovingFromParent || isBeingDismissed {
@@ -115,27 +115,22 @@ import Combine
         navigationItem.largeTitleDisplayMode = .always
     }
     
-    private func configureSearchController() {
-        searchController = UISearchController(searchResultsController: nil)
-        searchController.searchResultsUpdater = self
-        searchController.searchBar.delegate = self
-        searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = "Search cryptocurrencies..."
+    private func configureSearchBar() {
+        searchBarComponent = SearchBarComponent(placeholder: "Search cryptocurrencies...")
+        searchBarComponent.delegate = self
+        searchBarComponent.translatesAutoresizingMaskIntoConstraints = false
         
-        // Customize search bar appearance
-        searchController.searchBar.searchBarStyle = .minimal
-        searchController.searchBar.tintColor = .systemGreen
+        // Configure for full screen search usage
+        searchBarComponent.configureForFullScreenSearch()
         
-        // Configure search suggestions
-        searchController.searchBar.scopeButtonTitles = nil
-        searchController.automaticallyShowsCancelButton = true
+        view.addSubview(searchBarComponent)
         
-        // Add search controller to navigation item
-        navigationItem.searchController = searchController
-        navigationItem.hidesSearchBarWhenScrolling = false
-        
-        // Ensure search bar is always visible
-        definesPresentationContext = true
+        NSLayoutConstraint.activate([
+            searchBarComponent.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            searchBarComponent.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            searchBarComponent.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            searchBarComponent.heightAnchor.constraint(equalToConstant: 56)
+        ])
     }
     
     private func configureRecentSearches() {
@@ -181,7 +176,7 @@ import Combine
         // Layout constraints
         NSLayoutConstraint.activate([
             // Container constraints
-            recentSearchesContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            recentSearchesContainer.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 8),
             recentSearchesContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             recentSearchesContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             recentSearchesContainer.heightAnchor.constraint(equalToConstant: 80),
@@ -230,7 +225,7 @@ import Combine
         
         // Create two different top constraints
         collectionViewTopWithRecentSearches = collectionView.topAnchor.constraint(equalTo: recentSearchesContainer.bottomAnchor)
-        collectionViewTopWithoutRecentSearches = collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        collectionViewTopWithoutRecentSearches = collectionView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 8)
         
         // Activate common constraints
         NSLayoutConstraint.activate([
@@ -290,7 +285,7 @@ import Combine
                 
                 self?.updateDataSource(results)
                 // Get current search text from the search controller instead of ViewModel
-                let currentSearchText = self?.searchController.searchBar.text ?? ""
+                let currentSearchText = self?.searchBarComponent.text ?? ""
                 self?.updateEmptyState(isEmpty: results.isEmpty, searchText: currentSearchText)
             }
             .store(in: &cancellables)
@@ -502,7 +497,7 @@ import Combine
             
             // Update empty state since there are no recent searches now
             self?.updateEmptyState(isEmpty: self?.currentSearchResults.isEmpty ?? true, 
-                                  searchText: self?.searchController.searchBar.text ?? "")
+                                  searchText: self?.searchBarComponent.text ?? "")
             
             print("🗑️ User cleared all recent searches")
         })
@@ -513,12 +508,10 @@ import Combine
     }
 }
 
-// MARK: - UISearchResultsUpdating
+// MARK: - SearchBarComponentDelegate
 
-extension SearchVC: UISearchResultsUpdating {
-    func updateSearchResults(for searchController: UISearchController) {
-        let searchText = searchController.searchBar.text ?? ""
-        
+extension SearchVC: SearchBarComponentDelegate {
+    func searchBarComponent(_ searchBar: SearchBarComponent, textDidChange searchText: String) {
         // Update the view model's search text which triggers the debounced search
         viewModel.updateSearchText(searchText)
         
@@ -529,12 +522,8 @@ extension SearchVC: UISearchResultsUpdating {
             showRecentSearches(false)
         }
     }
-}
-
-// MARK: - UISearchBarDelegate
-
-extension SearchVC: UISearchBarDelegate {
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+    
+    func searchBarComponentSearchButtonClicked(_ searchBar: SearchBarComponent) {
         searchBar.resignFirstResponder()
         
         // Save search term if it has results
@@ -544,7 +533,7 @@ extension SearchVC: UISearchBarDelegate {
         }
     }
     
-    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+    func searchBarComponentCancelButtonClicked(_ searchBar: SearchBarComponent) {
         viewModel.clearSearch()
         
         // Show recent searches when canceling
@@ -559,7 +548,7 @@ extension SearchVC: UICollectionViewDelegate {
         collectionView.deselectItem(at: indexPath, animated: true)
         
         // Dismiss keyboard
-        searchController.searchBar.resignFirstResponder()
+        searchBarComponent.resignFirstResponder()
         
         // Navigate to coin details
         let selectedCoin = currentSearchResults[indexPath.item]
@@ -659,10 +648,10 @@ extension SearchVC {
      */
     private func searchForCoinAndNavigate(searchItem: RecentSearchItem) {
         // Store the original search text to restore later
-        let originalSearchText = searchController.searchBar.text ?? ""
+        let originalSearchText = searchBarComponent.text ?? ""
         
         // Trigger search for this specific coin
-        searchController.searchBar.text = searchItem.symbol
+        searchBarComponent.text = searchItem.symbol
         viewModel.updateSearchText(searchItem.symbol)
         
         // Wait for search results and then navigate
@@ -687,7 +676,7 @@ extension SearchVC {
                         print("✅ Found real coin data for \(searchItem.symbol)")
                         
                         // Restore original search text
-                        self.searchController.searchBar.text = originalSearchText
+                        self.searchBarComponent.text = originalSearchText
                         self.viewModel.updateSearchText(originalSearchText)
                         
                         // Navigate with real coin data
@@ -707,7 +696,7 @@ extension SearchVC {
      */
     private func navigate(searchItem: RecentSearchItem, fallbackText originalSearchText: String) {
         // Restore original search text
-        searchController.searchBar.text = originalSearchText
+        searchBarComponent.text = originalSearchText
         viewModel.updateSearchText(originalSearchText)
         
         // Show alert that coin details may be limited

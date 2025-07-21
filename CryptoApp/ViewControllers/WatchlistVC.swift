@@ -523,7 +523,7 @@ final class WatchlistVC: UIViewController {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
         let messageLabel = UILabel()
-        messageLabel.text = "Add coins to your watchlist by long pressing on any coin in the Markets tab"
+        messageLabel.text = "Add coins to your watchlist by tapping the + button above or by long pressing on any coin in the Markets tab"
         messageLabel.font = UIFont.systemFont(ofSize: 16, weight: .regular)
         messageLabel.textColor = .tertiaryLabel
         messageLabel.textAlignment = .center
@@ -558,7 +558,8 @@ final class WatchlistVC: UIViewController {
                 view.addSubview(emptyView)
                 emptyView.translatesAutoresizingMaskIntoConstraints = false
                 NSLayoutConstraint.activate([
-                    emptyView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                    // Start empty state below the sort header, not covering the filter header
+                    emptyView.topAnchor.constraint(equalTo: sortHeaderView.bottomAnchor),
                     emptyView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                     emptyView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                     emptyView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -758,6 +759,41 @@ extension WatchlistVC: FilterHeaderViewDelegate {
     func filterHeaderView(_ headerView: FilterHeaderView, didTapTopCoinsButton button: FilterButton) {
         // Not needed for watchlist - we only show the price change button
         // But we need to implement this for protocol conformance
+    }
+    
+    func filterHeaderView(_ headerView: FilterHeaderView, didTapAddCoinsButton button: UIButton) {
+        // Present the AddCoinsVC modally
+        let addCoinsVC = AddCoinsVC()
+        let navigationController = UINavigationController(rootViewController: addCoinsVC)
+        navigationController.modalPresentationStyle = .pageSheet
+        
+        // Configure the sheet presentation
+        if let sheet = navigationController.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.preferredCornerRadius = 16
+            sheet.prefersGrabberVisible = true
+        }
+        
+        present(navigationController, animated: true) { [weak self] in
+            // Set up a completion handler for when the modal is dismissed
+            navigationController.presentationController?.delegate = self
+        }
+    }
+}
+
+// MARK: - UIAdaptivePresentationControllerDelegate
+
+extension WatchlistVC: UIAdaptivePresentationControllerDelegate {
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        // Refresh watchlist when AddCoinsVC is dismissed
+        #if DEBUG
+        print("📱 AddCoinsVC dismissed - refreshing watchlist")
+        #endif
+        
+        // Force refresh the watchlist to pick up newly added coins
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.viewModel.refreshWatchlist()
+        }
     }
 }
 

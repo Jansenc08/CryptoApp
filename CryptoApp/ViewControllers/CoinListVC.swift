@@ -751,6 +751,11 @@ extension CoinListVC: FilterHeaderViewDelegate {
         modalVC.delegate = self
         present(modalVC, animated: true)
     }
+    
+    func filterHeaderView(_ headerView: FilterHeaderView, didTapAddCoinsButton button: UIButton) {
+        // Not needed for coin list page (only used in watchlist), but required for protocol conformance
+        // Could optionally navigate to search or add functionality here if desired
+    }
 }
 
 // MARK: - FilterModalVC Delegate

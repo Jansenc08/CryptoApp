@@ -12,6 +12,7 @@ import UIKit
 protocol FilterHeaderViewDelegate: AnyObject {
     func filterHeaderView(_ headerView: FilterHeaderView, didTapPriceChangeButton button: FilterButton)
     func filterHeaderView(_ headerView: FilterHeaderView, didTapTopCoinsButton button: FilterButton)
+    func filterHeaderView(_ headerView: FilterHeaderView, didTapAddCoinsButton button: UIButton) // New delegate method
 }
 
 // MARK: - FilterHeaderView
@@ -28,84 +29,132 @@ class FilterHeaderView: UIView {
         }
     }
     
-    // Watchlist mode - only shows price change button
+    // Watchlist mode - only shows price change button and + button
     private var isWatchlistMode: Bool = false
     
-    // MARK: - UI Components
-    
-    private lazy var stackView: UIStackView = {
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.distribution = .fill
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
-    }()
-    
-    private lazy var priceChangeButton: FilterButton = {
-        let displayText = filterState.priceChangeDisplayText
-        let button = FilterButton(title: displayText.title)
-        button.addTarget(self, action: #selector(priceChangeButtonTapped), for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private lazy var topCoinsButton: FilterButton = {
-        let displayText = filterState.topCoinsDisplayText
-        let button = FilterButton(title: displayText.title)
-        button.addTarget(self, action: #selector(topCoinsButtonTapped), for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private var priceChangeButton: FilterButton!
+    private var topCoinsButton: FilterButton!
+    private var addCoinsButton: UIButton! // New + button for watchlist mode
     
     // MARK: - Initialization
-    
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupView()
-    }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupView()
-    }
     
     convenience init(watchlistMode: Bool = false) {
         self.init(frame: .zero)
         self.isWatchlistMode = watchlistMode
-        updateButtonVisibility()
+        setupUI()
+    }
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
     }
     
     // MARK: - Setup
     
-    private func setupView() {
+    private func setupUI() {
         backgroundColor = UIColor.systemBackground
+        setupButtons()
         setupStackView()
         setupConstraints()
-        updateButtonAppearance()
         updateButtonVisibility()
+        updateButtonAppearance()
+    }
+    
+    private func setupButtons() {
+        // Price change button (always present)
+        let priceDisplayText = filterState.priceChangeDisplayText
+        priceChangeButton = FilterButton(title: priceDisplayText.title)
+        priceChangeButton.addTarget(self, action: #selector(priceChangeButtonTapped), for: .touchUpInside)
+        priceChangeButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        if isWatchlistMode {
+            // Add coins button (only shown in watchlist mode)
+            addCoinsButton = UIButton(type: .system)
+            addCoinsButton.setImage(UIImage(systemName: "plus"), for: .normal)
+            addCoinsButton.tintColor = .systemGray
+            addCoinsButton.backgroundColor = .clear
+            addCoinsButton.addTarget(self, action: #selector(addCoinsButtonTapped), for: .touchUpInside)
+            addCoinsButton.translatesAutoresizingMaskIntoConstraints = false
+            
+            // Add accessibility
+            addCoinsButton.accessibilityLabel = "Add coins to watchlist"
+            addCoinsButton.accessibilityHint = "Tap to open the add coins screen"
+        } else {
+            // Top coins button (only shown in coin list mode)
+            let topCoinsDisplayText = filterState.topCoinsDisplayText
+            topCoinsButton = FilterButton(title: topCoinsDisplayText.title)
+            topCoinsButton.addTarget(self, action: #selector(topCoinsButtonTapped), for: .touchUpInside)
+            topCoinsButton.translatesAutoresizingMaskIntoConstraints = false
+        }
     }
     
     private func setupStackView() {
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.distribution = .fill
+        stackView.spacing = 12
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add buttons to stack view based on mode
+        if isWatchlistMode {
+            // Watchlist: 24h% button on left, + button on right
+            stackView.addArrangedSubview(priceChangeButton)
+            
+            // Add flexible spacer to push + button to the right
+            let spacer = UIView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            stackView.addArrangedSubview(spacer)
+            
+            stackView.addArrangedSubview(addCoinsButton)
+        } else {
+            // Coin list: both buttons on left, compact
+            let buttonContainer = UIStackView()
+            buttonContainer.axis = .horizontal
+            buttonContainer.distribution = .fill
+            buttonContainer.spacing = 12
+            buttonContainer.addArrangedSubview(priceChangeButton)
+            buttonContainer.addArrangedSubview(topCoinsButton)
+            
+            stackView.addArrangedSubview(buttonContainer)
+            
+            // Add flexible spacer to keep buttons on the left
+            let spacer = UIView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            stackView.addArrangedSubview(spacer)
+        }
+        
         addSubview(stackView)
-        stackView.addArrangedSubview(priceChangeButton)
-        stackView.addArrangedSubview(topCoinsButton)
+        
+        // Setup constraints for stack view
+        NSLayoutConstraint.activate([
+            stackView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12)
+        ])
     }
     
     private func setupConstraints() {
+        // Set button widths to show full text
         NSLayoutConstraint.activate([
-            // Stack view constraints - positioned to the left, no trailing constraint
-            stackView.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            stackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16),
-            
-            // Button width constraints to make them smaller
-            priceChangeButton.widthAnchor.constraint(equalToConstant: 110),
-            topCoinsButton.widthAnchor.constraint(equalToConstant: 110),
-            
-            // Height constraint for the header view
-            heightAnchor.constraint(equalToConstant: 68) // 36 (button) + 32 (padding)
+            priceChangeButton.widthAnchor.constraint(equalToConstant: 110)
         ])
+        
+        if isWatchlistMode {
+            NSLayoutConstraint.activate([
+                addCoinsButton.widthAnchor.constraint(equalToConstant: 40),
+                addCoinsButton.heightAnchor.constraint(equalToConstant: 40)
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                topCoinsButton.widthAnchor.constraint(equalToConstant: 110)
+            ])
+        }
     }
     
     // MARK: - Public Methods
@@ -120,12 +169,19 @@ class FilterHeaderView: UIView {
     }
     
     func setLoading(_ isLoading: Bool, for buttonType: FilterType) {
-        let button = buttonType == .priceChange ? priceChangeButton : topCoinsButton
+        let button: FilterButton?
+        
+        if buttonType == .priceChange {
+            button = priceChangeButton
+        } else {
+            // Only try to access topCoinsButton if not in watchlist mode
+            button = isWatchlistMode ? nil : topCoinsButton
+        }
         
         // Simple visual feedback - slight dimming during filter application
         UIView.animate(withDuration: 0.2) {
-            button.alpha = isLoading ? 0.6 : 1.0
-            button.isUserInteractionEnabled = !isLoading
+            button?.alpha = isLoading ? 0.6 : 1.0
+            button?.isUserInteractionEnabled = !isLoading
         }
     }
     
@@ -133,24 +189,24 @@ class FilterHeaderView: UIView {
     
     private func updateButtonAppearance() {
         let priceChangeDisplay = filterState.priceChangeDisplayText
-        let topCoinsDisplay = filterState.topCoinsDisplayText
+        priceChangeButton?.updateTitle(priceChangeDisplay.title)
         
-        priceChangeButton.updateTitle(priceChangeDisplay.title)
-        topCoinsButton.updateTitle(topCoinsDisplay.title)
+        // Only update top coins button if we're not in watchlist mode
+        if !isWatchlistMode {
+            let topCoinsDisplay = filterState.topCoinsDisplayText
+            topCoinsButton?.updateTitle(topCoinsDisplay.title)
+        }
     }
     
     private func updateButtonVisibility() {
-        topCoinsButton.isHidden = isWatchlistMode
-        
-        // Remove/add top coins button from stack view based on mode
+        // This method is no longer needed since buttons are only created for their respective modes
+        // But keeping it for potential future use or if called from elsewhere
         if isWatchlistMode {
-            if stackView.arrangedSubviews.contains(topCoinsButton) {
-                stackView.removeArrangedSubview(topCoinsButton)
-            }
+            topCoinsButton?.isHidden = true
+            addCoinsButton?.isHidden = false
         } else {
-            if !stackView.arrangedSubviews.contains(topCoinsButton) {
-                stackView.addArrangedSubview(topCoinsButton)
-            }
+            topCoinsButton?.isHidden = false
+            addCoinsButton?.isHidden = true
         }
     }
     
@@ -162,6 +218,10 @@ class FilterHeaderView: UIView {
     
     @objc private func topCoinsButtonTapped() {
         delegate?.filterHeaderView(self, didTapTopCoinsButton: topCoinsButton)
+    }
+    
+    @objc private func addCoinsButtonTapped() {
+        delegate?.filterHeaderView(self, didTapAddCoinsButton: addCoinsButton)
     }
 }
 
