@@ -328,16 +328,17 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             }
             
             let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            let currentFilter = self?.viewModel.currentFilterState.priceChangeFilter ?? .twentyFourHours
             
-            // Configure the cell with all relevant info
+            // Configure the cell with dynamic percentage change based on current filter
             cell.configure(
                 withRank: coin.cmcRank,
                 name: coin.symbol,
                 price: coin.priceString,
                 market: coin.marketSupplyString,
-                percentChange24h: coin.percentChange24hString,
+                percentChange24h: coin.percentChangeString(for: currentFilter), // Now uses current filter
                 sparklineData: sparklineNumbers,
-                isPositiveChange: coin.isPositiveChange
+                isPositiveChange: coin.isPositiveChange(for: currentFilter)     // Also uses current filter
             )
             
             // Load the coin logo image if available
@@ -557,13 +558,14 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                   let cell = collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
             
             let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            let currentFilter = viewModel.currentFilterState.priceChangeFilter
             
             // Update cell without reloading the whole list
             cell.updatePriceData(
                 withPrice: coin.priceString,
-                percentChange24h: coin.percentChange24hString,
+                percentChange24h: coin.percentChangeString(for: currentFilter), // Now uses current filter
                 sparklineData: sparklineNumbers,
-                isPositiveChange: coin.isPositiveChange
+                isPositiveChange: coin.isPositiveChange(for: currentFilter)     // Also uses current filter
             )
             
             updatedCellsCount += 1
@@ -578,6 +580,26 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         viewModel.clearUpdatedCoinIds()
     }
     
+    // MARK: - Filter Update Methods
+    
+    private func updateAllVisibleCellsForFilterChange() {
+        // Update all visible cells when filter changes to show new percentage values
+        for indexPath in collectionView.indexPathsForVisibleItems {
+            guard let coin = viewModel.currentCoins[safe: indexPath.item],
+                  let cell = collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
+            
+            let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            let currentFilter = viewModel.currentFilterState.priceChangeFilter
+            
+            cell.updatePriceData(
+                withPrice: coin.priceString,
+                percentChange24h: coin.percentChangeString(for: currentFilter),
+                sparklineData: sparklineNumbers,
+                isPositiveChange: coin.isPositiveChange(for: currentFilter)
+            )
+        }
+    }
+
     // MARK: - Tab Management
     
     func switchToTab(_ index: Int) {
@@ -743,6 +765,7 @@ extension CoinListVC: FilterModalVCDelegate {
         // Update header view state to reflect the new filter
         filterHeaderView.updateFilterState(viewModel.currentFilterState)
         updateSortHeaderForCurrentFilter() // Also update sort header
+        updateAllVisibleCellsForFilterChange() // Update all visible cells for percentage change
     }
     
     func filterModalVC(_ modalVC: FilterModalVC, didSelectTopCoinsFilter filter: TopCoinsFilter) {
@@ -754,6 +777,7 @@ extension CoinListVC: FilterModalVCDelegate {
         // Update header view state to reflect the new filter
         filterHeaderView.updateFilterState(viewModel.currentFilterState)
         updateSortHeaderForCurrentFilter() // Also update sort header
+        updateAllVisibleCellsForFilterChange() // Update all visible cells for percentage change
     }
     
     func filterModalVCDidCancel(_ modalVC: FilterModalVC) {

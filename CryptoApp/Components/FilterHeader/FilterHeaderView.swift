@@ -28,6 +28,9 @@ class FilterHeaderView: UIView {
         }
     }
     
+    // Watchlist mode - only shows price change button
+    private var isWatchlistMode: Bool = false
+    
     // MARK: - UI Components
     
     private lazy var stackView: UIStackView = {
@@ -67,6 +70,12 @@ class FilterHeaderView: UIView {
         setupView()
     }
     
+    convenience init(watchlistMode: Bool = false) {
+        self.init(frame: .zero)
+        self.isWatchlistMode = watchlistMode
+        updateButtonVisibility()
+    }
+    
     // MARK: - Setup
     
     private func setupView() {
@@ -74,6 +83,7 @@ class FilterHeaderView: UIView {
         setupStackView()
         setupConstraints()
         updateButtonAppearance()
+        updateButtonVisibility()
     }
     
     private func setupStackView() {
@@ -104,6 +114,11 @@ class FilterHeaderView: UIView {
         filterState = newState
     }
     
+    func setWatchlistMode(_ watchlistMode: Bool) {
+        isWatchlistMode = watchlistMode
+        updateButtonVisibility()
+    }
+    
     func setLoading(_ isLoading: Bool, for buttonType: FilterType) {
         let button = buttonType == .priceChange ? priceChangeButton : topCoinsButton
         
@@ -122,6 +137,21 @@ class FilterHeaderView: UIView {
         
         priceChangeButton.updateTitle(priceChangeDisplay.title)
         topCoinsButton.updateTitle(topCoinsDisplay.title)
+    }
+    
+    private func updateButtonVisibility() {
+        topCoinsButton.isHidden = isWatchlistMode
+        
+        // Remove/add top coins button from stack view based on mode
+        if isWatchlistMode {
+            if stackView.arrangedSubviews.contains(topCoinsButton) {
+                stackView.removeArrangedSubview(topCoinsButton)
+            }
+        } else {
+            if !stackView.arrangedSubviews.contains(topCoinsButton) {
+                stackView.addArrangedSubview(topCoinsButton)
+            }
+        }
     }
     
     // MARK: - Actions

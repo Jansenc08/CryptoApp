@@ -18,6 +18,7 @@ final class WatchlistVC: UIViewController {
     
     private let refreshControl = UIRefreshControl()
     private var emptyStateView: UIView?
+    private var filterHeaderView: FilterHeaderView!                             // Added filter header
     private var sortHeaderView: SortHeaderView!
     
     // MARK: - Lifecycle
@@ -80,6 +81,9 @@ final class WatchlistVC: UIViewController {
         
         // Add clear all button if needed
         setupNavigationItems()
+        
+        // Setup filter header (with just 24h% button)
+        setupFilterHeaderView()
         
         // Setup sort header
         setupSortHeaderView()
@@ -274,6 +278,22 @@ final class WatchlistVC: UIViewController {
     }
     #endif
     
+    private func setupFilterHeaderView() {
+        filterHeaderView = FilterHeaderView(watchlistMode: true)  // Enable watchlist mode
+        filterHeaderView.delegate = self
+        filterHeaderView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(filterHeaderView)
+        
+        NSLayoutConstraint.activate([
+            filterHeaderView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            filterHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            filterHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        
+        // Update filter header with current state
+        updateFilterHeaderForCurrentState()
+    }
+    
     private func setupSortHeaderView() {
         sortHeaderView = SortHeaderView()
         sortHeaderView.delegate = self
@@ -281,7 +301,7 @@ final class WatchlistVC: UIViewController {
         view.addSubview(sortHeaderView)
         
         NSLayoutConstraint.activate([
-            sortHeaderView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            sortHeaderView.topAnchor.constraint(equalTo: filterHeaderView.bottomAnchor),
             sortHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             sortHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
@@ -290,6 +310,9 @@ final class WatchlistVC: UIViewController {
         sortHeaderView.currentSortColumn = .rank
         sortHeaderView.currentSortOrder = .descending
         sortHeaderView.updateSortIndicators()
+        
+        // Update sort header for current filter state
+        updateSortHeaderForCurrentFilter()
         
         // Sync ViewModel with SortHeader
         syncViewModelWithSortHeader()
@@ -338,16 +361,17 @@ final class WatchlistVC: UIViewController {
             }
             
             let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            let currentFilter = self?.viewModel.currentFilterState.priceChangeFilter ?? .twentyFourHours
             
-            // Configure the cell
+            // Configure the cell with dynamic percentage change based on current filter
             cell.configure(
                 withRank: coin.cmcRank,
                 name: coin.symbol,
                 price: coin.priceString,
                 market: coin.marketSupplyString,
-                percentChange24h: coin.percentChange24hString,
+                percentChange24h: coin.percentChangeString(for: currentFilter), // Now uses current filter
                 sparklineData: sparklineNumbers,
-                isPositiveChange: coin.isPositiveChange
+                isPositiveChange: coin.isPositiveChange(for: currentFilter)     // Also uses current filter
             )
             
             // Load coin logo if available
@@ -447,13 +471,33 @@ final class WatchlistVC: UIViewController {
             
             cell.updatePriceData(
                 withPrice: coin.priceString,
-                percentChange24h: coin.percentChange24hString,
+                percentChange24h: coin.percentChangeString(for: viewModel.currentFilterState.priceChangeFilter),
                 sparklineData: sparklineNumbers,
-                isPositiveChange: coin.isPositiveChange
+                isPositiveChange: coin.isPositiveChange(for: viewModel.currentFilterState.priceChangeFilter)
             )
         }
         
         viewModel.clearUpdatedCoinIds()
+    }
+    
+    // MARK: - Filter Update Methods
+    
+    private func updateAllVisibleCellsForFilterChange() {
+        // Update all visible cells when filter changes to show new percentage values
+        for indexPath in collectionView.indexPathsForVisibleItems {
+            guard let coin = viewModel.currentWatchlistCoins[safe: indexPath.item],
+                  let cell = collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
+            
+            let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            let currentFilter = viewModel.currentFilterState.priceChangeFilter
+            
+            cell.updatePriceData(
+                withPrice: coin.priceString,
+                percentChange24h: coin.percentChangeString(for: currentFilter),
+                sparklineData: sparklineNumbers,
+                isPositiveChange: coin.isPositiveChange(for: currentFilter)
+            )
+        }
     }
     
     private func updateNavigationItems(hasCoins: Bool) {
@@ -526,6 +570,17 @@ final class WatchlistVC: UIViewController {
             collectionView.isHidden = false
             emptyStateView?.isHidden = true
         }
+    }
+    
+    // MARK: - Filter Helper Methods
+    
+    private func updateFilterHeaderForCurrentState() {
+        filterHeaderView.updateFilterState(viewModel.currentFilterState)
+    }
+    
+    private func updateSortHeaderForCurrentFilter() {
+        let priceChangeTitle = viewModel.currentFilterState.priceChangeFilter.shortDisplayName + "%"
+        sortHeaderView.updatePriceChangeColumnTitle(priceChangeTitle)
     }
     
     // MARK: - Utility Methods
@@ -688,6 +743,46 @@ extension WatchlistVC: SortHeaderViewDelegate {
         print("🔄 Watchlist sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
         #endif
         viewModel.updateSorting(column: column, order: order)
+    }
+}
+
+// MARK: - FilterHeaderViewDelegate
+
+extension WatchlistVC: FilterHeaderViewDelegate {
+    func filterHeaderView(_ headerView: FilterHeaderView, didTapPriceChangeButton button: FilterButton) {
+        let modalVC = FilterModalVC(filterType: .priceChange, currentState: viewModel.currentFilterState)
+        modalVC.delegate = self
+        present(modalVC, animated: true)
+    }
+    
+    func filterHeaderView(_ headerView: FilterHeaderView, didTapTopCoinsButton button: FilterButton) {
+        // Not needed for watchlist - we only show the price change button
+        // But we need to implement this for protocol conformance
+    }
+}
+
+// MARK: - FilterModalVCDelegate
+
+extension WatchlistVC: FilterModalVCDelegate {
+    func filterModalVC(_ modalVC: FilterModalVC, didSelectPriceChangeFilter filter: PriceChangeFilter) {
+        print("🎯 Watchlist Filter Selected: \(filter.displayName)")
+        
+        // Apply the filter - ViewModel will handle loading state
+        viewModel.updatePriceChangeFilter(filter)
+        
+        // Update header views to reflect the new filter
+        filterHeaderView.updateFilterState(viewModel.currentFilterState)
+        updateSortHeaderForCurrentFilter()
+        updateAllVisibleCellsForFilterChange() // Update all visible cells for the new filter
+    }
+    
+    func filterModalVC(_ modalVC: FilterModalVC, didSelectTopCoinsFilter filter: TopCoinsFilter) {
+        // Not used in watchlist, but needed for protocol conformance
+    }
+    
+    func filterModalVCDidCancel(_ modalVC: FilterModalVC) {
+        // Handle cancellation if needed
+        print("Filter modal was cancelled")
     }
 }
 

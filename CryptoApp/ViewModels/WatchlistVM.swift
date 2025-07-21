@@ -81,6 +81,26 @@ final class WatchlistVM: ObservableObject {
     private var currentSortColumn: CryptoSortColumn = .rank          // Default to rank column
     private var currentSortOrder: CryptoSortOrder = .descending     // Default to descending (best ranks first)
     
+    // MARK: - Filter Properties
+    
+    /**
+     * WATCHLIST FILTER STATE MANAGEMENT
+     * 
+     * Manages the current filter state for price change display.
+     * Uses the same filter system as CoinListVM for consistency.
+     */
+    
+    private var _currentFilterState: FilterState = .defaultState
+    
+    var currentFilterState: FilterState {
+        get { _currentFilterState }
+        set {
+            _currentFilterState = newValue
+            // Update sort header when filter changes
+            applySortingToWatchlist()
+        }
+    }
+    
     // MARK: - Dependencies
     
     private let watchlistManager = WatchlistManager.shared
@@ -695,7 +715,7 @@ final class WatchlistVM: ObservableObject {
      * - "Ascending" shows worst ranks first (...3, 2, 1)
      */
     private func sortCoins(_ coins: [Coin]) -> [Coin] {
-        return coins.sorted { coin1, coin2 in
+        return coins.sorted(by: { coin1, coin2 in
             let ascending = (currentSortOrder == .ascending)
         
             switch currentSortColumn {
@@ -714,16 +734,32 @@ final class WatchlistVM: ObservableObject {
                 return ascending ? (price1 < price2) : (price1 > price2)
                 
             case .priceChange:
-                // Watchlist uses 24h change
-                let change1 = coin1.quote?["USD"]?.percentChange24h ?? 0
-                let change2 = coin2.quote?["USD"]?.percentChange24h ?? 0
+                // Use current filter state for price change sorting
+                let change1: Double
+                let change2: Double
+                
+                switch currentFilterState.priceChangeFilter {
+                case .oneHour:
+                    change1 = coin1.quote?["USD"]?.percentChange1h ?? 0
+                    change2 = coin2.quote?["USD"]?.percentChange1h ?? 0
+                case .twentyFourHours:
+                    change1 = coin1.quote?["USD"]?.percentChange24h ?? 0
+                    change2 = coin2.quote?["USD"]?.percentChange24h ?? 0
+                case .sevenDays:
+                    change1 = coin1.quote?["USD"]?.percentChange7d ?? 0
+                    change2 = coin2.quote?["USD"]?.percentChange7d ?? 0
+                case .thirtyDays:
+                    change1 = coin1.quote?["USD"]?.percentChange30d ?? 0
+                    change2 = coin2.quote?["USD"]?.percentChange30d ?? 0
+                }
+                
                 return ascending ? (change1 < change2) : (change1 > change2)
                 
             default:
                 // Fallback: Default to rank sorting (best rank first)
                 return coin1.cmcRank < coin2.cmcRank
             }
-        }
+        })
     }
     
     /**
@@ -742,7 +778,19 @@ final class WatchlistVM: ObservableObject {
             let price = coin.quote?["USD"]?.price ?? 0
             return String(format: "$%.2f", price)
         case .priceChange:
-            let change = coin.quote?["USD"]?.percentChange24h ?? 0
+            let change: Double
+            
+            switch currentFilterState.priceChangeFilter {
+            case .oneHour:
+                change = coin.quote?["USD"]?.percentChange1h ?? 0
+            case .twentyFourHours:
+                change = coin.quote?["USD"]?.percentChange24h ?? 0
+            case .sevenDays:
+                change = coin.quote?["USD"]?.percentChange7d ?? 0
+            case .thirtyDays:
+                change = coin.quote?["USD"]?.percentChange30d ?? 0
+            }
+            
             return String(format: "%.2f%%", change)
         default:
             return "N/A"
@@ -761,5 +809,28 @@ final class WatchlistVM: ObservableObject {
             "isLoading": currentIsLoading,
             "watchlistManagerMetrics": watchlistManager.getPerformanceMetrics()
         ]
+    }
+    
+    // MARK: - Filter Management
+    
+    /**
+     * PRICE CHANGE FILTER UPDATES
+     * 
+     * Handles changes to the price change filter from the UI.
+     * Updates the internal filter state and refreshes the display.
+     */
+    
+    func updatePriceChangeFilter(_ filter: PriceChangeFilter) {
+        #if DEBUG
+        print("🎯 Watchlist filter update: \(filter.displayName)")
+        #endif
+        
+        currentFilterState = FilterState(
+            priceChangeFilter: filter,
+            topCoinsFilter: currentFilterState.topCoinsFilter
+        )
+        
+        // Apply sorting to reflect the new filter
+        applySortingToWatchlist()
     }
 } 

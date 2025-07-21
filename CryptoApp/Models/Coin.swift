@@ -50,6 +50,35 @@ extension Coin {
         return quote?["USD"]?.percentChange24h ?? 0.0
     }
     
+    // MARK: - Dynamic Percentage Change Methods
+    
+    /// Returns percentage change string based on the specified filter
+    func percentChangeString(for filter: PriceChangeFilter) -> String {
+        let value = percentChangeValue(for: filter)
+        return String(format: "%.2f%%", value)
+    }
+    
+    /// Returns percentage change value based on the specified filter
+    func percentChangeValue(for filter: PriceChangeFilter) -> Double {
+        guard let usdQuote = quote?["USD"] else { return 0.0 }
+        
+        switch filter {
+        case .oneHour:
+            return usdQuote.percentChange1h ?? 0.0
+        case .twentyFourHours:
+            return usdQuote.percentChange24h ?? 0.0
+        case .sevenDays:
+            return usdQuote.percentChange7d ?? 0.0
+        case .thirtyDays:
+            return usdQuote.percentChange30d ?? 0.0
+        }
+    }
+    
+    /// Returns whether the change is positive based on the specified filter
+    func isPositiveChange(for filter: PriceChangeFilter) -> Bool {
+        return percentChangeValue(for: filter) >= 0
+    }
+    
     var isPositiveChange: Bool {
         return percentChange24hValue >= 0
     }
