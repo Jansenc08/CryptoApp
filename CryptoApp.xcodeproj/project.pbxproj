@@ -10,10 +10,8 @@
 		9716CA7D2E1FCFF9002D2C8F /* mock_top_coins.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */; };
 		9716CA7F2E1FD00D002D2C8F /* mock_logos.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA7E2E1FD007002D2C8F /* mock_logos.json */; };
 		9716CA812E1FD020002D2C8F /* mock_quotes.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA802E1FD019002D2C8F /* mock_quotes.json */; };
-		9716CAE72E25F5DC002D2C8F /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 9716CAE62E25F5DC002D2C8F /* DGCharts */; };
 		9716CD492E28AD17002D2C8F /* WatchlistModel.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 9716CD472E28AD17002D2C8F /* WatchlistModel.xcdatamodeld */; };
-		977F770D2E1B72100043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F770C2E1B72100043D04C /* DGCharts */; };
-		977F77182E1B74960043D04C /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 977F77172E1B74960043D04C /* DGCharts */; };
+		9716D6F02E2F7CD0002D2C8F /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 9716D6EF2E2F7CD0002D2C8F /* DGCharts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,9 +72,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				977F77182E1B74960043D04C /* DGCharts in Frameworks */,
-				9716CAE72E25F5DC002D2C8F /* DGCharts in Frameworks */,
-				977F770D2E1B72100043D04C /* DGCharts in Frameworks */,
+				9716D6F02E2F7CD0002D2C8F /* DGCharts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,7 +179,7 @@
 			mainGroup = 97CA70AF2E0BAEEB00E42811;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */,
+				9716D6EE2E2F7CD0002D2C8F /* XCRemoteSwiftPackageReference "Charts" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 97CA70B92E0BAEEB00E42811 /* Products */;
@@ -495,7 +491,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */ = {
+		9716D6EE2E2F7CD0002D2C8F /* XCRemoteSwiftPackageReference "Charts" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/danielgindi/Charts.git";
 			requirement = {
@@ -506,19 +502,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		9716CAE62E25F5DC002D2C8F /* DGCharts */ = {
+		9716D6EF2E2F7CD0002D2C8F /* DGCharts */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */;
-			productName = DGCharts;
-		};
-		977F770C2E1B72100043D04C /* DGCharts */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */;
-			productName = DGCharts;
-		};
-		977F77172E1B74960043D04C /* DGCharts */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 977F770B2E1B72100043D04C /* XCRemoteSwiftPackageReference "Charts" */;
+			package = 9716D6EE2E2F7CD0002D2C8F /* XCRemoteSwiftPackageReference "Charts" */;
 			productName = DGCharts;
 		};
 /* End XCSwiftPackageProductDependency section */

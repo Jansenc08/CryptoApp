@@ -11,3 +11,7 @@ struct CoinGeckoChartResponse: Decodable {
     let market_caps: [[Double]] // Example: if you wanted market caps
     let total_volumes: [[Double]] // Example: if you wanted total volumes
 }
+
+// CoinGecko OHLC endpoint returns a direct array, not a wrapper object
+// Each sub-array contains: [timestamp, open, high, low, close]
+typealias CoinGeckoOHLCResponse = [[Double]]

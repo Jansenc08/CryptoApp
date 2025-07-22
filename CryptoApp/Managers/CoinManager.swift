@@ -74,4 +74,27 @@ final class CoinManager: CoinManagerProtocol {
         // Pass the priority all the way down to CoinService - this shows how filter changes get high priority
         return coinService.fetchCoinGeckoChartData(for: geckoID, currency: currency, days: daysParam, priority: priority)
     }
+    
+            // Fetch real OHLC candlestick data from CoinGecko
+    func fetchOHLCData(for geckoID: String, range: String, currency: String = "usd", priority: RequestPriority = .normal) -> AnyPublisher<[OHLCData], NetworkError> {
+        // Map range string to CoinGecko's 'days' parameter
+        let daysParam: String
+        switch range {
+        case "1":     // 24h from VM
+            daysParam = "1"
+        case "7":     // 7d from VM
+            daysParam = "7"
+        case "30":    // 30d from VM
+            daysParam = "30"
+        case "365":   // 1 year from VM
+            daysParam = "365"
+        default:
+            print("⚠️ Unrecognized OHLC range: \(range), defaulting to 1 day")
+            daysParam = "1"
+        }
+        
+        print("🔍 CoinManager: Fetching real OHLC data for CoinGecko ID \(geckoID) with \(daysParam) days (priority: \(priority.description))")
+        
+        return coinService.fetchCoinGeckoOHLCData(for: geckoID, currency: currency, days: daysParam, priority: priority)
+    }
 }

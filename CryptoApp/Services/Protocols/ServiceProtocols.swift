@@ -20,6 +20,8 @@ protocol CacheServiceProtocol {
     func storeQuotes(_ quotes: [Int: Quote], for ids: [Int], convert: String)
     func getChartData(for coinId: String, currency: String, days: String) -> [Double]?
     func storeChartData(_ data: [Double], for coinId: String, currency: String, days: String)
+    func getOHLCData(for coinId: String, currency: String, days: String) -> [OHLCData]?
+    func storeOHLCData(_ data: [OHLCData], for coinId: String, currency: String, days: String)
     func clearCache()
     func clearExpiredEntries()
 }
@@ -72,8 +74,18 @@ protocol RequestManagerProtocol {
         apiCall: @escaping () -> AnyPublisher<[Double], NetworkError>
     ) -> AnyPublisher<[Double], Error>
     
+    func fetchOHLCData(
+        coinId: String,
+        currency: String,
+        days: String,
+        priority: RequestPriority,
+        apiCall: @escaping () -> AnyPublisher<[OHLCData], NetworkError>
+    ) -> AnyPublisher<[OHLCData], Error>
+    
     func cancelAllRequests()
     func getActiveRequestsCount() -> Int
+    func getCooldownStatus() -> (isInCooldown: Bool, remainingSeconds: Int)
+    func shouldPreferCache() -> Bool
 }
 
 // MARK: - Coin Service Protocol
@@ -113,6 +125,13 @@ protocol CoinServiceProtocol {
         days: String,
         priority: RequestPriority
     ) -> AnyPublisher<[Double], NetworkError>
+    
+    func fetchCoinGeckoOHLCData(
+        for coinId: String,
+        currency: String,
+        days: String,
+        priority: RequestPriority
+    ) -> AnyPublisher<[OHLCData], NetworkError>
 }
 
 // MARK: - Coin Manager Protocol
@@ -152,4 +171,11 @@ protocol CoinManagerProtocol {
         currency: String,
         priority: RequestPriority
     ) -> AnyPublisher<[Double], NetworkError>
+    
+    func fetchOHLCData(
+        for geckoID: String,
+        range: String,
+        currency: String,
+        priority: RequestPriority
+    ) -> AnyPublisher<[OHLCData], NetworkError>
 } 

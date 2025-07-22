@@ -19,6 +19,7 @@ final class MockCacheService: CacheServiceProtocol {
     var mockLogos: [Int: String] = [:]
     var mockQuotes: [Int: Quote] = [:]
     var mockChartData: [Double] = []
+    var mockOHLCData: [OHLCData] = []
     
     // MARK: - CacheServiceProtocol Implementation
     
@@ -54,11 +55,20 @@ final class MockCacheService: CacheServiceProtocol {
         mockChartData = data
     }
     
+    func getOHLCData(for coinId: String, currency: String, days: String) -> [OHLCData]? {
+        return shouldReturnCachedData ? mockOHLCData : nil
+    }
+    
+    func storeOHLCData(_ data: [OHLCData], for coinId: String, currency: String, days: String) {
+        mockOHLCData = data
+    }
+    
     func clearCache() {
         mockCoins = []
         mockLogos = [:]
         mockQuotes = [:]
         mockChartData = []
+        mockOHLCData = []
     }
     
     func clearExpiredEntries() {
@@ -88,6 +98,7 @@ final class MockRequestManager: RequestManagerProtocol {
     var mockLogos: [Int: String] = [:]
     var mockQuotes: [Int: Quote] = [:]
     var mockChartData: [Double] = []
+    var mockOHLCData: [OHLCData] = []
     
     // MARK: - RequestManagerProtocol Implementation
     
@@ -182,12 +193,40 @@ final class MockRequestManager: RequestManagerProtocol {
         }
     }
     
+    func fetchOHLCData(
+        coinId: String,
+        currency: String,
+        days: String,
+        priority: RequestPriority,
+        apiCall: @escaping () -> AnyPublisher<[OHLCData], NetworkError>
+    ) -> AnyPublisher<[OHLCData], Error> {
+        
+        if shouldSucceed {
+            return Just(mockOHLCData)
+                .delay(for: .seconds(mockDelay), scheduler: DispatchQueue.main)
+                .setFailureType(to: Error.self)
+                .eraseToAnyPublisher()
+        } else {
+            return Fail(error: mockError)
+                .delay(for: .seconds(mockDelay), scheduler: DispatchQueue.main)
+                .eraseToAnyPublisher()
+        }
+    }
+    
     func cancelAllRequests() {
         // No-op for mock
     }
     
     func getActiveRequestsCount() -> Int {
         return 0
+    }
+    
+    func getCooldownStatus() -> (isInCooldown: Bool, remainingSeconds: Int) {
+        return (false, 0) // Mock never in cooldown
+    }
+    
+    func shouldPreferCache() -> Bool {
+        return false // Mock doesn't prefer cache by default
     }
 }
 
@@ -213,6 +252,7 @@ final class MockCoinService: CoinServiceProtocol {
     var mockLogos: [Int: String] = [:]
     var mockQuotes: [Int: Quote] = [:]
     var mockChartData: [Double] = []
+    var mockOHLCData: [OHLCData] = []
     
     // MARK: - CoinServiceProtocol Implementation
     
@@ -283,6 +323,25 @@ final class MockCoinService: CoinServiceProtocol {
                 .eraseToAnyPublisher()
         }
     }
+    
+    func fetchCoinGeckoOHLCData(
+        for coinId: String,
+        currency: String,
+        days: String,
+        priority: RequestPriority
+    ) -> AnyPublisher<[OHLCData], NetworkError> {
+        
+        if shouldSucceed {
+            return Just(mockOHLCData)
+                .delay(for: .seconds(mockDelay), scheduler: DispatchQueue.main)
+                .setFailureType(to: NetworkError.self)
+                .eraseToAnyPublisher()
+        } else {
+            return Fail(error: mockError)
+                .delay(for: .seconds(mockDelay), scheduler: DispatchQueue.main)
+                .eraseToAnyPublisher()
+        }
+    }
 }
 
 // MARK: - Mock Coin Manager
@@ -307,6 +366,7 @@ final class MockCoinManager: CoinManagerProtocol {
     var mockLogos: [Int: String] = [:]
     var mockQuotes: [Int: Quote] = [:]
     var mockChartData: [Double] = []
+    var mockOHLCData: [OHLCData] = []
     
     // MARK: - CoinManagerProtocol Implementation
     
@@ -368,6 +428,25 @@ final class MockCoinManager: CoinManagerProtocol {
         
         if shouldSucceed {
             return Just(mockChartData)
+                .delay(for: .seconds(mockDelay), scheduler: DispatchQueue.main)
+                .setFailureType(to: NetworkError.self)
+                .eraseToAnyPublisher()
+        } else {
+            return Fail(error: mockError)
+                .delay(for: .seconds(mockDelay), scheduler: DispatchQueue.main)
+                .eraseToAnyPublisher()
+        }
+    }
+    
+    func fetchOHLCData(
+        for geckoID: String,
+        range: String,
+        currency: String,
+        priority: RequestPriority
+    ) -> AnyPublisher<[OHLCData], NetworkError> {
+        
+        if shouldSucceed {
+            return Just(mockOHLCData)
                 .delay(for: .seconds(mockDelay), scheduler: DispatchQueue.main)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()

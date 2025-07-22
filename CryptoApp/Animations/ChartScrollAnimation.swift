@@ -10,46 +10,39 @@
 
 import UIKit
 
-final class ChartScrollHintAnimator {
+// MARK: - Chart Scroll Hint Animator
 
-    // Positions the arrow relative to the chart bounds
-    static func layoutArrow(_ arrow: UIImageView, in bounds: CGRect) {
-        arrow.frame = CGRect(
-            x: bounds.midX + 60,
-            y: bounds.height - 38,
-            width: 18,
-            height: 18
-        )
-    }
-
-    // Fades in the scroll hint label and arrow
+class ChartScrollHintAnimator {
+    
     static func fadeIn(label: UILabel, arrow: UIImageView) {
-        UIView.animate(withDuration: 0.5, delay: 0, options: [.curveEaseInOut]) {
-            label.alpha = 1
-            arrow.alpha = 1
-            arrow.transform = CGAffineTransform(translationX: -10, y: 0)
+        UIView.animate(withDuration: 0.5, delay: 0, options: .curveEaseOut) {
+            label.alpha = 0.8
+            arrow.alpha = 0.6
         }
     }
-
-    // Applies a horizontal bounce animation to the arrow
-    static func animateBounce(for arrow: UIImageView) {
-        UIView.animate(
-            withDuration: 0.6,
-            delay: 0,
-            options: [.curveEaseInOut, .repeat, .autoreverse],
-            animations: {
-                arrow.transform = CGAffineTransform(translationX: 10, y: 0)
-            }
-        )
-    }
-
-    // Fades out the scroll hint label and arrow after a delay
+    
     static func fadeOut(label: UILabel, arrow: UIImageView) {
-        UIView.animate(withDuration: 0.8, delay: 2.5, options: [.curveEaseOut]) {
+        UIView.animate(withDuration: 0.5, delay: 3.0, options: .curveEaseIn) {
             label.alpha = 0
             arrow.alpha = 0
-        } completion: { _ in
-            arrow.layer.removeAllAnimations()
         }
+    }
+    
+    static func animateBounce(for view: UIView) {
+        UIView.animate(withDuration: 0.6, delay: 0.5, options: [.repeat, .autoreverse]) {
+            view.transform = CGAffineTransform(translationX: 10, y: 0)
+        } completion: { _ in
+            view.transform = .identity
+        }
+    }
+    
+    static func layoutArrow(_ arrowView: UIImageView, in bounds: CGRect) {
+        let arrowSize: CGFloat = 16
+        arrowView.frame = CGRect(
+            x: bounds.width - arrowSize - 20,
+            y: bounds.height - arrowSize - 8,
+            width: arrowSize,
+            height: arrowSize
+        )
     }
 }

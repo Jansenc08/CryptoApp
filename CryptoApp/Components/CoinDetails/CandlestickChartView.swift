@@ -1,5 +1,5 @@
 //
-//  ChartView.swift
+//  CandlestickChartView.swift
 //  CryptoApp
 //
 //  Created by Jansen Castillo on 7/7/25.
@@ -8,18 +8,17 @@
 import UIKit
 import DGCharts
 
-final class ChartView: LineChartView {
-
+final class CandlestickChartView: CandleStickChartView {
+    
     // MARK: - Properties
     
-    // Holds raw data points and timestamps
-    private var allDataPoints: [Double] = []
+    private var allOHLCData: [OHLCData] = []
     private var allDates: [Date] = []
     private var currentRange: String = "24h"
     private var visibleDataPointsCount: Int = 50
     private var currentScrollPosition: CGFloat = 0
-
-    // Fading edge layers for viual vue
+    
+    // Fading edge layers for visual effect
     private let leftFade = CAGradientLayer()
     private let rightFade = CAGradientLayer()
     
@@ -27,57 +26,58 @@ final class ChartView: LineChartView {
     private let scrollHintLabel = UILabel()
     private let arrowNudgeView = UIImageView()
     private var hintHasShown = false
-
+    
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
-
+    
     // Scroll direction used for edge detection
     enum ScrollDirection {
         case left, right
     }
     
     // MARK: - Init
-
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
         self.delegate = self
         configure()
     }
-
+    
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         self.delegate = self
         configure()
     }
-
-    // MARK: -Chart Setup
+    
+    // MARK: - Chart Setup
     private func configure() {
         backgroundColor = .systemBackground
-
-        // Enhanced Interaction Settings with Zoom
+        
+        // Enhanced Interaction Settings - X-axis zoom only for consistent candle proportions
         setScaleEnabled(true)
-        scaleYEnabled = true  // Allow Y-axis zoom for price analysis
+        scaleYEnabled = false  // Disable Y-axis zoom to maintain consistent candle proportions
         doubleTapToZoomEnabled = true  // Double-tap to zoom in/out
         dragEnabled = true
-        pinchZoomEnabled = true  // Pinch to zoom
+        pinchZoomEnabled = true  // Pinch to zoom for candle visibility (X-axis only)
         legend.enabled = false
         
-        // Set zoom limits for better UX
-        setVisibleXRangeMaximum(200)  // Max zoom out
-        setVisibleXRangeMinimum(5)    // Max zoom in (show 5 data points)
-
-        // Highlight Behavior
+        // Set zoom limits optimized for candlestick analysis
+        setVisibleXRangeMaximum(100)  // Max zoom out (show 100 candles)
+        setVisibleXRangeMinimum(3)    // Max zoom in (show 3 candles for detail)
+        
+        // Enable highlighting for tooltips
         highlightPerTapEnabled = true
         highlightPerDragEnabled = false
         highlightValue(nil)
         
-        // Add zoom gesture recognizers
-        addZoomGestures()
+        // Force chart to render properly
+        isUserInteractionEnabled = true
+        backgroundColor = UIColor.systemBackground
         
         // Disable left axis
         leftAxis.enabled = false
         
-        // Y-axis Price (moved to right side)
+        // Y-axis Price (Right side)
         rightAxis.enabled = true
         rightAxis.labelTextColor = .secondaryLabel
         rightAxis.labelFont = .systemFont(ofSize: 10)
@@ -88,7 +88,7 @@ final class ChartView: LineChartView {
         rightAxis.valueFormatter = PriceFormatter()
         rightAxis.labelCount = 6
         rightAxis.minWidth = 60
-
+        
         // X axis - Time / Date
         xAxis.labelPosition = .bottom
         xAxis.labelTextColor = .secondaryLabel
@@ -97,27 +97,26 @@ final class ChartView: LineChartView {
         xAxis.labelFont = .systemFont(ofSize: 10)
         xAxis.granularity = 1
         xAxis.valueFormatter = DateValueFormatter()
-
         
         // Add padding to chart edges (adjusted for right-side Y-axis)
         setViewPortOffsets(left: 20, top: 20, right: 70, bottom: 40)
-
         
         // Tooltip marker when tapping a point in the chart
-        let marker = BalloonMarker(color: .tertiarySystemBackground,
-                                   font: .systemFont(ofSize: 12),
-                                   textColor: .label,
-                                   insets: UIEdgeInsets(top: 4, left: 6, bottom: 4, right: 6))
+        let marker = CandlestickBalloonMarker(color: .tertiarySystemBackground,
+                                             font: .systemFont(ofSize: 10, weight: .medium),
+                                             textColor: .label,
+                                             insets: UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12))
         marker.chartView = self
-        marker.setMinimumSize(CGSize(width: 60, height: 30))
+        marker.setMinimumSize(CGSize(width: 140, height: 90))
         self.marker = marker
-
-        // enable smooth dragging in the chart
+        
+        // Enable smooth dragging in the chart
         dragDecelerationEnabled = true
         dragDecelerationFrictionCoef = 0.92
-
+        
         addFadingEdges()
         addScrollHintLabel()
+        addZoomGestures()
         
         // Ensure gradients are properly set for current appearance
         updateFadingEdgeColors()
@@ -138,14 +137,35 @@ final class ChartView: LineChartView {
     }
     
     @objc private func resetChartZoom() {
-        // Animate back to fit all data
+        // Animate back to fit all data with proper Y-axis reset
         fitScreen()
+        
+        // Force Y-axis to reset to original calculated range
+        resetYAxisToOriginalRange()
         
         // Haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
         
-        print("📊 Chart zoom reset")
+        print("📊 Candlestick chart zoom reset with consistent Y-axis")
+    }
+    
+    private func resetYAxisToOriginalRange() {
+        guard !allOHLCData.isEmpty else { return }
+        
+        // Recalculate original Y-axis range
+        guard let minY = allOHLCData.map({ min($0.low, min($0.open, $0.close)) }).min(),
+              let maxY = allOHLCData.map({ max($0.high, max($0.open, $0.close)) }).max() else { return }
+        
+        let range = maxY - minY
+        let buffer = range * 0.25  // Same buffer as in updateChart
+        
+        // Reset Y-axis to original range
+        rightAxis.axisMinimum = minY - buffer
+        rightAxis.axisMaximum = maxY + buffer
+        
+        // Force chart to update
+        notifyDataSetChanged()
     }
     
     @objc private func showZoomControls(_ gesture: UILongPressGestureRecognizer) {
@@ -160,9 +180,10 @@ final class ChartView: LineChartView {
     }
     
     private func showZoomIndicator() {
-        // Create temporary zoom level indicator
+        // Create temporary zoom level indicator with candlestick-specific info
+        let visibleCandles = Int(highestVisibleX - lowestVisibleX) + 1
         let zoomLabel = UILabel()
-        zoomLabel.text = "🔍 Zoom: \(String(format: "%.1fx", scaleX))"
+        zoomLabel.text = "🕯️ \(visibleCandles) candles visible"
         zoomLabel.textColor = .label
         zoomLabel.backgroundColor = UIColor.tertiarySystemBackground.withAlphaComponent(0.95)
         zoomLabel.font = .systemFont(ofSize: 14, weight: .medium)
@@ -176,7 +197,7 @@ final class ChartView: LineChartView {
         NSLayoutConstraint.activate([
             zoomLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             zoomLabel.topAnchor.constraint(equalTo: topAnchor, constant: 20),
-            zoomLabel.widthAnchor.constraint(equalToConstant: 120),
+            zoomLabel.widthAnchor.constraint(equalToConstant: 140),
             zoomLabel.heightAnchor.constraint(equalToConstant: 30)
         ])
         
@@ -196,22 +217,23 @@ final class ChartView: LineChartView {
     
     private func setInitialZoom() {
         // Set optimal zoom level based on data range and time frame
-        let dataCount = allDataPoints.count
+        let dataCount = allOHLCData.count
         
-        // Calculate optimal visible points based on range
-        let optimalVisiblePoints: Double
+        // Calculate optimal visible candles based on range
+        let optimalVisibleCandles: Double
         switch currentRange {
-        case "24h": optimalVisiblePoints = min(24, Double(dataCount))  // Show hourly points
-        case "7d": optimalVisiblePoints = min(35, Double(dataCount))   // Show ~week view
-        case "30d": optimalVisiblePoints = min(60, Double(dataCount))  // Show ~month view
-        case "All": optimalVisiblePoints = min(100, Double(dataCount)) // Show broader view
-        default: optimalVisiblePoints = min(50, Double(dataCount))
+        case "24h": optimalVisibleCandles = min(12, Double(dataCount))  // Show 12 hourly candles
+        case "7d": optimalVisibleCandles = min(20, Double(dataCount))   // Show ~20 4-hour candles
+        case "30d": optimalVisibleCandles = min(30, Double(dataCount))  // Show ~30 daily candles
+        case "All": optimalVisibleCandles = min(50, Double(dataCount))  // Show ~50 weekly candles
+        default: optimalVisibleCandles = min(25, Double(dataCount))
         }
         
-        // Apply the zoom
-        setVisibleXRangeMaximum(optimalVisiblePoints)
+        // Apply the zoom with proper limits
+        setVisibleXRangeMaximum(optimalVisibleCandles)
+        setVisibleXRangeMinimum(optimalVisibleCandles / 4.0) // Allow zoom in to show 1/4 of optimal
         
-        print("📊 Line chart initial zoom: showing \(Int(optimalVisiblePoints)) of \(dataCount) points")
+        print("📊 Candlestick initial zoom: showing \(Int(optimalVisibleCandles)) of \(dataCount) candles")
     }
     
     // MARK: - Layout
@@ -249,9 +271,9 @@ final class ChartView: LineChartView {
             UIColor.systemBackground.cgColor
         ]
     }
-
+    
     // MARK: - Fading Edges
-
+    
     private func addFadingEdges() {
         // Left gradient
         leftFade.colors = [
@@ -262,7 +284,7 @@ final class ChartView: LineChartView {
         leftFade.startPoint = CGPoint(x: 0, y: 0.5)
         leftFade.endPoint = CGPoint(x: 1, y: 0.5)
         layer.addSublayer(leftFade)
-
+        
         // Right gradient
         rightFade.colors = [
             UIColor.systemBackground.withAlphaComponent(0.0).cgColor,
@@ -273,16 +295,15 @@ final class ChartView: LineChartView {
         rightFade.endPoint = CGPoint(x: 1, y: 0.5)
         layer.addSublayer(rightFade)
     }
-
+    
     private func layoutFadingEdges() {
         let fadeWidth: CGFloat = 20
         leftFade.frame = CGRect(x: 0, y: 0, width: fadeWidth, height: bounds.height)
         rightFade.frame = CGRect(x: bounds.width - fadeWidth, y: 0, width: fadeWidth, height: bounds.height)
     }
-
+    
     // MARK: - Hint Label
-
-    // Animated hint
+    
     private func addScrollHintLabel() {
         scrollHintLabel.text = "← Swipe to explore chart →"
         scrollHintLabel.textAlignment = .center
@@ -292,7 +313,7 @@ final class ChartView: LineChartView {
         scrollHintLabel.backgroundColor = .clear
         scrollHintLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollHintLabel)
-
+        
         // Animated arrow
         let arrowImage = UIImage(systemName: "arrow.right")?.withRenderingMode(.alwaysTemplate)
         arrowNudgeView.image = arrowImage
@@ -300,13 +321,13 @@ final class ChartView: LineChartView {
         arrowNudgeView.contentMode = .scaleAspectFit
         arrowNudgeView.alpha = 0.0
         addSubview(arrowNudgeView)
-
+        
         // Show animation after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.showHintLabel()
         }
     }
-
+    
     private func layoutHintLabel() {
         scrollHintLabel.frame = CGRect(
             x: 0,
@@ -316,170 +337,157 @@ final class ChartView: LineChartView {
         )
         ChartScrollHintAnimator.layoutArrow(arrowNudgeView, in: bounds)
     }
-
+    
     private func showHintLabel() {
         guard !hintHasShown else { return }
         hintHasShown = true
-
+        
         ChartScrollHintAnimator.fadeIn(label: scrollHintLabel, arrow: arrowNudgeView)
         ChartScrollHintAnimator.animateBounce(for: arrowNudgeView)
         ChartScrollHintAnimator.fadeOut(label: scrollHintLabel, arrow: arrowNudgeView)
     }
-
+    
     // MARK: - Public Update Method
-
-    func update(_ dataPoints: [Double], range: String) {
-        guard !dataPoints.isEmpty else { return }
-
-        self.allDataPoints = dataPoints
+    
+    func update(_ ohlcData: [OHLCData], range: String) {
+        guard !ohlcData.isEmpty else { return }
+        
+        self.allOHLCData = ohlcData
         self.currentRange = range
         self.visibleDataPointsCount = calculateVisiblePoints(for: range)
-        generateDates(for: dataPoints, range: range)
+        self.allDates = ohlcData.map { $0.timestamp }
         self.currentScrollPosition = 0
         updateChart()
     }
-
+    
     private func calculateVisiblePoints(for range: String) -> Int {
         switch range {
-        case "24h": return min(24, allDataPoints.count)
-        case "7d": return min(50, allDataPoints.count)
-        case "30d": return min(60, allDataPoints.count)
-        case "All", "365d": return min(100, allDataPoints.count)
-        default: return min(50, allDataPoints.count)
+        case "24h": return min(24, allOHLCData.count)
+        case "7d": return min(50, allOHLCData.count)
+        case "30d": return min(60, allOHLCData.count)
+        case "All", "365d": return min(100, allOHLCData.count)
+        default: return min(50, allOHLCData.count)
         }
     }
-
-    private func generateDates(for dataPoints: [Double], range: String) {
-        let now = Date()
+    
+    // MARK: - Chart Rendering
+    
+    private func updateChart() {
+        guard !allOHLCData.isEmpty, !allDates.isEmpty else { return }
         
-        // Debug: Log current time and timezone for line chart
-        if range == "24h" {
-            let debugFormatter = DateFormatter()
-            debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            debugFormatter.timeZone = TimeZone.current
-            print("📊 DEBUG LineChart: Current time (\(TimeZone.current.identifier)): \(debugFormatter.string(from: now))")
-        }
-        
-        let timeInterval: TimeInterval = range == "24h" ? 86400 :
-                                         range == "7d" ? 604800 :
-                                         range == "30d" ? 2592000 : 31536000
-        let start = now.addingTimeInterval(-timeInterval)
-        
-        // Debug: Log start time for line chart
-        if range == "24h" {
-            let debugFormatter = DateFormatter()
-            debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            debugFormatter.timeZone = TimeZone.current
-            print("📊 DEBUG LineChart: Start time (\(TimeZone.current.identifier)): \(debugFormatter.string(from: start))")
-        }
-        
-        let step = timeInterval / Double(dataPoints.count)
-        
-        // Generate evenly spaced dates
-        self.allDates = (0..<dataPoints.count).map { i in
-            let date = start.addingTimeInterval(Double(i) * step)
+        // Create candlestick entries using INTEGER indices instead of timestamps
+        let entries = allOHLCData.enumerated().map { index, ohlc in
+            let entry = CandleChartDataEntry(x: Double(index),  // Using simple index, not timestamp
+                               shadowH: ohlc.high,
+                               shadowL: ohlc.low,
+                               open: ohlc.open,
+                               close: ohlc.close,
+                               icon: nil)
             
-            // Debug: Log first few dates for 24h range
-            if range == "24h" && i < 5 {
-                let debugFormatter = DateFormatter()
-                debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                debugFormatter.timeZone = TimeZone.current
-                print("📊 DEBUG LineChart: Index \(i) date: \(debugFormatter.string(from: date))")
+            // Debug: Print the first few entries to check data
+            if index < 3 {
+                print("📊 OHLC Entry \(index): X=\(index), Open=\(String(format: "%.0f", ohlc.open)), High=\(String(format: "%.0f", ohlc.high)), Low=\(String(format: "%.0f", ohlc.low)), Close=\(String(format: "%.0f", ohlc.close)), Bullish=\(ohlc.close >= ohlc.open)")
             }
             
-            return date
+            return entry
         }
-    }
-
-    // MARK: - Chart Rendering
-
-    private func updateChart() {
-        guard !allDataPoints.isEmpty, !allDates.isEmpty else { return }
-
-        // Combine data and dates into chart entries
-        let entries = zip(allDates, allDataPoints).map { date, value in
-            ChartDataEntry(x: date.timeIntervalSince1970, y: value)
-        }
-
-        guard let minY = allDataPoints.min(), let maxY = allDataPoints.max() else { return }
-
-        // Setup y-axis buffer (using right axis)
+        
+        guard let minY = allOHLCData.map({ min($0.low, min($0.open, $0.close)) }).min(),
+              let maxY = allOHLCData.map({ max($0.high, max($0.open, $0.close)) }).max() else { return }
+        
+        // Setup y-axis with LARGER range to make candles appear smaller
         let range = maxY - minY
-        let buffer = range * 0.05
+        let buffer = range * 0.25  // Much larger buffer to create more price context
+        
+        // Show wider price range
         rightAxis.axisMinimum = minY - buffer
         rightAxis.axisMaximum = maxY + buffer
-
-        // Color based on price trend
-        // Green if lastprice >= firstPrice(Positive) else red.
-        let firstPrice = allDataPoints.first ?? 0
-        let lastPrice = allDataPoints.last ?? 0
-        let isPositive = lastPrice >= firstPrice
-        let lineColor = isPositive ? UIColor.systemGreen : UIColor.systemRed
-
-        // Setup dataset
-        let dataSet = LineChartDataSet(entries: entries, label: "")
-        dataSet.drawCirclesEnabled = false
-        dataSet.mode = .cubicBezier
-        dataSet.lineWidth = 2.5
-        dataSet.setColor(lineColor)
-        dataSet.drawValuesEnabled = false
-        dataSet.drawFilledEnabled = true
-        dataSet.fillAlpha = 1.0
-        dataSet.highlightColor = lineColor.withAlphaComponent(0.8)
-        dataSet.drawHorizontalHighlightIndicatorEnabled = false
-        dataSet.drawVerticalHighlightIndicatorEnabled = true
-
-        // Fill gradient
-        let gradientColors = [lineColor.withAlphaComponent(0.3).cgColor,
-                              lineColor.withAlphaComponent(0.0).cgColor]
-        let gradient = CGGradient(colorsSpace: nil, colors: gradientColors as CFArray, locations: nil)!
-        dataSet.fill = LinearGradientFill(gradient: gradient, angle: 90)
-
-        self.data = LineChartData(dataSet: dataSet)
-
-        // Adjust visible time range
-        let visibleRange = Double(visibleDataPointsCount)
-        let totalTimeRange = entries.last!.x - entries.first!.x
-        let visibleTimeRange = totalTimeRange * (visibleRange / Double(allDataPoints.count))
-
-        setVisibleXRangeMaximum(visibleTimeRange)
-        setVisibleXRangeMinimum(visibleTimeRange)
         
-        // Scroll to the latest entry
-        moveViewToX(entries.last?.x ?? 0)
-
-        // Update x-axis formatter with new dates and range
-        if let xAxisFormatter = xAxis.valueFormatter as? DateValueFormatter {
-            xAxisFormatter.updateDates(allDates)
-            xAxisFormatter.updateRange(currentRange)
+        let displayRange = (maxY + buffer) - (minY - buffer)
+        print("📊 Y-axis range: \(String(format: "%.0f", minY - buffer)) - \(String(format: "%.0f", maxY + buffer)) (display range: \(String(format: "%.0f", displayRange)))")
+        
+        let dataSet = CandleChartDataSet(entries: entries, label: "")
+        
+        dataSet.drawValuesEnabled = false
+        dataSet.drawIconsEnabled = false
+        
+        // Set Candlestick colors - darker green, vibrant red
+        dataSet.increasingColor = UIColor(red: 0.0, green: 0.7, blue: 0.0, alpha: 1.0)  // Darker green
+        dataSet.decreasingColor = UIColor(red: 0.9, green: 0.2, blue: 0.2, alpha: 1.0)  // Vibrant red
+        dataSet.increasingFilled = true
+        dataSet.decreasingFilled = true
+        
+        // Shadow (wick) styling - SAME COLOR as candle bodies
+        dataSet.shadowWidth = 1.0
+        dataSet.shadowColorSameAsCandle = true  // Wicks match their candle color
+        
+        // Balanced spacing between bars
+        dataSet.barSpace = 0.2 
+        
+        print("📊 Created candlestick dataset with \(entries.count) entries")
+        print("📊 Sample: Open=\(String(format: "%.0f", entries.first?.open ?? 0)), Close=\(String(format: "%.0f", entries.first?.close ?? 0)), BodySize=\(String(format: "%.0f", abs((entries.first?.close ?? 0) - (entries.first?.open ?? 0))))")
+        
+        // Debug dataset properties
+        print("📊 Dataset config: barSpace=\(dataSet.barSpace), shadowWidth=\(dataSet.shadowWidth)")
+        print("📊 Colors: increasing=\(dataSet.increasingColor), decreasing=\(dataSet.decreasingColor)")
+        print("📊 Filled: increasing=\(dataSet.increasingFilled), decreasing=\(dataSet.decreasingFilled)")
+        
+        let chartData = CandleChartData(dataSet: dataSet)
+        self.data = chartData
+        
+        // Force immediate render
+        invalidateIntrinsicContentSize()
+        setNeedsDisplay()
+        layoutIfNeeded()
+        
+        // Set intelligent initial zoom based on range and data
+        setInitialZoom()
+        
+        print("📊 Candlestick chart updated with \(allOHLCData.count) candles")
+        
+        // Scroll to the latest entry (using index-based X values)
+        moveViewToX(Double(entries.count - 1))
+        
+        // Create X-axis formatter for indices based on current range
+        let dateStrings = allDates.map { date in
+            let formatter = DateFormatter()
+            // Ensure formatter uses local timezone (Singapore time for this user)
+            formatter.timeZone = TimeZone.current
+            // For 24h filter, show time of day instead of date
+            if currentRange == "24h" {
+                formatter.dateFormat = "h a"  // "9 AM", "12 PM", "6 PM"
+            } else {
+                formatter.dateFormat = "MM/dd"  // "07/22", "07/23"
+            }
+            return formatter.string(from: date)
         }
         
-        // Debug: Log the actual dates being used for X-axis labels to compare with candlestick
+        // Debug: Log the actual dates being used for X-axis labels
         if currentRange == "24h" && !allDates.isEmpty {
             let debugFormatter = DateFormatter()
             debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
             debugFormatter.timeZone = TimeZone.current
-            print("📊 DEBUG LineChart X-axis: First date: \(debugFormatter.string(from: allDates.first!))")
-            print("📊 DEBUG LineChart X-axis: Last date: \(debugFormatter.string(from: allDates.last!))")
-            
-            // Show what the actual X-axis labels will be
-            let testFormatter = DateFormatter()
-            testFormatter.timeZone = TimeZone.current
-            testFormatter.dateFormat = "h a"
-            let labelStrings = allDates.prefix(5).map { testFormatter.string(from: $0) }
-            print("📊 DEBUG LineChart X-axis: Label strings: \(labelStrings.joined(separator: ", "))")
+            print("📊 DEBUG Candlestick X-axis: First date: \(debugFormatter.string(from: allDates.first!))")
+            print("📊 DEBUG Candlestick X-axis: Last date: \(debugFormatter.string(from: allDates.last!))")
+            print("📊 DEBUG Candlestick X-axis: Date strings: \(dateStrings.prefix(5).joined(separator: ", "))")
+        }
+        xAxis.valueFormatter = IndexAxisValueFormatter(values: dateStrings)
+        
+        // Update marker with current dates and range for proper tooltip display
+        if let candlestickMarker = self.marker as? CandlestickBalloonMarker {
+            candlestickMarker.updateDates(allDates)
+            candlestickMarker.updateRange(currentRange)
         }
         
-        // Update marker with current range for proper tooltip display
-        if let balloonMarker = self.marker as? BalloonMarker {
-            balloonMarker.updateRange(currentRange)
-        }
-
-        // Set intelligent initial zoom based on data range
-        setInitialZoom()
-
+        // Force chart refresh
         notifyDataSetChanged()
-        animate(xAxisDuration: 0.6, yAxisDuration: 0.6, easingOption: .easeInOutQuart)
+        invalidateIntrinsicContentSize()
+        setNeedsDisplay()
+        
+        // Animate chart updates with delay to ensure rendering
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.animate(xAxisDuration: 0.6, yAxisDuration: 0.6, easingOption: .easeInOutQuart)
+        }
     }
     
     // MARK: - External Scrolling Helpers
@@ -488,17 +496,17 @@ final class ChartView: LineChartView {
         guard let data = data else { return }
         moveViewToX(data.xMax)
     }
-
+    
     func scrollToOldest() {
         guard let data = data else { return }
         moveViewToX(data.xMin)
     }
-
-        func scrollBy(points: Int) {
+    
+    func scrollBy(points: Int) {
         guard let data = data else { return }
         let currentCenterX = (lowestVisibleX + highestVisibleX) / 2
         let dataRange = data.xMax - data.xMin
-        let pointWidth = dataRange / Double(allDataPoints.count)
+        let pointWidth = dataRange / Double(allOHLCData.count)
         let offsetX = Double(points) * pointWidth
         
         let newCenterX = currentCenterX + offsetX
@@ -511,12 +519,19 @@ final class ChartView: LineChartView {
 
 // MARK: - Delegate Handling
 
-extension ChartView: ChartViewDelegate {
+extension CandlestickChartView: ChartViewDelegate {
     
     // Auto-clear highlight tooltip after delay
     func chartValueSelected(_ chartView: ChartViewBase, entry: ChartDataEntry, highlight: Highlight) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak chartView] in
+        // Show tooltip for longer since candlestick has more data
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak chartView] in
             chartView?.highlightValue(nil)
+        }
+        
+        // Log selection for debugging
+        if let candleEntry = entry as? CandleChartDataEntry {
+            let isBullish = candleEntry.close >= candleEntry.open
+            print("📊 Candlestick selected: \(isBullish ? "📈" : "📉") O:\(String(format: "%.0f", candleEntry.open)) C:\(String(format: "%.0f", candleEntry.close))")
         }
     }
     
@@ -528,36 +543,37 @@ extension ChartView: ChartViewDelegate {
     
     func chartScaled(_ chartView: ChartViewBase, scaleX: CGFloat, scaleY: CGFloat) {
         // Provide subtle haptic feedback during zoom
-        if abs(scaleX - 1.0) > 0.1 || abs(scaleY - 1.0) > 0.1 {
+        if abs(scaleX - 1.0) > 0.1 {
             let selectionFeedback = UISelectionFeedbackGenerator()
             selectionFeedback.selectionChanged()
         }
         
-        // Log zoom level for debugging
-        print("📊 Line chart zoom: X=\(String(format: "%.2f", scaleX)), Y=\(String(format: "%.2f", scaleY))")
+        // Calculate visible candles for user feedback
+        let visibleCandles = Int(highestVisibleX - lowestVisibleX) + 1
+        print("📊 Candlestick zoom: \(visibleCandles) candles visible (X-axis only)")
     }
     
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {
         // Handle chart panning while zoomed
         // This ensures smooth interaction between zoom and pan
     }
-
+    
     // Detect if user has panned all the way to left/right
     func chartViewDidEndPanning(_ chartView: ChartViewBase) {
-        guard let lineChart = chartView as? LineChartView,
-              let data = lineChart.data else { return }
-
-        let lowestVisibleX = lineChart.lowestVisibleX
-        let highestVisibleX = lineChart.highestVisibleX
-
+        guard let candleChart = chartView as? CandleStickChartView,
+              let data = candleChart.data else { return }
+        
+        let lowestVisibleX = candleChart.lowestVisibleX
+        let highestVisibleX = candleChart.highestVisibleX
+        
         // Notify when close to LEFT edge
         if lowestVisibleX <= data.xMin + (data.xMax - data.xMin) * 0.1 {
             onScrollToEdge?(.left)
         }
-
+        
         // Notify when close to RIGHT edge
         if highestVisibleX >= data.xMax - (data.xMax - data.xMin) * 0.1 {
             onScrollToEdge?(.right)
         }
     }
-}
+} 

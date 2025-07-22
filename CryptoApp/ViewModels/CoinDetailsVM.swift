@@ -62,6 +62,20 @@ final class CoinDetailsVM: ObservableObject {
         chartPointsSubject.eraseToAnyPublisher()
     }
     
+    // OHLC data for candlestick charts
+    private let ohlcDataSubject = CurrentValueSubject<[OHLCData], Never>([])
+    
+    var ohlcData: AnyPublisher<[OHLCData], Never> {
+        ohlcDataSubject.eraseToAnyPublisher()
+    }
+    
+    // Request tracking for cancellation
+    private var currentChartRequest: AnyCancellable?
+    private var currentOHLCRequest: AnyCancellable?
+    
+    // Chart type tracking to avoid unnecessary OHLC requests
+    private var currentChartType: ChartType = .line
+    
     var isLoading: AnyPublisher<Bool, Never> {
         isLoadingSubject.eraseToAnyPublisher()
     }
@@ -85,6 +99,10 @@ final class CoinDetailsVM: ObservableObject {
     
     var currentChartPoints: [Double] {
         chartPointsSubject.value
+    }
+    
+    var currentOHLCData: [OHLCData] {
+        ohlcDataSubject.value
     }
     
     var currentIsLoading: Bool {
@@ -331,6 +349,37 @@ final class CoinDetailsVM: ObservableObject {
 
     
     /**
+     * CHART TYPE MANAGEMENT
+     * 
+     * Switches between line and candlestick charts, only fetching OHLC data
+     * when actually needed to reduce API calls and rate limiting.
+     */
+    func setChartType(_ chartType: ChartType) {
+        print("🔄 Chart type changed from \(currentChartType.rawValue) to \(chartType.rawValue)")
+        currentChartType = chartType
+        
+        if chartType == .candlestick {
+            // User switched to candlestick - check cooldown status first
+            let cooldownStatus = RequestManager.shared.getCooldownStatus()
+            if cooldownStatus.isInCooldown {
+                let remainingTime = cooldownStatus.remainingSeconds
+                print("❄️ Switching to candlestick during cooldown (\(remainingTime)s remaining)")
+                errorMessageSubject.send("API cooldown active (\(remainingTime)s). Trying cached candlestick data...")
+            } else {
+                errorMessageSubject.send(nil) // Clear any previous error messages
+                print("📊 Switching to candlestick view - fetching OHLC data")
+            }
+            
+            fetchRealOHLCData(for: currentRange)
+        } else {
+            // User switched to line chart - clear OHLC data and error messages
+            print("📊 Switching to line chart - clearing OHLC data")
+            ohlcDataSubject.send([])
+            errorMessageSubject.send(nil) // Clear any cooldown messages
+        }
+    }
+    
+    /**
      * CHART DATA FETCHING
      */
     func fetchChartData(for range: String) {
@@ -344,11 +393,44 @@ final class CoinDetailsVM: ObservableObject {
             return
         }
         
+        // Cancel previous requests to prevent redundant API calls
+        currentChartRequest?.cancel()
+        currentOHLCRequest?.cancel()
+        print("🚫 Cancelled previous API calls for \(coin.symbol)")
+        
+        // Check if we should prefer cache due to rate limiting
+        let requestManager = RequestManager.shared
+        if requestManager.shouldPreferCache() {
+            print("📦 Rate limiting pressure - checking cache first")
+            
+            // Try to get cached chart data first
+            if let cachedChartData = CacheService.shared.getChartData(for: geckoID, currency: "usd", days: days),
+               !cachedChartData.isEmpty {
+                let processedData = processChartData(cachedChartData, for: days)
+                chartPointsSubject.send(processedData)
+                
+                let cooldownStatus = requestManager.getCooldownStatus()
+                if cooldownStatus.isInCooldown {
+                    errorMessageSubject.send("Using cached data during API cooldown (\(cooldownStatus.remainingSeconds)s)")
+                } else {
+                    errorMessageSubject.send("Using cached data to reduce API usage")
+                }
+                
+                print("📦 ✅ Using cached chart data: \(processedData.count) points")
+                isLoadingSubject.send(false)
+                
+                // Still fetch OHLC if needed, but with cache preference
+                if currentChartType == .candlestick {
+                    fetchRealOHLCData(for: range)
+                }
+                return
+            }
+        }
         
         isLoadingSubject.send(true)
         errorMessageSubject.send(nil)
         
-        coinManager.fetchChartData(for: geckoID, range: days, currency: "usd", priority: .high)
+        currentChartRequest = coinManager.fetchChartData(for: geckoID, range: days, currency: "usd", priority: .high)
             .subscribe(on: DispatchQueue.global(qos: .userInitiated))
             .map { [weak self] rawData in
                 return self?.processChartData(rawData, for: days) ?? []
@@ -357,18 +439,35 @@ final class CoinDetailsVM: ObservableObject {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     self?.isLoadingSubject.send(false)
+                    self?.currentChartRequest = nil
                     if case .failure(let error) = completion {
-                        let userFriendlyMessage = ErrorMessageProvider.shared.getChartErrorMessage(for: error, symbol: self?.coin.symbol ?? "Unknown")
-                        self?.errorMessageSubject.send(userFriendlyMessage)
+                        // Check if this is a rate limit error and provide helpful message
+                        let cooldownStatus = RequestManager.shared.getCooldownStatus()
+                        if cooldownStatus.isInCooldown {
+                            let remainingTime = cooldownStatus.remainingSeconds
+                            self?.errorMessageSubject.send("API rate limit reached. Cooling down for \(remainingTime)s...")
+                        } else {
+                            let userFriendlyMessage = ErrorMessageProvider.shared.getChartErrorMessage(for: error, symbol: self?.coin.symbol ?? "Unknown")
+                            self?.errorMessageSubject.send(userFriendlyMessage)
+                        }
                         print("📊 Chart fetch failed: \(error)")
                     }
                 },
                 receiveValue: { [weak self] processedData in
                     self?.chartPointsSubject.send(processedData)
-                    print("📊 ✅ Chart updated with \(processedData.count) points for \(range)")
+                    
+                    // Clear any previous error messages on successful fetch
+                    self?.errorMessageSubject.send(nil)
+                    
+                    // Only fetch OHLC data if currently viewing candlestick chart
+                    if self?.currentChartType == .candlestick {
+                        self?.fetchRealOHLCData(for: range)
+                        print("📊 ✅ Chart updated with \(processedData.count) points for \(range) + fetching OHLC")
+                    } else {
+                        print("📊 ✅ Chart updated with \(processedData.count) points for \(range) (line chart - no OHLC needed)")
+                    }
                 }
             )
-            .store(in: &cancellables)
     }
 
     
@@ -493,6 +592,84 @@ final class CoinDetailsVM: ObservableObject {
         
         return optimizedData
     }
+    
+    // MARK: - Real OHLC Data Fetching
+    
+    /**
+     * FETCH REAL OHLC DATA FROM COINGECKO
+     * 
+     * Fetches actual trading data with real Open, High, Low, Close values 
+     * from CoinGecko's OHLC endpoint. This provides authentic candlestick 
+     * data that traders rely on. If the API fails, an empty array is sent
+     * and error handling will be implemented separately.
+     */
+    private func fetchRealOHLCData(for range: String) {
+        guard let geckoID = geckoID else {
+            print("❌ No CoinGecko ID found for OHLC data - \(coin.symbol)")
+            ohlcDataSubject.send([])
+            return
+        }
+        
+        let days = mapRangeToDays(range)
+        
+        // Check for rate limit cooldown and try cached data first
+        let cooldownStatus = RequestManager.shared.getCooldownStatus()
+        if cooldownStatus.isInCooldown {
+            print("❄️ Rate limit cooldown active - checking cache for OHLC data")
+            
+            // Try to get cached OHLC data during cooldown
+            if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
+               !cachedOHLCData.isEmpty {
+                ohlcDataSubject.send(cachedOHLCData)
+                print("📊 ✅ Using cached OHLC data during cooldown: \(cachedOHLCData.count) candles")
+                return
+            } else {
+                // No cached data available, inform user about cooldown
+                let remainingTime = cooldownStatus.remainingSeconds
+                print("❄️ No cached OHLC data available. Rate limit cooldown: \(remainingTime)s remaining")
+                errorMessageSubject.send("API cooldown active (\(remainingTime)s). Candlestick data temporarily unavailable.")
+                ohlcDataSubject.send([])
+                return
+            }
+        }
+        
+        // Proceed with normal API request
+        currentOHLCRequest = coinManager.fetchOHLCData(for: geckoID, range: days, currency: "usd", priority: .normal)
+            .subscribe(on: DispatchQueue.global(qos: .userInitiated))
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    self?.currentOHLCRequest = nil
+                    if case .failure(let error) = completion {
+                        print("❌ Real OHLC fetch failed: \(error)")
+                        
+                        // Check if this is a rate limit error and provide helpful message
+                        let cooldownStatus = RequestManager.shared.getCooldownStatus()
+                        if cooldownStatus.isInCooldown {
+                            let remainingTime = cooldownStatus.remainingSeconds
+                            self?.errorMessageSubject.send("API rate limit reached. Cooling down for \(remainingTime)s.")
+                        } else {
+                            self?.errorMessageSubject.send("Candlestick data temporarily unavailable.")
+                        }
+                        
+                        self?.ohlcDataSubject.send([])
+                    }
+                },
+                receiveValue: { [weak self] realOHLCData in
+                    self?.ohlcDataSubject.send(realOHLCData)
+                    self?.errorMessageSubject.send(nil) // Clear any error messages on success
+                    print("📊 ✅ Fetched \(realOHLCData.count) REAL OHLC candles for \(range)")
+                }
+            )
+    }
+    
+
+    
+
+    
+
+    
+
     
     // MARK: - Error Handling System
     
@@ -635,7 +812,7 @@ final class CoinDetailsVM: ObservableObject {
         case "24h": return "1"
         case "7d": return "7"
         case "30d": return "30"
-        case "365d": return "365"
+        case "All", "365d": return "365"
         default: return "7"
         }
     }
@@ -657,7 +834,7 @@ final class CoinDetailsVM: ObservableObject {
         case "24h": return "7"     // Show week context
         case "7d": return "30"     // Show month context
         case "30d": return "90"    // Show quarter context
-        case "365d": return "max"  // Show all available data
+        case "All", "365d": return "max"  // Show all available data
         default: return "30"
         }
     }
@@ -701,6 +878,8 @@ final class CoinDetailsVM: ObservableObject {
      */
     deinit {
         print("🧹 CoinDetailsVM deinit - cancelling all API calls for \(coin.symbol)")
+        currentChartRequest?.cancel()
+        currentOHLCRequest?.cancel()
         cancellables.removeAll()
         // Combine automatically cancels subscriptions when cancellables are cleared
     }

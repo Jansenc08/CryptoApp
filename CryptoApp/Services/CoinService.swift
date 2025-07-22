@@ -325,6 +325,43 @@ final class CoinService: CoinServiceProtocol {
     // 2. Uses RequestManager to prioritize
     // 3. Calls performChartRequest to hit -> /coins/{id}/market_chart?vs_currency=...&days=...
     
+    // MARK: Gets real OHLC candlestick data from CoinGecko
+    func fetchCoinGeckoOHLCData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[OHLCData], NetworkError> {
+        // Check cache first
+        let cacheKey = "ohlc_\(coinId)_\(currency)_\(days)"
+        if let cachedData = cacheService.getOHLCData(for: coinId, currency: currency, days: days) {
+            print("💾 ⚡ Instant cache hit for OHLC data: \(coinId) - \(days) (\(cachedData.count) candles)")
+            return Just(cachedData)
+                .setFailureType(to: NetworkError.self)
+                .eraseToAnyPublisher()
+        }
+        
+        print("🌐 Cache miss for OHLC data: \(coinId) - \(days) (priority: \(priority.description))")
+        
+        return requestManager.fetchOHLCData(
+            coinId: coinId,
+            currency: currency,
+            days: days,
+            priority: priority
+        ) { [weak self] in
+            self?.performOHLCDataRequest(for: coinId, currency: currency, days: days) ??
+            Fail(error: NetworkError.unknown(NSError(domain: "CoinService", code: -1, userInfo: nil)))
+                .eraseToAnyPublisher()
+        }
+        .mapError { error in
+            if let networkError = error as? NetworkError {
+                return networkError
+            } else {
+                return NetworkError.unknown(error)
+            }
+        }
+        .handleEvents(receiveOutput: { [weak self] data in
+            self?.cacheService.storeOHLCData(data, for: coinId, currency: currency, days: days)
+            print("💾 Cached OHLC data for \(coinId) - \(days): \(data.count) candles")
+        })
+        .eraseToAnyPublisher()
+    }
+    
     func fetchCoinGeckoChartData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[Double], NetworkError> {
         // Check cache first and return immediately if found
         // No rate limiting delays when data is cached. Makes filter switching instant
@@ -363,6 +400,61 @@ final class CoinService: CoinServiceProtocol {
             print("💾 Cached chart data for \(coinId) - \(days): \(data.count) points")
         })
         .eraseToAnyPublisher()
+    }
+    
+    private func performOHLCDataRequest(for coinId: String, currency: String, days: String) -> AnyPublisher<[OHLCData], NetworkError> {
+        let geckoId = mapCMCSlugToGeckoId(coinId)
+        let endpoint = "\(coinGeckoBaseURL)/coins/\(geckoId)/ohlc?vs_currency=\(currency)&days=\(days)"
+        
+        print("🔄 Mapping '\(coinId)' → '\(geckoId)' for OHLC data")
+        print("🌐 CoinGecko OHLC URL: \(endpoint)")
+        
+        guard let url = URL(string: endpoint) else {
+            return Fail(error: .badURL).eraseToAnyPublisher()
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        
+        return URLSession.shared.dataTaskPublisher(for: request)
+            .tryMap { output in
+                guard let response = output.response as? HTTPURLResponse else {
+                    print("❌ No HTTP response for OHLC")
+                    throw NetworkError.invalidResponse
+                }
+                
+                print("📡 CoinGecko OHLC response: HTTP \(response.statusCode)")
+                
+                if response.statusCode == 404 {
+                    print("❌ CoinGecko: OHLC data for '\(geckoId)' not found")
+                    throw NetworkError.badURL
+                } else if response.statusCode == 429 {
+                    print("⚠️ CoinGecko: Rate limit exceeded (429) for OHLC")
+                    throw NetworkError.invalidResponse
+                } else if response.statusCode != 200 {
+                    print("❌ CoinGecko OHLC: HTTP \(response.statusCode)")
+                    throw NetworkError.invalidResponse
+                }
+                return output.data
+            }
+            .decode(type: CoinGeckoOHLCResponse.self, decoder: JSONDecoder())
+            .map { response in
+                let ohlcData = response.toOHLCData()
+                print("✅ Successfully fetched \(ohlcData.count) OHLC candles for '\(geckoId)'")
+                return ohlcData
+            }
+            .receive(on: DispatchQueue.main)
+            .mapError { error in
+                print("❌ CoinGecko OHLC fetch failed with error: \(error)")
+                if let error = error as? NetworkError {
+                    return error
+                } else if error is DecodingError {
+                    return .decodingError
+                } else {
+                    return .unknown(error)
+                }
+            }
+            .eraseToAnyPublisher()
     }
     
     private func performChartDataRequest(for coinId: String, currency: String, days: String) -> AnyPublisher<[Double], NetworkError> {

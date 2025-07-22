@@ -10,9 +10,9 @@ enum RequestPriority {
     
     var delayInterval: TimeInterval {
         switch self {
-        case .high:   return 2.0  // Increased to 2 seconds for CoinGecko compatibility  
-        case .normal: return 4.0  // Increased to 4 seconds for better rate limiting
-        case .low:    return 8.0  // Increased to 8 seconds for background requests
+        case .high:   return 1.0  // Allow faster user interactions  
+        case .normal: return 3.0  // Moderate rate limiting for regular requests
+        case .low:    return 6.0  // Conservative rate limiting for background requests
         }
     }
     
@@ -37,14 +37,22 @@ final class RequestManager: RequestManagerProtocol {
     private var lastRequestTimes: [String: Date] = [:]
     private var coinGeckoRequestCount: Int = 0
     private var coinGeckoWindowStart: Date = Date()
-    private let coinGeckoMaxRequests: Int = 25               // Increased to 25 requests per minute (more reasonable for free tier)
+    private let coinGeckoMaxRequests: Int = 45               // More reasonable limit for user interactions
     private let coinGeckoWindowDuration: TimeInterval = 60.0 // 1 minute window
+    
+    // Rate limit cooldown management
+    private var isInCooldownMode: Bool = false
+    private var cooldownEndTime: Date = Date()
+    private let baseCooldownDuration: TimeInterval = 15.0    // Reduced to 15 seconds base cooldown
+    private let maxCooldownDuration: TimeInterval = 120.0    // Reduced to 2 minutes max cooldown
+    private var consecutiveRateLimits: Int = 0
+    private var lastRateLimitTime: Date = Date.distantPast   // Track timing between rate limits
     
     // Exponential backoff for rate limiting
     private var retryAttempts: [String: Int] = [:]           // Track retry attempts per request
-    private let maxRetryAttempts: Int = 3                    // Maximum retry attempts
-    private let baseRetryDelay: TimeInterval = 5.0          // Increased base delay for CoinGecko
-    private let maxRetryDelay: TimeInterval = 60.0          // Increased max delay for rate limits
+    private let maxRetryAttempts: Int = 2                    // Reduced retry attempts to respect rate limits
+    private let baseRetryDelay: TimeInterval = 5.0          // Balanced retry delay
+    private let maxRetryDelay: TimeInterval = 60.0          // Reasonable max retry delay
     
     // Priority queue system
     // Separated requests into different queues so high priority requests jump the line
@@ -62,6 +70,63 @@ final class RequestManager: RequestManagerProtocol {
      * - Production singleton pattern
      */
     init() {}
+    
+    // MARK: - Rate Limit Cooldown Management
+    
+    /**
+     * CHECK IF WE'RE IN COOLDOWN MODE
+     * 
+     * After hitting multiple 429 errors, we enter cooldown mode to respect
+     * CoinGecko's rate limits and prevent further API abuse.
+     */
+    private func isInRateLimitCooldown() -> Bool {
+        let now = Date()
+        if isInCooldownMode && now < cooldownEndTime {
+            let remainingTime = cooldownEndTime.timeIntervalSince(now)
+            print("❄️ Rate limit cooldown active: \(Int(remainingTime))s remaining")
+            return true
+        } else if isInCooldownMode && now >= cooldownEndTime {
+            // Cooldown period ended
+            isInCooldownMode = false
+            consecutiveRateLimits = 0
+            print("🌟 Rate limit cooldown ended - resuming normal operations")
+        }
+        return false
+    }
+    
+    /**
+     * ENTER COOLDOWN MODE AFTER RATE LIMIT
+     * 
+     * Implements smart progressive backoff based on rate limit patterns:
+     * - Quick consecutive hits = longer cooldown
+     * - Spaced out hits = shorter cooldown
+     * - First hit = minimal cooldown
+     */
+    private func enterRateLimitCooldown() {
+        let now = Date()
+        let timeSinceLastRateLimit = now.timeIntervalSince(lastRateLimitTime)
+        
+        // If rate limits are happening quickly (< 60s apart), be more aggressive
+        if timeSinceLastRateLimit < 60.0 && consecutiveRateLimits > 0 {
+            consecutiveRateLimits += 1
+            print("🚨 Rapid rate limits detected - increasing cooldown severity")
+        } else {
+            // Reset consecutive count if rate limits are spaced out
+            consecutiveRateLimits = 1
+            print("⏱️ Spaced rate limit - using moderate cooldown")
+        }
+        
+        lastRateLimitTime = now
+        
+        // Smart cooldown calculation
+        let cooldownMultiplier = consecutiveRateLimits == 1 ? 1.0 : Double(consecutiveRateLimits)
+        let cooldownDuration = min(baseCooldownDuration * cooldownMultiplier, maxCooldownDuration)
+        
+        isInCooldownMode = true
+        cooldownEndTime = now.addingTimeInterval(cooldownDuration)
+        
+        print("❄️ Smart cooldown: \(Int(cooldownDuration))s (severity level: \(consecutiveRateLimits))")
+    }
     
     // MARK: - Test Support
     
@@ -283,6 +348,98 @@ final class RequestManager: RequestManagerProtocol {
     // Adds each chart request to a priority queue
     // Queues are processed in order (high > normal > low), and each item is spaced out by its delay.
 
+    func fetchOHLCData(
+        coinId: String,
+        currency: String,
+        days: String,
+        priority: RequestPriority = .normal,
+        apiCall: @escaping () -> AnyPublisher<[OHLCData], NetworkError>
+    ) -> AnyPublisher<[OHLCData], Error> {
+        
+        let key = "ohlc_\(coinId)_\(currency)_\(days)"
+        
+        return Future<[OHLCData], Error> { [weak self] promise in
+            guard let self = self else {
+                promise(.failure(RequestError.castingError))
+                return
+            }
+            
+            self.queue.async {
+                // Check if we're in cooldown mode first
+                if self.isInRateLimitCooldown() {
+                    promise(.failure(RequestError.rateLimited))
+                    return
+                }
+                
+                // Check CoinGecko rate limit window
+                let now = Date()
+                if now.timeIntervalSince(self.coinGeckoWindowStart) >= self.coinGeckoWindowDuration {
+                    // Reset window
+                    self.coinGeckoWindowStart = now
+                    self.coinGeckoRequestCount = 0
+                    print("🔄 CoinGecko rate limit window reset for OHLC")
+                }
+                
+                // Check if we're approaching rate limit
+                if self.coinGeckoRequestCount >= self.coinGeckoMaxRequests {
+                    print("⚠️ CoinGecko OHLC rate limit protection: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests) requests in current window")
+                    promise(.failure(RequestError.rateLimited))
+                    return
+                }
+                
+                print("📊 \(priority.description) CoinGecko OHLC request attempt \(self.coinGeckoRequestCount + 1)/\(self.coinGeckoMaxRequests) in current window")
+                
+                // Add request to appropriate priority queue
+                let requestAction = {
+                    self.executeWithRetry(key: key, priority: priority) {
+                        self.executeRequest(key: key, priority: priority) {
+                            apiCall()
+                                .handleEvents(receiveOutput: { _ in
+                                    // Only increment counter on successful requests
+                                    self.queue.async {
+                                        self.coinGeckoRequestCount += 1
+                                        print("✅ CoinGecko OHLC request successful - counter now: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests)")
+                                    }
+                                })
+                                .map { $0 as [OHLCData] }
+                                .mapError { $0 as Error }
+                                .eraseToAnyPublisher()
+                        }
+                    }
+                    .sink(
+                        receiveCompletion: { completion in
+                            switch completion {
+                            case .finished:
+                                break
+                            case .failure(let error):
+                                promise(.failure(error))
+                            }
+                        },
+                        receiveValue: { data in
+                            promise(.success(data))
+                        }
+                    )
+                    .store(in: &self.cancellables)
+                }
+                
+                // Add to appropriate queue based on priority
+                switch priority {
+                case .high:
+                    self.highPriorityQueue.append(requestAction) // Filter changes
+                case .normal:
+                    self.normalPriorityQueue.append(requestAction)
+                case .low:
+                    self.lowPriorityQueue.append(requestAction) // Background operations
+                }
+                
+                // Process queue if not already processing
+                if !self.isProcessingQueue {
+                    self.processPriorityQueue()
+                }
+            }
+        }
+        .eraseToAnyPublisher()
+    }
 
     func fetchChartData(
         coinId: String,
@@ -300,6 +457,12 @@ final class RequestManager: RequestManagerProtocol {
             }
             
             self.queue.async {
+                // Check if we're in cooldown mode first
+                if self.isInRateLimitCooldown() {
+                    promise(.failure(RequestError.rateLimited))
+                    return
+                }
+                
                 // Check CoinGecko rate limit window
                 let now = Date()
                 if now.timeIntervalSince(self.coinGeckoWindowStart) >= self.coinGeckoWindowDuration {
@@ -500,12 +663,16 @@ final class RequestManager: RequestManagerProtocol {
         }
         
         if let networkError = error as? NetworkError {
-            // Extend rate limit window when we hit 429 to give CoinGecko breathing room
+            // Handle 429 rate limit errors with cooldown
             if networkError == .invalidResponse {
                 queue.async {
                     // Extend the current window by 30 seconds to space out requests more
                     self.coinGeckoWindowStart = Date().addingTimeInterval(-30)
-                    print("⏸️ Extended CoinGecko rate limit window due to 429 error")
+                    
+                    // Enter cooldown mode to prevent further API abuse
+                    self.enterRateLimitCooldown()
+                    
+                    print("⏸️ Extended CoinGecko rate limit window and entered cooldown due to 429 error")
                 }
             }
             return networkError == .invalidResponse
@@ -534,6 +701,36 @@ final class RequestManager: RequestManagerProtocol {
             count = activeRequests.count
         }
         return count
+    }
+    
+    /**
+     * GET COOLDOWN STATUS FOR UI FEEDBACK
+     * 
+     * Returns the remaining cooldown time for user feedback purposes.
+     */
+    func getCooldownStatus() -> (isInCooldown: Bool, remainingSeconds: Int) {
+        let now = Date()
+        if isInCooldownMode && now < cooldownEndTime {
+            let remainingTime = Int(cooldownEndTime.timeIntervalSince(now))
+            return (true, remainingTime)
+        }
+        return (false, 0)
+    }
+    
+    /**
+     * CHECK IF WE SHOULD USE CACHE-FIRST STRATEGY
+     * 
+     * During cooldowns or when approaching rate limits, prioritize cache over API calls.
+     */
+    func shouldPreferCache() -> Bool {
+        // Always prefer cache during cooldown
+        if isInCooldownMode {
+            return true
+        }
+        
+        // Prefer cache when we're close to rate limit
+        let utilizationRate = Double(coinGeckoRequestCount) / Double(coinGeckoMaxRequests)
+        return utilizationRate > 0.8 // Use cache when > 80% of rate limit used
     }
     
     // This method is added to help debug the queue system

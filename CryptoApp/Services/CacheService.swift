@@ -48,6 +48,7 @@ final class CacheService: NSObject, CacheServiceProtocol {
     static let logoTTL: TimeInterval = 86400            // 24h - Logos rarely change
     static let priceUpdateTTL: TimeInterval = 15        // 15s - Balance freshness vs performance
     static let chartDataTTL: TimeInterval = 900         // 15min - Reduced API calls while maintaining reasonable freshness
+    static let ohlcDataTTL: TimeInterval = 3600         // 1h - OHLC data is expensive to fetch due to rate limits
     
     // Additional crypto-specific TTLs
     static let marketStatsTTL: TimeInterval = 60        // 1min - Market cap, volume
@@ -221,6 +222,16 @@ final class CacheService: NSObject, CacheServiceProtocol {
     func storeChartData(_ data: [Double], for coinId: String, currency: String, days: String) {
         let key = "chart_\(coinId)_\(currency)_\(days)"
         set(key: key, value: data, ttl: CacheService.chartDataTTL)
+    }
+    
+    func getOHLCData(for coinId: String, currency: String, days: String) -> [OHLCData]? {
+        let key = "ohlc_\(coinId)_\(currency)_\(days)"
+        return get(key: key, type: [OHLCData].self)
+    }
+    
+    func storeOHLCData(_ data: [OHLCData], for coinId: String, currency: String, days: String) {
+        let key = "ohlc_\(coinId)_\(currency)_\(days)"
+        set(key: key, value: data, ttl: CacheService.ohlcDataTTL)
     }
     
     func clearCache() {

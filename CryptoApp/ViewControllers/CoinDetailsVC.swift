@@ -8,6 +8,7 @@ final class CoinDetailsVC: UIViewController {
     private let coin: Coin
     private let viewModel: CoinDetailsVM
     private let selectedRange = CurrentValueSubject<String, Never>("24h") // Default selected time range for chart
+    private let selectedChartType = CurrentValueSubject<ChartType, Never>(.line) // Default chart type
     private let tableView = UITableView(frame: .zero, style: .plain)      // Main table view
 
     private var cancellables = Set<AnyCancellable>()                      // Combine cancellables
@@ -21,7 +22,7 @@ final class CoinDetailsVC: UIViewController {
     
     // MARK: - Rate Limiting & Debouncing Properties
     private var filterChangeWorkItem: DispatchWorkItem?                   // Debouncing for filter changes
-    private let filterDebounceInterval: TimeInterval = 0.5                // 500ms debounce delay
+    private let filterDebounceInterval: TimeInterval = 2.0                // 2s debounce delay to prevent API abuse
 
     // MARK: - Init
     
@@ -160,7 +161,7 @@ final class CoinDetailsVC: UIViewController {
                 
                 // Update loading state without full reload
                 if let chartCell = self.getChartCell() {
-                    chartCell.setLoading(isLoading)
+                    chartCell.updateLoadingState(isLoading)
                 }
             }
             .store(in: &cancellables)
@@ -179,6 +180,19 @@ final class CoinDetailsVC: UIViewController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateStatsCell()
+            }
+            .store(in: &cancellables)
+        
+        // OHLC data updates for candlestick charts
+        viewModel.ohlcData
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newOHLCData in
+                guard let self = self else { return }
+                
+                // Skip unnecessary updates
+                guard self.shouldUpdateChart(newPoints: []) else { return }
+                
+                self.updateChartCellWithOHLC(newOHLCData)
             }
             .store(in: &cancellables)
     }
@@ -213,14 +227,116 @@ final class CoinDetailsVC: UIViewController {
         }
         
         // Direct cell update - much more efficient
-        chartCell.updateChartData(points: points, range: selectedRange.value)
+        chartCell.updateChartData(points: points, ohlcData: nil, range: selectedRange.value)
         print("📊 Updated chart cell directly with \(points.count) points")
+    }
+    
+    private func updateChartCellWithOHLC(_ ohlcData: [OHLCData]) {
+        guard let chartCell = getChartCell() else {
+            // Fallback to section reload if cell not found
+            tableView.reloadSections(IndexSet(integer: 2), with: .none)
+            return
+        }
+        
+        // Direct cell update for OHLC data
+        chartCell.updateChartData(points: nil, ohlcData: ohlcData, range: selectedRange.value)
+        print("📊 Updated chart cell with \(ohlcData.count) OHLC data points")
     }
     
     private func getChartCell() -> ChartCell? {
         let chartIndexPath = IndexPath(row: 0, section: 2)
         return tableView.cellForRow(at: chartIndexPath) as? ChartCell
     }
+    
+    // MARK: - Landscape Chart
+    
+    private func presentLandscapeChart() {
+        // Get current chart data
+        let currentPoints = viewModel.currentChartPoints
+        let currentOHLCData = viewModel.currentOHLCData
+        let currentRange = selectedRange.value
+        let currentChartType = selectedChartType.value
+        
+        // Create landscape chart controller
+        let landscapeVC = LandscapeChartViewController(
+            coin: coin,
+            selectedRange: currentRange,
+            selectedChartType: currentChartType,
+            points: currentPoints,
+            ohlcData: currentOHLCData,
+            viewModel: viewModel
+        )
+        
+        // Set up state synchronization callback
+        landscapeVC.onStateChanged = { [weak self] newRange, newChartType in
+            guard let self = self else { return }
+            
+            print("📊 Synchronizing state from landscape: range=\(newRange), chartType=\(newChartType)")
+            
+            // Update portrait mode state to match landscape
+            self.selectedRange.send(newRange)
+            self.selectedChartType.send(newChartType)
+            
+            // Update UI immediately and ensure orientation is correct
+            DispatchQueue.main.async {
+                self.updatePortraitModeAfterLandscapeChange(range: newRange, chartType: newChartType)
+                
+                // Force orientation check after landscape dismissal
+                if #available(iOS 16.0, *) {
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                        windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                    }
+                } else {
+                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+                    UIViewController.attemptRotationToDeviceOrientation()
+                }
+                
+                self.setNeedsUpdateOfSupportedInterfaceOrientations()
+            }
+        }
+        
+        // Present modally with smoother transition
+        landscapeVC.modalPresentationStyle = UIModalPresentationStyle.fullScreen
+        landscapeVC.modalTransitionStyle = UIModalTransitionStyle.crossDissolve
+        
+        // Use a slight delay and animation to reduce flickering
+        present(landscapeVC, animated: true) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                print("📊 Presented landscape chart for \(self?.coin.name ?? "Unknown") with \(currentPoints.count) points")
+            }
+        }
+    }
+    
+    // MARK: - Orientation Support
+    
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        return .portrait
+    }
+    
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        return .portrait
+    }
+    
+    // MARK: - Landscape State Synchronization
+    
+    private func updatePortraitModeAfterLandscapeChange(range: String, chartType: ChartType) {
+        // Use smooth animations to avoid flickering
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+            // Update segment cell to show correct selected range and chart type
+            if let segmentCell = self.getSegmentCell() {
+                segmentCell.setSelectedRange(range)
+                segmentCell.setChartType(chartType)
+            }
+            
+            // Update chart cell to show correct chart type
+            if let chartCell = self.getChartCell() {
+                chartCell.switchChartType(to: chartType)
+            }
+        } completion: { _ in
+            print("📊 Updated portrait mode UI: range=\(range), chartType=\(chartType)")
+        }
+    }
+
     
     private func updateStatsCell() {
         let statsIndexPath = IndexPath(row: 0, section: 3)
@@ -276,6 +392,38 @@ final class CoinDetailsVC: UIViewController {
                 DispatchQueue.main.asyncAfter(deadline: .now() + self.filterDebounceInterval, execute: workItem)
             }
             .store(in: &cancellables)
+        
+        // Bind chart type changes
+        bindChartType()
+    }
+    
+    private func bindChartType() {
+        selectedChartType
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] chartType in
+                guard let self = self else { return }
+                
+                print("🔄 Chart type changed to: \(chartType)")
+                
+                // Notify ViewModel about chart type change (triggers conditional OHLC fetching)
+                self.viewModel.setChartType(chartType)
+                
+                // Update segment cell
+                if let segmentCell = self.getSegmentCell() {
+                    segmentCell.setChartType(chartType)
+                }
+                
+                // Update chart cell
+                if let chartCell = self.getChartCell() {
+                    chartCell.switchChartType(to: chartType)
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func getSegmentCell() -> SegmentCell? {
+        let segmentIndexPath = IndexPath(row: 0, section: 1)
+        return tableView.cellForRow(at: segmentIndexPath) as? SegmentCell
     }
     
     // MARK: - Smart Auto-Refresh
@@ -325,14 +473,31 @@ extension CoinDetailsVC: UITableViewDataSource {
             return cell
         case 1: // Filter section (Segmented control)
             let cell = tableView.dequeueReusableCell(withIdentifier: "SegmentCell", for: indexPath) as! SegmentCell
-            cell.configure(items: ["24h", "7d", "30d", "All"]) { [weak self] range in
+            cell.configure(items: ["24h", "7d", "30d", "All"], chartType: selectedChartType.value) { [weak self] range in
                 self?.selectedRange.send(range)
             }
+            
+            // Handle chart type toggle
+            cell.onChartTypeToggle = { [weak self] chartType in
+                self?.selectedChartType.send(chartType)
+            }
+            
+            cell.onLandscapeToggle = { [weak self] in
+                self?.presentLandscapeChart()
+            }
+            
             cell.selectionStyle = .none
             return cell
         case 2: // Chart section
             let cell = tableView.dequeueReusableCell(withIdentifier: "ChartCell", for: indexPath) as! ChartCell
+            
+            // Configure with both line and OHLC data
             cell.configure(points: viewModel.currentChartPoints, range: selectedRange.value)
+            cell.configure(ohlcData: viewModel.currentOHLCData, range: selectedRange.value)
+            
+            // Switch to current chart type
+            cell.switchChartType(to: selectedChartType.value)
+            
             cell.onScrollToEdge = { [weak self] dir in
                 self?.viewModel.loadMoreHistoricalData(for: self?.selectedRange.value ?? "24h", beforeDate: Date())
             }
@@ -378,15 +543,4 @@ extension CoinDetailsVC: UITableViewDelegate {
     }
 }
 
-// MARK: - ChartCell Extension Support
 
-extension ChartCell {
-    func updateChartData(points: [Double], range: String) {
-        // Update chart data without full cell recreation
-        configure(points: points, range: range)
-    }
-    
-    func setLoading(_ isLoading: Bool) {
-        // Show/hide loading indicator
-    }
-}
