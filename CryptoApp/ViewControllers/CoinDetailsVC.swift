@@ -166,12 +166,30 @@ final class CoinDetailsVC: UIViewController {
             }
             .store(in: &cancellables)
         
-        // Error handling
+        // Error handling - now properly handles chart errors vs loading states
         viewModel.errorMessage
             .receive(on: DispatchQueue.main)
             .compactMap { $0 }
             .sink { [weak self] errorMessage in
-                self?.showErrorAlert(message: errorMessage)
+                guard let self = self else { return }
+                
+                // Check if this is a chart-related error (contains common chart error keywords)
+                let isChartError = errorMessage.contains("chart") || 
+                                   errorMessage.contains("data") || 
+                                   errorMessage.contains("rate limit") ||
+                                   errorMessage.contains("cooldown") ||
+                                   errorMessage.contains("network") ||
+                                   errorMessage.contains("connection")
+                
+                if isChartError {
+                    // Show error in chart cell instead of alert for chart-related errors
+                    if let chartCell = self.getChartCell() {
+                        chartCell.showErrorState("No chart data available")
+                    }
+                } else {
+                    // Show alert for other types of errors
+                    self.showErrorAlert(message: errorMessage)
+                }
             }
             .store(in: &cancellables)
         
@@ -370,6 +388,11 @@ final class CoinDetailsVC: UIViewController {
                 
                 print("🔄 Filter changed to: \(range)")
                 
+                // Show loading state immediately when filter changes (before debounce)
+                if let chartCell = self.getChartCell() {
+                    chartCell.updateLoadingState(true)
+                }
+                
                 // Cancel any pending filter change request
                 self.filterChangeWorkItem?.cancel()
                 
@@ -404,6 +427,13 @@ final class CoinDetailsVC: UIViewController {
                 guard let self = self else { return }
                 
                 print("🔄 Chart type changed to: \(chartType)")
+                
+                // Show loading state immediately when chart type changes (for candlestick)
+                if chartType == .candlestick {
+                    if let chartCell = self.getChartCell() {
+                        chartCell.updateLoadingState(true)
+                    }
+                }
                 
                 // Notify ViewModel about chart type change (triggers conditional OHLC fetching)
                 self.viewModel.setChartType(chartType)

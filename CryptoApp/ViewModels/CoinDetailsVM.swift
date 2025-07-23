@@ -359,6 +359,9 @@ final class CoinDetailsVM: ObservableObject {
         currentChartType = chartType
         
         if chartType == .candlestick {
+            // Show loading state when switching to candlestick and fetching OHLC data
+            isLoadingSubject.send(true)
+            
             // User switched to candlestick - check cooldown status first
             let cooldownStatus = RequestManager.shared.getCooldownStatus()
             if cooldownStatus.isInCooldown {
@@ -376,6 +379,7 @@ final class CoinDetailsVM: ObservableObject {
             print("📊 Switching to line chart - clearing OHLC data")
             ohlcDataSubject.send([])
             errorMessageSubject.send(nil) // Clear any cooldown messages
+            isLoadingSubject.send(false) // No loading needed for line chart switch
         }
     }
     
@@ -428,7 +432,7 @@ final class CoinDetailsVM: ObservableObject {
         }
         
         isLoadingSubject.send(true)
-        errorMessageSubject.send(nil)
+        errorMessageSubject.send(nil) // Clear any previous error messages when starting fresh fetch
         
         currentChartRequest = coinManager.fetchChartData(for: geckoID, range: days, currency: "usd", priority: .high)
             .subscribe(on: DispatchQueue.global(qos: .userInitiated))
@@ -607,6 +611,7 @@ final class CoinDetailsVM: ObservableObject {
         guard let geckoID = geckoID else {
             print("❌ No CoinGecko ID found for OHLC data - \(coin.symbol)")
             ohlcDataSubject.send([])
+            isLoadingSubject.send(false)
             return
         }
         
@@ -621,6 +626,8 @@ final class CoinDetailsVM: ObservableObject {
             if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
                !cachedOHLCData.isEmpty {
                 ohlcDataSubject.send(cachedOHLCData)
+                errorMessageSubject.send(nil) // Clear error state since we have cached data
+                isLoadingSubject.send(false)
                 print("📊 ✅ Using cached OHLC data during cooldown: \(cachedOHLCData.count) candles")
                 return
             } else {
@@ -629,17 +636,20 @@ final class CoinDetailsVM: ObservableObject {
                 print("❄️ No cached OHLC data available. Rate limit cooldown: \(remainingTime)s remaining")
                 errorMessageSubject.send("API cooldown active (\(remainingTime)s). Candlestick data temporarily unavailable.")
                 ohlcDataSubject.send([])
+                isLoadingSubject.send(false)
                 return
             }
         }
         
         // Proceed with normal API request
+        // Note: Loading state is already set to true in setChartType when switching to candlestick
         currentOHLCRequest = coinManager.fetchOHLCData(for: geckoID, range: days, currency: "usd", priority: .normal)
             .subscribe(on: DispatchQueue.global(qos: .userInitiated))
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { [weak self] completion in
                     self?.currentOHLCRequest = nil
+                    self?.isLoadingSubject.send(false)
                     if case .failure(let error) = completion {
                         print("❌ Real OHLC fetch failed: \(error)")
                         
@@ -658,6 +668,7 @@ final class CoinDetailsVM: ObservableObject {
                 receiveValue: { [weak self] realOHLCData in
                     self?.ohlcDataSubject.send(realOHLCData)
                     self?.errorMessageSubject.send(nil) // Clear any error messages on success
+                    self?.isLoadingSubject.send(false)
                     print("📊 ✅ Fetched \(realOHLCData.count) REAL OHLC candles for \(range)")
                 }
             )

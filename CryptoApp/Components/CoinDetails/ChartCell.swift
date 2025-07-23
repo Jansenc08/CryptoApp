@@ -5,10 +5,26 @@ final class ChartCell: UITableViewCell {
     private let candlestickChartView = CandlestickChartView()
     private let containerView = UIView()
     
+    // Loading and error state views
+    private let loadingView = UIView()
+    private let loadingLabel = UILabel()
+    private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private let errorView = UIView()
+    private let errorLabel = UILabel()
+    
     private var currentChartType: ChartType = .line
     private var currentPoints: [Double] = []
     private var currentOHLCData: [OHLCData] = []
     private var currentRange: String = "24h"
+    
+    // Chart state tracking
+    private enum ChartState {
+        case loading
+        case data
+        case error(String)
+    }
+    
+    private var currentState: ChartState = .data
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -46,8 +62,81 @@ final class ChartCell: UITableViewCell {
             candlestickChartView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
         ])
         
+        // Setup loading view
+        setupLoadingView()
+        
+        // Setup error view
+        setupErrorView()
+        
         // Initially show line chart
         showChart(type: .line, animated: false)
+    }
+    
+    private func setupLoadingView() {
+        // Loading container
+        containerView.addSubview(loadingView)
+        loadingView.translatesAutoresizingMaskIntoConstraints = false
+        loadingView.backgroundColor = .systemBackground
+        loadingView.isHidden = true
+        
+        // Activity indicator
+        loadingView.addSubview(activityIndicator)
+        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
+        activityIndicator.color = .systemBlue
+        
+        // Loading label
+        loadingView.addSubview(loadingLabel)
+        loadingLabel.translatesAutoresizingMaskIntoConstraints = false
+        loadingLabel.text = "Loading chart data..."
+        loadingLabel.textAlignment = .center
+        loadingLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        loadingLabel.textColor = .secondaryLabel
+        
+        // Layout loading view
+        NSLayoutConstraint.activate([
+            loadingView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            loadingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            loadingView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            loadingView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            
+            activityIndicator.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: loadingView.centerYAnchor, constant: -20),
+            
+            loadingLabel.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
+            loadingLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 12),
+            loadingLabel.leadingAnchor.constraint(greaterThanOrEqualTo: loadingView.leadingAnchor, constant: 20),
+            loadingLabel.trailingAnchor.constraint(lessThanOrEqualTo: loadingView.trailingAnchor, constant: -20)
+        ])
+    }
+    
+    private func setupErrorView() {
+        // Error container
+        containerView.addSubview(errorView)
+        errorView.translatesAutoresizingMaskIntoConstraints = false
+        errorView.backgroundColor = .systemBackground
+        errorView.isHidden = true
+        
+        // Error label
+        errorView.addSubview(errorLabel)
+        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        errorLabel.text = "No chart data available"
+        errorLabel.textAlignment = .center
+        errorLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        errorLabel.textColor = .secondaryLabel
+        errorLabel.numberOfLines = 0
+        
+        // Layout error view
+        NSLayoutConstraint.activate([
+            errorView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            errorView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            errorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            errorView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            
+            errorLabel.centerXAnchor.constraint(equalTo: errorView.centerXAnchor),
+            errorLabel.centerYAnchor.constraint(equalTo: errorView.centerYAnchor),
+            errorLabel.leadingAnchor.constraint(greaterThanOrEqualTo: errorView.leadingAnchor, constant: 20),
+            errorLabel.trailingAnchor.constraint(lessThanOrEqualTo: errorView.trailingAnchor, constant: -20)
+        ])
     }
     
     private func showChart(type: ChartType, animated: Bool = true) {
@@ -65,42 +154,120 @@ final class ChartCell: UITableViewCell {
             candlestickChartView.isHidden = showLineChart
         }
     }
+    
+    private func updateViewsForState() {
+        switch currentState {
+        case .loading:
+            // Show loading, hide charts and error
+            loadingView.isHidden = false
+            errorView.isHidden = true
+            lineChartView.isHidden = true
+            candlestickChartView.isHidden = true
+            activityIndicator.startAnimating()
+            print("📊 Chart cell showing loading state")
+            
+        case .data:
+            // Show appropriate chart based on type, hide loading and error
+            loadingView.isHidden = true
+            errorView.isHidden = true
+            activityIndicator.stopAnimating()
+            
+            let showLineChart = (currentChartType == .line)
+            lineChartView.isHidden = !showLineChart
+            candlestickChartView.isHidden = showLineChart
+            print("📊 Chart cell showing data state for \(currentChartType.rawValue) chart")
+            
+        case .error(let message):
+            // Show error, hide charts and loading
+            loadingView.isHidden = true
+            errorView.isHidden = false
+            lineChartView.isHidden = true
+            candlestickChartView.isHidden = true
+            activityIndicator.stopAnimating()
+            errorLabel.text = message
+            print("📊 Chart cell showing error state: \(message)")
+        }
+    }
 
     // Configure with line chart data
     func configure(points: [Double], range: String) {
         self.currentPoints = points
         self.currentRange = range
-        lineChartView.update(points, range: range)
+        
+        if !points.isEmpty {
+            currentState = .data
+            lineChartView.update(points, range: range)
+            updateViewsForState()
+        }
     }
     
     // Configure with OHLC data for candlestick chart
     func configure(ohlcData: [OHLCData], range: String) {
         self.currentOHLCData = ohlcData
         self.currentRange = range
-        candlestickChartView.update(ohlcData, range: range)
+        
+        if !ohlcData.isEmpty {
+            currentState = .data
+            candlestickChartView.update(ohlcData, range: range)
+            updateViewsForState()
+        }
     }
     
     // Switch chart type
     func switchChartType(to chartType: ChartType) {
         guard chartType != currentChartType else { return }
-        showChart(type: chartType, animated: true)
+        currentChartType = chartType
+        
+        // Only update views if we're in data state
+        if case .data = currentState {
+            updateViewsForState()
+        }
     }
     
     // Update chart data without recreation
     func updateChartData(points: [Double]? = nil, ohlcData: [OHLCData]? = nil, range: String) {
         self.currentRange = range
         
+        var hasData = false
+        
         if let points = points {
             self.currentPoints = points
-            lineChartView.update(points, range: range)
+            if !points.isEmpty {
+                lineChartView.update(points, range: range)
+                hasData = true
+            }
         }
         
         if let ohlcData = ohlcData {
             self.currentOHLCData = ohlcData
-            candlestickChartView.update(ohlcData, range: range)
+            if !ohlcData.isEmpty {
+                candlestickChartView.update(ohlcData, range: range)
+                hasData = true
+            }
+        }
+        
+        // Update state based on whether we have data
+        if hasData {
+            currentState = .data
+            updateViewsForState()
         }
         
         print("📊 Updated chart cell with range: \(range), chart type: \(currentChartType)")
+    }
+    
+    // New method to handle loading state
+    func updateLoadingState(_ isLoading: Bool) {
+        if isLoading {
+            currentState = .loading
+            updateViewsForState()
+        }
+        // Note: We don't set .data state here since that should only happen when we actually receive data
+    }
+    
+    // New method to handle error state
+    func showErrorState(_ message: String) {
+        currentState = .error(message)
+        updateViewsForState()
     }
     
     // Allows setting a scroll callback for line chart
@@ -119,14 +286,6 @@ final class ChartCell: UITableViewCell {
             }
         }
     }
-    
-    func updateLoadingState(_ isLoading: Bool) {
-        // Show/hide loading indicator for both charts
-        lineChartView.alpha = isLoading ? 0.5 : 1.0
-        candlestickChartView.alpha = isLoading ? 0.5 : 1.0
-    }
-    
-
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
@@ -142,6 +301,8 @@ final class ChartCell: UITableViewCell {
             containerView.backgroundColor = .clear
             contentView.backgroundColor = .clear
             backgroundColor = .clear
+            loadingView.backgroundColor = .systemBackground
+            errorView.backgroundColor = .systemBackground
         }
     }
 }
