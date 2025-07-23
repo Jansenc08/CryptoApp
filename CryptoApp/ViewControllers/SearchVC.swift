@@ -114,9 +114,16 @@ import Combine
     }
     
     func resumeBackgroundOperationsFromChild() {
-        // Called by CoinDetailsVC when returning - no specific action needed
-        // SearchVC doesn't have continuous timers like the other VCs
-        print("🔄 SearchVC: Child returned (no specific action needed)")
+        // Called by CoinDetailsVC when returning - can restart operations if needed
+        print("🔄 SearchVC: Resumed background operations from child request")
+        // Note: Search doesn't have continuous background operations to resume
+        // The search functionality is reactive and will work when needed
+        
+        // Ensure search functionality is working by checking if data is available
+        if viewModel.cachedCoins.isEmpty {
+            print("🔄 SearchVC: Refreshing search data after returning from child")
+            viewModel.refreshSearchData()
+        }
     }
     
     // MARK: - UI Setup
@@ -658,35 +665,51 @@ extension SearchVC {
     }
     
     /**
-     * Search for a specific coin and navigate to its details when found
+     * Search for a specific coin and navigate to its details when found - IMPROVED
      */
     private func searchForCoinAndNavigate(searchItem: RecentSearchItem) {
         // Store the original search text to restore later
         let originalSearchText = searchBarComponent.text ?? ""
         
-        // Trigger search for this specific coin
+        // First try to search in the search view model's cached data directly
+        if let cachedCoin = findCoinBySymbolInCache(searchItem.symbol) {
+            print("✅ Found coin in search cache: \(searchItem.symbol)")
+            let detailsVC = CoinDetailsVC(coin: cachedCoin)
+            navigationController?.pushViewController(detailsVC, animated: true)
+            return
+        }
+        
+        // If not in cache, trigger a live search
+        print("🔍 Triggering live search for \(searchItem.symbol)")
         searchBarComponent.text = searchItem.symbol
         viewModel.updateSearchText(searchItem.symbol)
         
-        // Wait for search results and then navigate
-        viewModel.searchResults
+        // Wait for search results with a more reliable approach
+        var searchSubscription: AnyCancellable?
+        
+        searchSubscription = viewModel.searchResults
             .receive(on: DispatchQueue.main)
-            .first { !$0.isEmpty } // Wait for non-empty results
-            .timeout(.seconds(3), scheduler: DispatchQueue.main) // 3 second timeout
+            .timeout(.seconds(5), scheduler: DispatchQueue.main) // Increased timeout to 5 seconds
             .sink(
                 receiveCompletion: { [weak self] completion in
+                    searchSubscription?.cancel()
+                    
                     if case .failure = completion {
-                                            print("⚠️ Search timeout for \(searchItem.symbol) - using fallback navigation")
-                    self?.navigate(searchItem: searchItem, fallbackText: originalSearchText)
+                        print("⚠️ Search timeout for \(searchItem.symbol) - using fallback navigation")
+                        self?.navigateWithFallback(searchItem: searchItem, fallbackText: originalSearchText)
                     }
                 },
                 receiveValue: { [weak self] searchResults in
-                    guard let self = self else { return }
+                    guard let self = self else { 
+                        searchSubscription?.cancel()
+                        return 
+                    }
                     
-                    // Find the matching coin in search results
-                    if let matchingCoin = searchResults.first(where: { 
-                        $0.id == searchItem.coinId || $0.symbol.lowercased() == searchItem.symbol.lowercased() 
-                    }) {
+                    // Look for exact or close matches
+                    let matchingCoin = self.findBestMatch(for: searchItem, in: searchResults)
+                    
+                    if let coin = matchingCoin {
+                        searchSubscription?.cancel()
                         print("✅ Found real coin data for \(searchItem.symbol)")
                         
                         // Restore original search text
@@ -694,21 +717,31 @@ extension SearchVC {
                         self.viewModel.updateSearchText(originalSearchText)
                         
                         // Navigate with real coin data
-                        let detailsVC = CoinDetailsVC(coin: matchingCoin)
+                        let detailsVC = CoinDetailsVC(coin: coin)
                         self.navigationController?.pushViewController(detailsVC, animated: true)
-                    } else {
-                                            print("⚠️ Coin not found in search results - using fallback")
-                    self.navigate(searchItem: searchItem, fallbackText: originalSearchText)
+                    } else if !searchResults.isEmpty {
+                        // If we have results but no exact match, wait a bit more
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            if let betterMatch = self.findBestMatch(for: searchItem, in: searchResults) {
+                                searchSubscription?.cancel()
+                                self.searchBarComponent.text = originalSearchText
+                                self.viewModel.updateSearchText(originalSearchText)
+                                let detailsVC = CoinDetailsVC(coin: betterMatch)
+                                self.navigationController?.pushViewController(detailsVC, animated: true)
+                            } else {
+                                searchSubscription?.cancel()
+                                self.navigateWithFallback(searchItem: searchItem, fallbackText: originalSearchText)
+                            }
+                        }
                     }
                 }
             )
-            .store(in: &cancellables)
     }
     
     /**
-     * Fallback navigation when real coin data cannot be found
+     * Fallback navigation when real coin data cannot be found - LAST RESORT ONLY
      */
-    private func navigate(searchItem: RecentSearchItem, fallbackText originalSearchText: String) {
+    private func navigateWithFallback(searchItem: RecentSearchItem, fallbackText originalSearchText: String) {
         // Restore original search text
         searchBarComponent.text = originalSearchText
         viewModel.updateSearchText(originalSearchText)
@@ -757,11 +790,26 @@ extension SearchVC {
     // MARK: - Helper Methods
     
     /**
-     * Find coin in cached search data
+     * Find coin in cached search data - IMPROVED to look in multiple sources
      */
     private func findCoinInCache(coinId: Int) -> Coin? {
-        // Check current search results first
-        return currentSearchResults.first(where: { $0.id == coinId })
+        // First check current search results
+        if let coin = currentSearchResults.first(where: { $0.id == coinId }) {
+            return coin
+        }
+        
+        // Then check the search view model's cached coin data
+        if let coin = viewModel.cachedCoins.first(where: { $0.id == coinId }) {
+            return coin
+        }
+        
+        // Finally check the persistence service for main coin list cache
+        if let cachedCoins = PersistenceService.shared.loadCoinList(),
+           let coin = cachedCoins.first(where: { $0.id == coinId }) {
+            return coin
+        }
+        
+        return nil
     }
     
     /**
@@ -869,6 +917,57 @@ extension SearchVC {
         ]
         
         return symbolMap[symbol.uppercased()] ?? symbol.lowercased()
+    }
+    
+    /**
+     * Find coin by symbol in all available cached data sources
+     */
+    private func findCoinBySymbolInCache(_ symbol: String) -> Coin? {
+        let lowercaseSymbol = symbol.lowercased()
+        
+        // Check search view model cache
+        if let coin = viewModel.cachedCoins.first(where: { $0.symbol.lowercased() == lowercaseSymbol }) {
+            return coin
+        }
+        
+        // Check persistence service main cache
+        if let cachedCoins = PersistenceService.shared.loadCoinList(),
+           let coin = cachedCoins.first(where: { $0.symbol.lowercased() == lowercaseSymbol }) {
+            return coin
+        }
+        
+        return nil
+    }
+    
+    /**
+     * Find the best matching coin for a search item
+     */
+    private func findBestMatch(for searchItem: RecentSearchItem, in searchResults: [Coin]) -> Coin? {
+        // First try exact ID match
+        if let exactIdMatch = searchResults.first(where: { $0.id == searchItem.coinId }) {
+            return exactIdMatch
+        }
+        
+        // Then try exact symbol match
+        let lowercaseSymbol = searchItem.symbol.lowercased()
+        if let exactSymbolMatch = searchResults.first(where: { $0.symbol.lowercased() == lowercaseSymbol }) {
+            return exactSymbolMatch
+        }
+        
+        // Then try exact name match
+        let lowercaseName = searchItem.name.lowercased()
+        if let exactNameMatch = searchResults.first(where: { $0.name.lowercased() == lowercaseName }) {
+            return exactNameMatch
+        }
+        
+        // Finally try partial name match
+        if let partialMatch = searchResults.first(where: { 
+            $0.name.lowercased().contains(lowercaseName) || lowercaseName.contains($0.name.lowercased())
+        }) {
+            return partialMatch
+        }
+        
+        return nil
     }
 }
 

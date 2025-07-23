@@ -96,9 +96,19 @@ final class SearchVM: ObservableObject {
         coinLogosSubject.value
     }
     
+    // MARK: - Public Properties for Cache Access
+    
+    /**
+     * Access to cached coin data for improved recent search functionality
+     */
+    var cachedCoins: [Coin] {
+        return allCoins
+    }
+    
     // MARK: - Private Properties
     
     private var cancellables = Set<AnyCancellable>()
+    private var apiRequestCancellables = Set<AnyCancellable>() // Separate cancellables for API requests
     private let coinManager: CoinManagerProtocol
     private let persistenceService = PersistenceService.shared
     private var allCoins: [Coin] = []
@@ -112,13 +122,13 @@ final class SearchVM: ObservableObject {
     // MARK: - Lifecycle Management
     
     func cancelAllRequests() {
-        // Cancel all active Combine subscriptions
-        cancellables.removeAll()
+        // Cancel only API request subscriptions, NOT the core search functionality
+        apiRequestCancellables.removeAll()
         
         // Reset loading state
         isLoadingSubject.send(false)
         
-        print("🛑 SearchVM: Cancelled all ongoing requests")
+        print("🛑 SearchVM: Cancelled API requests (keeping search functionality intact)")
     }
     
     // MARK: - Init
@@ -360,7 +370,7 @@ final class SearchVM: ObservableObject {
         let coinIds = coinsNeedingLogos.map { $0.id }
         print("🔍 Search: Fetching \(coinIds.count) missing logos for search results")
         
-        // Fetch missing logos with low priority
+        // Fetch missing logos with low priority - use API request cancellables
         coinManager.getCoinLogos(forIDs: coinIds, priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newLogos in
@@ -376,6 +386,14 @@ final class SearchVM: ObservableObject {
                 // Update persistence cache with new logos
                 self.persistenceService.saveCoinLogos(mergedLogos)
             }
-            .store(in: &cancellables)
+            .store(in: &apiRequestCancellables) // Store in API-specific cancellables
+    }
+    
+    // MARK: - Cleanup
+    
+    deinit {
+        print("🧹 SearchVM deinit - cleaning up all subscriptions")
+        cancellables.removeAll() // Remove persistent search subscriptions
+        apiRequestCancellables.removeAll() // Remove API request subscriptions
     }
 } 
