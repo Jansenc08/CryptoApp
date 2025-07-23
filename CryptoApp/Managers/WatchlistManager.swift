@@ -81,9 +81,7 @@ final class WatchlistManager: ObservableObject {
         backgroundQueue.async { [weak self] in
             guard let self = self else { return }
             
-            let startTime = CFAbsoluteTimeGetCurrent()
             let items = self.coreDataManager.fetchWatchlistItems()
-            let loadTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
             
             let sortedItems = items.sorted { 
                 ($0.dateAdded ?? Date.distantPast) > ($1.dateAdded ?? Date.distantPast) 
@@ -100,7 +98,9 @@ final class WatchlistManager: ObservableObject {
                 self.watchlistCoinIds = Set(sortedItems.map { $0.coinId })
                 
                 #if DEBUG
-                print("🚀 WatchlistManager initialized: \(items.count) items loaded in \(String(format: "%.2f", loadTime))ms")
+                if !items.isEmpty {
+                    print("✅ WatchlistManager initialized: \(items.count) items")
+                }
                 #endif
             }
         }
@@ -138,10 +138,7 @@ final class WatchlistManager: ObservableObject {
         let operationId = operationCount
         
         #if DEBUG
-        print("\n➕ ===== ADDING COIN TO WATCHLIST =====")
-        print("🎯 Coin: \(coin.symbol) - \(coin.name)")
-        print("📊 Current watchlist: \(localWatchlistCoinIds.count) coins")
-        print("🚀 Using optimized operation #\(operationId)")
+        print("➕ Adding \(coin.symbol) to watchlist")
         #endif
         
         // Immediate optimistic update for O(1) lookups
@@ -167,18 +164,13 @@ final class WatchlistManager: ObservableObject {
             
             do {
                 try context.save()
-                let saveTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 
                 // Now update the actual watchlist items after successful save
                 self.fetchWatchlistFromDatabase()
                 
                 DispatchQueue.main.async {
                     #if DEBUG
-                    print("✅ SUCCESS: Added \(coin.symbol) to watchlist")
-                    print("⚡ Database save: \(String(format: "%.1f", saveTime))ms")
-                    print("📊 New watchlist size: \(self.localWatchlistCoinIds.count) coins")
-                    self.printCurrentWatchlistCoins()
-                    print("➕ =====================================\n")
+                    print("✅ Added \(coin.symbol) to watchlist (\(self.localWatchlistCoinIds.count) total)")
                     #endif
                     
                     self.delegate?.watchlistDidUpdate()
@@ -238,7 +230,6 @@ final class WatchlistManager: ObservableObject {
             }
         }
         
-        // Background database operation
         backgroundQueue.async { [weak self] in
             guard let self = self else { return }
             

@@ -150,10 +150,6 @@ final class WatchlistVM: ObservableObject {
         setupOptimizedBindings()
         loadInitialData()
         startOptimizedPeriodicUpdates()
-        
-        #if DEBUG
-        print("🎯 WatchlistVM initialized with default sort: \(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")")
-        #endif
     }
     
     deinit {
@@ -343,13 +339,31 @@ final class WatchlistVM: ObservableObject {
         
         fetchPriceUpdates(for: coinIds) { [weak self] updatedCoins in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                
                 #if DEBUG
                 print("💰 Price data updated for \(updatedCoins.count) watchlist coins:")
                 for coin in updatedCoins.prefix(3) {
                     if let quote = coin.quote?["USD"],
-                       let price = quote.price,
-                       let change = quote.percentChange24h {
-                        print("   ✅ \(coin.symbol): $\(String(format: "%.2f", price)) (\(String(format: "%.2f", change))%)")
+                       let currentPrice = quote.price,
+                       let changePercent = quote.percentChange24h {
+                        
+                        // Calculate the 24h price change from percentage
+                        let priceChange24h = (currentPrice * changePercent) / 100.0
+                        let price24hAgo = currentPrice - priceChange24h
+                        
+                        let formatter = NumberFormatter()
+                        formatter.numberStyle = .currency
+                        formatter.currencyCode = "USD"
+                        formatter.maximumFractionDigits = 2
+                        
+                        let oldPriceString = formatter.string(from: NSNumber(value: price24hAgo)) ?? "$\(price24hAgo)"
+                        let newPriceString = formatter.string(from: NSNumber(value: currentPrice)) ?? "$\(currentPrice)"
+                        
+                        let changePrefix = priceChange24h >= 0 ? "+" : ""
+                        let priceChangeString = formatter.string(from: NSNumber(value: abs(priceChange24h))) ?? "$\(abs(priceChange24h))"
+                        
+                        print("   ✅ \(coin.symbol): \(oldPriceString) → \(newPriceString) : \(changePrefix)\(priceChangeString) (\(String(format: "%.2f", changePercent))%)")
                     } else {
                         print("   ❌ \(coin.symbol): No price data")
                     }
@@ -359,15 +373,15 @@ final class WatchlistVM: ObservableObject {
                 }
                 #endif
                 
-                self?.watchlistCoinsSubject.send(updatedCoins)
-                self?.isLoadingSubject.send(false)
-                self?.lastPriceUpdate = Date()
+                self.watchlistCoinsSubject.send(updatedCoins)
+                self.isLoadingSubject.send(false)
+                self.lastPriceUpdate = Date()
                 
                 // Apply current sorting after price update
-                self?.applySortingToWatchlist()
+                self.applySortingToWatchlist()
                 
                 // Fetch missing logos efficiently
-                self?.fetchMissingLogos(for: updatedCoins)
+                self.fetchMissingLogos(for: updatedCoins)
             }
         }
     }
@@ -581,8 +595,35 @@ final class WatchlistVM: ObservableObject {
                         self.applySortingToWatchlist()
                         
                         #if DEBUG
-                        if !changedCoinIds.isEmpty {
-                            print("💰 Periodic update: \(changedCoinIds.count) coins had price changes")
+                        print("💰 Periodic update: \(changedCoinIds.count) coins updated")
+                        
+                        // Show detailed price changes for coins that actually changed
+                        let changedCoins = updatedCoins.filter { changedCoinIds.contains($0.id) }
+                        for coin in changedCoins.prefix(3) {
+                            if let quote = coin.quote?["USD"],
+                               let currentPrice = quote.price,
+                               let changePercent = quote.percentChange24h {
+                                
+                                // Calculate the 24h price change from percentage
+                                let priceChange24h = (currentPrice * changePercent) / 100.0
+                                let price24hAgo = currentPrice - priceChange24h
+                                
+                                let formatter = NumberFormatter()
+                                formatter.numberStyle = .currency
+                                formatter.currencyCode = "USD"
+                                formatter.maximumFractionDigits = 2
+                                
+                                let oldPriceString = formatter.string(from: NSNumber(value: price24hAgo)) ?? "$\(price24hAgo)"
+                                let newPriceString = formatter.string(from: NSNumber(value: currentPrice)) ?? "$\(currentPrice)"
+                                
+                                let changePrefix = priceChange24h >= 0 ? "+" : ""
+                                let priceChangeString = formatter.string(from: NSNumber(value: abs(priceChange24h))) ?? "$\(abs(priceChange24h))"
+                                
+                                print("   📈 \(coin.symbol): \(oldPriceString) → \(newPriceString) : \(changePrefix)\(priceChangeString) (\(String(format: "%.2f", changePercent))%)")
+                            }
+                        }
+                        if changedCoins.count > 3 {
+                            print("   ... and \(changedCoins.count - 3) more")
                         }
                         #endif
                     }
@@ -629,17 +670,11 @@ final class WatchlistVM: ObservableObject {
     
     func startPeriodicUpdates() {
         startOptimizedPeriodicUpdates()
-        #if DEBUG
-        print("🔄 WatchlistVM: Started periodic price updates (15s interval)")
-        #endif
     }
     
     func stopPeriodicUpdates() {
         updateTimer?.invalidate()
         updateTimer = nil
-        #if DEBUG
-        print("⏸️ WatchlistVM: Stopped periodic price updates")
-        #endif
     }
     
     func cancelAllRequests() {
@@ -648,9 +683,6 @@ final class WatchlistVM: ObservableObject {
         isPriceUpdateInProgress = false
         isLoadingSubject.send(false)
         logoRequestsInProgress.removeAll()
-        #if DEBUG
-        print("🚫 WatchlistVM: Cancelled all in-flight API requests")
-        #endif
     }
     
     // MARK: - Sorting Management
@@ -665,10 +697,6 @@ final class WatchlistVM: ObservableObject {
     func updateSorting(column: CryptoSortColumn, order: CryptoSortOrder) {
         currentSortColumn = column
         currentSortOrder = order
-        
-        #if DEBUG
-        print("🔄 Watchlist sort: \(columnName(for: column)) - \(order == .descending ? "Descending" : "Ascending")")
-        #endif
         
         // Apply sorting to current watchlist data instantly
         applySortingToWatchlist()

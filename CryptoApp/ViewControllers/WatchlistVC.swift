@@ -42,14 +42,7 @@ final class WatchlistVC: UIViewController {
         viewModel.refreshWatchlist()
         
         #if DEBUG
-        // Print database contents when entering watchlist tab
-        print("📱 Entering Watchlist Tab - Current database state:")
-        WatchlistManager.shared.printDatabaseContents()
-        
-        // Print performance metrics
-        let metrics = viewModel.getPerformanceMetrics()
-        print("📊 Performance Metrics: \(metrics)")
-        print("🔄 Resumed watchlist price updates")
+        print("📱 Entering Watchlist Tab")
         #endif
     }
     
@@ -64,13 +57,28 @@ final class WatchlistVC: UIViewController {
         
         #if DEBUG
         print("📱 Leaving Watchlist Tab")
-        print("⏸️ Stopped watchlist price updates")
-        print("🚫 Cancelled in-flight API requests")
         #endif
     }
     
     deinit {
         cancellables.removeAll()
+    }
+    
+    // MARK: - Parent-Child Timer Management
+    
+    func stopPeriodicUpdatesFromParent() {
+        // Called by parent CoinListVC when child view needs to stop background timers
+        viewModel.stopPeriodicUpdates()
+        viewModel.cancelAllRequests()
+        print("⏸️ WatchlistVC: Stopped periodic updates from parent request")
+    }
+    
+    func resumePeriodicUpdatesFromParent() {
+        // Called by parent CoinListVC when returning from child view
+        viewModel.startPeriodicUpdates()
+        // Also refresh data to ensure we have current prices
+        viewModel.refreshWatchlist()
+        print("🔄 WatchlistVC: Resumed periodic updates from parent request")
     }
     
     // MARK: - UI Setup
@@ -451,12 +459,6 @@ final class WatchlistVC: UIViewController {
         snapshot.appendSections([.main])
         snapshot.appendItems(validCoins)
         dataSource.apply(snapshot, animatingDifferences: true)
-        
-        #if DEBUG
-        if coins.count != validCoins.count {
-            print("⚠️ Filtered out \(coins.count - validCoins.count) invalid/duplicate coins from data source")
-        }
-        #endif
     }
     
     private func updateCellsForChangedCoins(_ updatedCoinIds: Set<Int>) {

@@ -505,6 +505,32 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         autoRefreshTimer = nil
     }
     
+    // MARK: - Child ViewController Timer Management
+    
+    func stopAutoRefreshFromChild() {
+        // Called by CoinDetailsVC to stop background auto-refresh
+        stopAutoRefresh()
+        print("⏸️ CoinListVC: Stopped auto-refresh from child request")
+    }
+    
+    func resumeAutoRefreshFromChild() {
+        // Called by CoinDetailsVC when returning to resume auto-refresh
+        startAutoRefresh()
+        print("🔄 CoinListVC: Resumed auto-refresh from child request")
+    }
+    
+    func stopWatchlistTimersFromChild() {
+        // Stop the embedded WatchlistVC timers
+        watchlistVC?.stopPeriodicUpdatesFromParent()
+        print("⏸️ CoinListVC: Stopped watchlist timers from child request")
+    }
+    
+    func resumeWatchlistTimersFromChild() {
+        // Resume the embedded WatchlistVC timers
+        watchlistVC?.resumePeriodicUpdatesFromParent()
+        print("🔄 CoinListVC: Resumed watchlist timers from child request")
+    }
+    
     // Timer throttled to prevent API spam
     private func refreshVisibleCells() {
         

@@ -529,74 +529,23 @@ final class CoinListVM: ObservableObject {
         .map { [weak self] topCoinsByMarketCap -> [Coin] in
             guard let self = self else { return topCoinsByMarketCap }
             
-            print("✅ Backend: Got \(topCoinsByMarketCap.count) coins (ranks 1-\(topCoinsByMarketCap.count))")
-            
-            // DATA INTEGRITY VALIDATION: Check for rank inconsistencies
-            let ranks = topCoinsByMarketCap.map { $0.cmcRank }.sorted()
-            let expectedRanks = Array(1...min(topCoinsLimit, topCoinsByMarketCap.count))
-            let missingRanks = Set(expectedRanks).subtracting(Set(ranks))
-            let extraRanks = Set(ranks).subtracting(Set(expectedRanks))
-            
-            if !missingRanks.isEmpty || !extraRanks.isEmpty {
-                print("⚠️ RANK INCONSISTENCY DETECTED!")
-                print("   Expected: \(expectedRanks.first!)...\(expectedRanks.last!)")
-                print("   Got: \(ranks.first!)...\(ranks.last!)")
-                if !missingRanks.isEmpty {
-                    print("   Missing ranks: \(Array(missingRanks).sorted())")
-                }
-                if !extraRanks.isEmpty {
-                    print("   Extra ranks: \(Array(extraRanks).sorted())")
-                }
-                
-                // DEBUG: Log coins around rank 100 (common problem area)
-                let around100 = topCoinsByMarketCap.filter { $0.cmcRank >= 98 && $0.cmcRank <= 102 }
-                    .sorted { $0.cmcRank < $1.cmcRank }
-                print("   Coins around rank 100:")
-                for coin in around100 {
-                    print("     Rank \(coin.cmcRank): \(coin.name) (\(coin.symbol))")
-                }
-            } else {
-                print("✅ Ranks are consecutive: \(ranks.first!)...\(ranks.last!)")
-            }
-            
-            // FILTER TO EXACT TARGET: Ensure we get consecutive top-ranked coins
+            // DATA INTEGRITY: Ensure consecutive top-ranked coins
             let targetCount = topCoinsLimit
             let consecutiveTopCoins = topCoinsByMarketCap
-                .sorted { $0.cmcRank < $1.cmcRank }           // Sort by rank first
-                .prefix(while: { $0.cmcRank <= targetCount }) // Take only coins within target range
-                .prefix(targetCount)                          // Limit to target count
+                .sorted { $0.cmcRank < $1.cmcRank }           
+                .prefix(while: { $0.cmcRank <= targetCount }) 
+                .prefix(targetCount)                          
             
             let finalCoins = Array(consecutiveTopCoins)
             
-            if finalCoins.count != topCoinsByMarketCap.count {
-                print("🔧 Filtered from \(topCoinsByMarketCap.count) to \(finalCoins.count) coins (target: \(targetCount))")
-                print("   Final rank range: \(finalCoins.first?.cmcRank ?? 0)...\(finalCoins.last?.cmcRank ?? 0)")
-            }
-            
-            // DEBUG: Verify we got the right coins
+            #if DEBUG
             if finalCoins.count > 0 {
-                let topFew = Array(finalCoins.prefix(3))
-                let topCoinsDebug = topFew.map { "\($0.name) (ID:\($0.id), Rank:\($0.cmcRank))" }.joined(separator: ", ")
-                print("🔍 Top coins by market cap: \(topCoinsDebug)")
+                print("✅ Fetched \(finalCoins.count) top coins (ranks 1-\(finalCoins.last?.cmcRank ?? 0))")
             }
+            #endif
             
-            print("🔄 Local: Applying current sort (\(self.columnName(for: self.currentSortColumn)) - \(self.currentSortOrder == .descending ? "Descending" : "Ascending"))...")
-            
-            // LOCAL SORTING: Apply user's sort preference to the filtered dataset
+            // Apply user's sort preference
             let sortedCoins = self.sortCoins(finalCoins)
-            
-            // DEBUG: Show sorting results
-            if sortedCoins.count > 0 {
-                let topSorted = Array(sortedCoins.prefix(3))
-                let sortedDebug = topSorted.map { coin in
-                    let sortValue = self.getSortValue(for: coin, column: self.currentSortColumn)
-                    return "\(coin.name) (\(sortValue))"
-                }.joined(separator: ", ")
-                print("🔍 Top by \(self.columnName(for: self.currentSortColumn)): \(sortedDebug)")
-            }
-            
-            print("✅ Local: Sorting complete!")
-            print("📊 Result: Top \(sortedCoins.count) coins by market cap, ordered by \(self.columnName(for: self.currentSortColumn))")
             
             return sortedCoins
         }
@@ -669,43 +618,41 @@ final class CoinListVM: ObservableObject {
             print("🔄 VM.fetchCoins | Calling completion handler")
             onFinish?()
         } receiveValue: { [weak self] filteredAndSortedCoins in
-            // 🎯 SUCCESS HANDLER: Process the successful data
+            // Process the successful data
             guard let self = self else { return }
             
-            // 📖 PAGINATION SETUP: Show first page, store full dataset for later
+            // Show first page, store full dataset for later
             let pageSize = self.itemsPerPage
             let initialCoins = Array(filteredAndSortedCoins.prefix(pageSize))
             
-            // 🛡️ VALIDATION: Check for duplicate IDs in API response before setting coins
+            // Basic duplicate check
             let coinIds = initialCoins.map { $0.id }
             let uniqueIds = Set(coinIds)
             if coinIds.count != uniqueIds.count {
-                print("❌ CRITICAL: API returned duplicate coin IDs!")
-                print("   Total: \(coinIds.count), Unique: \(uniqueIds.count)")
-                
                 // Deduplicate by keeping first occurrence of each ID
                 var seenIds = Set<Int>()
                 let deduplicatedCoins = initialCoins.filter { coin in
                     if seenIds.contains(coin.id) {
-                        print("   Removing API duplicate: \(coin.name) (ID: \(coin.id))")
                         return false
                     } else {
                         seenIds.insert(coin.id)
                         return true
                     }
                 }
-                self.coinsSubject.send(deduplicatedCoins)  // 🎯 Triggers UI update with clean data
+                self.coinsSubject.send(deduplicatedCoins)
             } else {
-                self.coinsSubject.send(initialCoins)  // 🎯 Triggers UI update
+                self.coinsSubject.send(initialCoins)
             }
 
-            // Store complete dataset for pagination and instant sorting
+            // Store complete dataset for pagination
             self.fullFilteredCoins = filteredAndSortedCoins
             
             // Enable pagination only if we have more data
             self.canLoadMore = filteredAndSortedCoins.count > pageSize
 
-            print("📱 UI: Displaying \(initialCoins.count) coins (page 1 of \(filteredAndSortedCoins.count) total)")
+            #if DEBUG
+            print("📱 Displaying \(initialCoins.count) coins (page 1 of \(filteredAndSortedCoins.count) total)")
+            #endif
 
             //  LOGO FETCHING: Start downloading coin images (low priority, background)
             let ids = initialCoins.map { $0.id }
@@ -874,12 +821,10 @@ final class CoinListVM: ObservableObject {
         isLoadingMoreSubject.send(false)  // 🎯 Hide pagination loading indicator
         
         let totalCoins = updatedCoins.count
-        print("✅ Pagination | Added \(newCoins.count) coins | Total: \(totalCoins)")
-
+        
         // UPDATE PAGINATION STATE
         if totalCoins >= fullFilteredCoins.count {
             canLoadMore = false
-            print("🏁 Pagination | Complete | Total: \(totalCoins)/\(fullFilteredCoins.count)")
         }
 
         // FETCH LOGOS: Download images for newly visible coins
@@ -922,39 +867,28 @@ final class CoinListVM: ObservableObject {
      * triggers automatic UI updates in the collection view cells.
      */
     private func fetchCoinLogosIfNeeded(forIDs ids: [Int]) {
-        // OPTIMIZATION: Filter out logos we already have or are downloading
+        // Filter out logos we already have or are downloading
         let missingLogoIds = ids.filter { id in
             currentCoinLogos[id] == nil && !pendingLogoRequests.contains(id)
         }
         
-        print("🖼️ CoinListVM.fetchCoinLogosIfNeeded | Total IDs: \(ids.count), Missing: \(missingLogoIds.count), Pending: \(pendingLogoRequests.count)")
+        guard !missingLogoIds.isEmpty else { return }
         
-        guard !missingLogoIds.isEmpty else {
-            print("✅ CoinListVM | All logos already available or pending, no fetch needed")
-            return
-        }
-        
-        // DEDUPLICATION: Track pending requests to prevent duplicates
+        // Track pending requests to prevent duplicates
         pendingLogoRequests.formUnion(missingLogoIds)
         
-        print("🖼️ CoinListVM | Fetching \(missingLogoIds.count) missing coin logos...")
-        
-        // API CALL: Use low priority so logos don't interfere with data requests
+        // Use low priority so logos don't interfere with data requests
         coinManager.getCoinLogos(forIDs: missingLogoIds, priority: .low)
             .sink { [weak self] logos in
-                let totalLogos = (self?.currentCoinLogos.count ?? 0) + logos.count
-                print("✅ CoinListVM | Received \(logos.count) new logos (total: \(totalLogos) cached)")
-                
-                // CLEANUP: Remove from pending requests
+                // Remove from pending requests
                 self?.pendingLogoRequests.subtract(missingLogoIds)
                 
-                // MERGE: Combine new logos with existing cache
+                // Merge new logos with existing cache
                 let currentLogos = self?.currentCoinLogos ?? [:]
                 let mergedLogos = currentLogos.merging(logos) { _, new in new }
-                self?.coinLogosSubject.send(mergedLogos)  // 🎯 Triggers UI update
-                print("📊 CoinListVM | Total logos after merge: \(mergedLogos.count)")
+                self?.coinLogosSubject.send(mergedLogos)
                 
-                // PERSISTENCE: Save updated logos for offline use
+                // Save updated logos for offline use
                 self?.persistenceService.saveCoinLogos(mergedLogos)
             }
             .store(in: &cancellables)
@@ -1003,18 +937,14 @@ final class CoinListVM: ObservableObject {
         var changedCoinIds = Set<Int>()
         var updatedCoins = currentCoins // Create a copy to avoid modifying during iteration
         
-        // 🛡️ SAFETY CHECK: Verify no duplicate IDs exist before processing
+        // Basic safety check for duplicates
         let coinIds = updatedCoins.map { $0.id }
         let uniqueIds = Set(coinIds)
         if coinIds.count != uniqueIds.count {
-            print("❌ CRITICAL: Duplicate coin IDs detected in updateCoinPrices!")
-            print("   Total coins: \(coinIds.count), Unique IDs: \(uniqueIds.count)")
-            
             // Remove duplicates by keeping only the first occurrence of each ID
             var seenIds = Set<Int>()
             updatedCoins = updatedCoins.filter { coin in
                 if seenIds.contains(coin.id) {
-                    print("   Removing duplicate: \(coin.name) (ID: \(coin.id))")
                     return false
                 } else {
                     seenIds.insert(coin.id)
@@ -1077,7 +1007,7 @@ final class CoinListVM: ObservableObject {
 
         isUpdatingPrices = true  // 🔒 Lock to prevent race conditions
         
-        // 🔽 LOW PRIORITY: Background updates are non-intrusive
+        // Use low priority for background updates
         coinManager.getQuotes(for: visibleIds, convert: "USD", priority: .low)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completionResult in
@@ -1095,13 +1025,11 @@ final class CoinListVM: ObservableObject {
                 var changedCoinIds = Set<Int>()
                 var updatedCoins = self.currentCoins
                 
-                print("🔍 Price Check | Analyzing \(visibleIds.count) visible coins...")
-                
                 // VISIBLE-ONLY UPDATE: Only process coins currently on screen
                 for i in 0..<updatedCoins.count {
                     let id = updatedCoins[i].id
                     if visibleIds.contains(id), let updated = updatedQuotes[id] {
-                        //  DETAILED CHANGE TRACKING WITH LOGGING
+                        // Change tracking
                         let oldPrice = updatedCoins[i].quote?["USD"]?.price
                         let newPrice = updated.price
                         let oldPercentChange = updatedCoins[i].quote?["USD"]?.percentChange24h
@@ -1113,16 +1041,6 @@ final class CoinListVM: ObservableObject {
                         if priceChanged || percentChanged {
                             updatedCoins[i].quote?["USD"] = updated
                             changedCoinIds.insert(id)
-                            
-                            // 📊 DETAILED LOGGING: Show exactly what changed
-                            let oldPriceValue = oldPrice ?? 0
-                            let newPriceValue = newPrice ?? 0
-                            let priceDiff = abs(newPriceValue - oldPriceValue)
-                            
-                            let changeType = priceChanged && percentChanged ? "Both" : (priceChanged ? "Price" : "Percent")
-                            let priceDisplay = String(format: "%.6f", oldPriceValue) + " → " + String(format: "%.6f", newPriceValue)
-                            
-                            print("💰 Coin \(id) | \(changeType) | $\(priceDisplay) | Δ\(String(format: "%.6f", priceDiff))")
                         }
                     }
                 }
@@ -1130,12 +1048,14 @@ final class CoinListVM: ObservableObject {
                 // UI UPDATE TRIGGER
                 if !changedCoinIds.isEmpty {
                     self.coinsSubject.send(updatedCoins)
-                    self.updatedCoinIdsSubject.send(changedCoinIds)  // 🎯 Triggers selective cell updates
-                    print("📱 UI Update | \(changedCoinIds.count) visible coins | IDs: \(Array(changedCoinIds).sorted())")
-                    print("─────────────────────────────────────────")
+                    self.updatedCoinIdsSubject.send(changedCoinIds)
+                    #if DEBUG
+                    print("📱 Updated \(changedCoinIds.count) visible coins")
+                    #endif
                 } else {
-                    print("📱 UI Update | No changes detected (visible coins)")
-                    print("─────────────────────────────────────────")
+                    #if DEBUG
+                    print("📱 No changes detected (visible coins)")
+                    #endif
                 }
                 
                 completion()

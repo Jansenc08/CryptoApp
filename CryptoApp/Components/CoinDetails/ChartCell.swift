@@ -139,6 +139,8 @@ final class ChartCell: UITableViewCell {
         ])
     }
     
+
+    
     private func showChart(type: ChartType, animated: Bool = true) {
         currentChartType = type
         
@@ -234,6 +236,16 @@ final class ChartCell: UITableViewCell {
             self.currentPoints = points
             if !points.isEmpty {
                 lineChartView.update(points, range: range)
+                
+                // If we're in candlestick mode but receiving line data, clear old candlestick data
+                if currentChartType == .candlestick {
+                    print("📊 Clearing old candlestick data - waiting for new OHLC data for \(range)")
+                    self.currentOHLCData = [] // Clear old candlestick data
+                    currentState = .loading // Show loading until OHLC data arrives
+                    updateViewsForState()
+                    return
+                }
+                
                 hasData = true
             }
         }
@@ -243,6 +255,15 @@ final class ChartCell: UITableViewCell {
             if !ohlcData.isEmpty {
                 candlestickChartView.update(ohlcData, range: range)
                 hasData = true
+            } else {
+                // Clear candlestick chart when empty OHLC data is received
+                print("📊 Received empty OHLC data - clearing candlestick chart for \(range)")
+                candlestickChartView.clear() // Clear the candlestick display
+                if currentChartType == .candlestick {
+                    currentState = .loading // Show loading when candlestick data is cleared
+                    updateViewsForState()
+                    return
+                }
             }
         }
         
@@ -263,6 +284,8 @@ final class ChartCell: UITableViewCell {
         }
         // Note: We don't set .data state here since that should only happen when we actually receive data
     }
+    
+
     
     // New method to handle error state
     func showErrorState(_ message: String) {

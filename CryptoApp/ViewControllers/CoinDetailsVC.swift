@@ -21,8 +21,7 @@ final class CoinDetailsVC: UIViewController {
     private var previousChartPointsCount = 0
     
     // MARK: - Rate Limiting & Debouncing Properties
-    private var filterChangeWorkItem: DispatchWorkItem?                   // Debouncing for filter changes
-    private let filterDebounceInterval: TimeInterval = 2.0                // 2s debounce delay to prevent API abuse
+    // Debouncing now handled by Combine operators instead of DispatchWorkItem
 
     // MARK: - Init
     
@@ -42,7 +41,6 @@ final class CoinDetailsVC: UIViewController {
         print("🧹 CoinDetailsVC deinit - cleaning up resources for \(coin.symbol)")
         refreshTimer?.invalidate()
         refreshTimer = nil
-        filterChangeWorkItem?.cancel() // Cancel pending debounced filter changes
         cancellables.removeAll()
     }
     
@@ -63,6 +61,9 @@ final class CoinDetailsVC: UIViewController {
         navigationController?.navigationBar.prefersLargeTitles = false
         navigationItem.largeTitleDisplayMode = .never
         
+        // Stop background timers from parent views to prevent unnecessary API calls
+        stopParentTimers()
+        
         isViewVisible = true
         startSmartAutoRefresh()  // Begin optimized auto-refresh
     }
@@ -72,6 +73,9 @@ final class CoinDetailsVC: UIViewController {
         isViewVisible = false
         refreshTimer?.invalidate() // Stops auto-refresh immediately when transition starts
         refreshTimer = nil
+        
+        // Resume parent timers when leaving coin details
+        resumeParentTimers()
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -153,9 +157,10 @@ final class CoinDetailsVC: UIViewController {
             }
             .store(in: &cancellables) // Memory Management 
         
-        // Loading state updates
+        // Enhanced loading state updates using new reactive patterns
         viewModel.isLoading
             .receive(on: DispatchQueue.main)
+            .removeDuplicates() // Avoid unnecessary updates for same loading state
             .sink { [weak self] isLoading in
                 guard let self = self else { return }
                 
@@ -166,14 +171,15 @@ final class CoinDetailsVC: UIViewController {
             }
             .store(in: &cancellables)
         
-        // Error handling - now properly handles chart errors vs loading states
+        // Enhanced error handling with Combine best practices
         viewModel.errorMessage
             .receive(on: DispatchQueue.main)
             .compactMap { $0 }
+            .removeDuplicates() // Prevent duplicate error messages
             .sink { [weak self] errorMessage in
                 guard let self = self else { return }
                 
-                // Check if this is a chart-related error (contains common chart error keywords)
+                // Only show non-chart errors as alerts (chart errors handled by chartLoadingState)
                 let isChartError = errorMessage.contains("chart") || 
                                    errorMessage.contains("data") || 
                                    errorMessage.contains("rate limit") ||
@@ -181,14 +187,30 @@ final class CoinDetailsVC: UIViewController {
                                    errorMessage.contains("network") ||
                                    errorMessage.contains("connection")
                 
-                if isChartError {
-                    // Show error in chart cell instead of alert for chart-related errors
-                    if let chartCell = self.getChartCell() {
-                        chartCell.showErrorState("No chart data available")
-                    }
-                } else {
-                    // Show alert for other types of errors
+                if !isChartError {
+                    // Show alert for non-chart errors only
                     self.showErrorAlert(message: errorMessage)
+                }
+                // Chart errors are handled by chartLoadingState subscription below
+            }
+            .store(in: &cancellables)
+        
+        // Optional: Use the new combined loading state for more sophisticated UI updates
+        viewModel.chartLoadingState
+            .receive(on: DispatchQueue.main)
+            .removeDuplicates()
+            .sink { [weak self] loadingState in
+                guard let self = self, let chartCell = self.getChartCell() else { return }
+                
+                switch loadingState {
+                case .loading:
+                    chartCell.updateLoadingState(true)
+                case .loaded:
+                    chartCell.updateLoadingState(false)
+                case .error:
+                    chartCell.showErrorState("No chart data available")
+                case .empty:
+                    chartCell.updateLoadingState(false)
                 }
             }
             .store(in: &cancellables)
@@ -196,12 +218,13 @@ final class CoinDetailsVC: UIViewController {
         // Stats range updates - reload stats section when range changes
         viewModel.selectedStatsRange
             .receive(on: DispatchQueue.main)
+            .removeDuplicates() // Avoid duplicate updates
             .sink { [weak self] _ in
                 self?.updateStatsCell()
             }
             .store(in: &cancellables)
         
-        // OHLC data updates for candlestick charts
+        // Enhanced OHLC data updates for candlestick charts
         viewModel.ohlcData
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newOHLCData in
@@ -222,16 +245,24 @@ final class CoinDetailsVC: UIViewController {
             return false
         }
         
-        // Skip if same data count and recent update
+        // Skip if same data count and recent update (increased to 3 seconds)
         if newPoints.count == previousChartPointsCount,
            let lastUpdate = lastChartUpdateTime,
-           Date().timeIntervalSince(lastUpdate) < 1.0 {
+           Date().timeIntervalSince(lastUpdate) < 3.0 {
             return false
         }
         
         // Skip if user is actively interacting to prevent disruption
         if isUserInteracting {
             return false
+        }
+        
+        // Skip if data hasn't meaningfully changed (less than 5% difference)
+        if !newPoints.isEmpty && previousChartPointsCount > 0 {
+            let changePercentage = abs(Double(newPoints.count - previousChartPointsCount)) / Double(previousChartPointsCount)
+            if changePercentage < 0.05 {
+                return false
+            }
         }
         
         return true
@@ -263,6 +294,13 @@ final class CoinDetailsVC: UIViewController {
     
     private func getChartCell() -> ChartCell? {
         let chartIndexPath = IndexPath(row: 0, section: 2)
+        
+        // Defensive programming: ensure table view is loaded and section exists
+        guard chartIndexPath.section < tableView.numberOfSections,
+              chartIndexPath.row < tableView.numberOfRows(inSection: chartIndexPath.section) else {
+            return nil
+        }
+        
         return tableView.cellForRow(at: chartIndexPath) as? ChartCell
     }
     
@@ -285,32 +323,15 @@ final class CoinDetailsVC: UIViewController {
             viewModel: viewModel
         )
         
-        // Set up state synchronization callback
+        // Set up simplified state synchronization callback
         landscapeVC.onStateChanged = { [weak self] newRange, newChartType in
             guard let self = self else { return }
             
             print("📊 Synchronizing state from landscape: range=\(newRange), chartType=\(newChartType)")
             
-            // Update portrait mode state to match landscape
+            // Simple state update - let Combine handle the UI updates
             self.selectedRange.send(newRange)
             self.selectedChartType.send(newChartType)
-            
-            // Update UI immediately and ensure orientation is correct
-            DispatchQueue.main.async {
-                self.updatePortraitModeAfterLandscapeChange(range: newRange, chartType: newChartType)
-                
-                // Force orientation check after landscape dismissal
-                if #available(iOS 16.0, *) {
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                        windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-                    }
-                } else {
-                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-                    UIViewController.attemptRotationToDeviceOrientation()
-                }
-                
-                self.setNeedsUpdateOfSupportedInterfaceOrientations()
-            }
         }
         
         // Present modally with smoother transition
@@ -336,31 +357,23 @@ final class CoinDetailsVC: UIViewController {
     }
     
     // MARK: - Landscape State Synchronization
-    
-    private func updatePortraitModeAfterLandscapeChange(range: String, chartType: ChartType) {
-        // Use smooth animations to avoid flickering
-        UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
-            // Update segment cell to show correct selected range and chart type
-            if let segmentCell = self.getSegmentCell() {
-                segmentCell.setSelectedRange(range)
-                segmentCell.setChartType(chartType)
-            }
-            
-            // Update chart cell to show correct chart type
-            if let chartCell = self.getChartCell() {
-                chartCell.switchChartType(to: chartType)
-            }
-        } completion: { _ in
-            print("📊 Updated portrait mode UI: range=\(range), chartType=\(chartType)")
-        }
-    }
+    // State sync is now handled automatically by Combine bindings
 
     
     private func updateStatsCell() {
         let statsIndexPath = IndexPath(row: 0, section: 3)
+        
+        // Defensive programming: ensure section exists before accessing
+        guard statsIndexPath.section < tableView.numberOfSections else {
+            print("⚠️ Stats section doesn't exist yet")
+            return
+        }
+        
         guard let statsCell = tableView.cellForRow(at: statsIndexPath) as? StatsCell else {
             // Fallback to section reload if cell not found
-            tableView.reloadSections(IndexSet(integer: 3), with: .none)
+            if statsIndexPath.section < tableView.numberOfSections {
+                tableView.reloadSections(IndexSet(integer: 3), with: .none)
+            }
             return
         }
         
@@ -383,36 +396,36 @@ final class CoinDetailsVC: UIViewController {
         // When user taps a new range (24h, 7d, etc.), debounce and fetch chart data for that range
         selectedRange
             .receive(on: DispatchQueue.main)
+            .removeDuplicates() // Prevent duplicate consecutive ranges
+            .debounce(for: .seconds(1.5), scheduler: DispatchQueue.main) // Use Combine's built-in debounce
             .sink { [weak self] range in
                 guard let self = self else { return }
                 
-                print("🔄 Filter changed to: \(range)")
+                print("⚡ Debounced filter change executing: \(range)")
                 
-                // Show loading state immediately when filter changes (before debounce)
-                if let chartCell = self.getChartCell() {
-                    chartCell.updateLoadingState(true)
-                }
+                // Keep existing chart completely visible - no loading indicators needed
+                // Chart will update seamlessly when new data arrives
                 
-                // Cancel any pending filter change request
-                self.filterChangeWorkItem?.cancel()
+                // Reset chart state for new range
+                self.previousChartPointsCount = 0
+                self.lastChartUpdateTime = nil
                 
-                // Create new debounced work item
-                let workItem = DispatchWorkItem { [weak self] in
-                    guard let self = self else { return }
-                    
-                    print("⚡ Debounced filter change executing: \(range)")
-                    
-                    // Reset chart state for new range
-                    self.previousChartPointsCount = 0
-                    self.lastChartUpdateTime = nil
-                    
-                    // Fetch data for new range with high priority (user action)
-                    self.viewModel.fetchChartData(for: range)
-                }
+                // Fetch data for new range with high priority (user action)
+                self.viewModel.fetchChartData(for: range)
+            }
+            .store(in: &cancellables)
+        
+        // Immediate UI feedback for filter changes (before debounce)
+        selectedRange
+            .receive(on: DispatchQueue.main)
+            .removeDuplicates()
+            .sink { [weak self] range in
+                guard let self = self else { return }
                 
-                // Store work item and schedule with debounce delay
-                self.filterChangeWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + self.filterDebounceInterval, execute: workItem)
+                print("🔄 Filter changed to: \(range) - keeping existing chart visible")
+                
+                // NO loading indicators - keep chart completely visible during filter changes
+                // The chart will seamlessly update when new data arrives
             }
             .store(in: &cancellables)
         
@@ -436,7 +449,8 @@ final class CoinDetailsVC: UIViewController {
                 }
                 
                 // Notify ViewModel about chart type change (triggers conditional OHLC fetching)
-                self.viewModel.setChartType(chartType)
+                print("🔄 Setting chart type \(chartType.rawValue) for range: \(self.selectedRange.value)")
+                self.viewModel.setChartType(chartType, for: self.selectedRange.value)
                 
                 // Update segment cell
                 if let segmentCell = self.getSegmentCell() {
@@ -453,6 +467,13 @@ final class CoinDetailsVC: UIViewController {
     
     private func getSegmentCell() -> SegmentCell? {
         let segmentIndexPath = IndexPath(row: 0, section: 1)
+        
+        // Defensive programming: ensure table view is loaded and section exists
+        guard segmentIndexPath.section < tableView.numberOfSections,
+              segmentIndexPath.row < tableView.numberOfRows(inSection: segmentIndexPath.section) else {
+            return nil
+        }
+        
         return tableView.cellForRow(at: segmentIndexPath) as? SegmentCell
     }
     
@@ -462,6 +483,7 @@ final class CoinDetailsVC: UIViewController {
     // The user is not scrolling ()
     private func startSmartAutoRefresh() {
         refreshTimer?.invalidate()
+        refreshTimer = nil
         
         // Conservative refresh interval to respect CoinGecko rate limits
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
@@ -477,7 +499,55 @@ final class CoinDetailsVC: UIViewController {
         }
         
         print("🔄 Performing smart auto-refresh")
-        viewModel.fetchChartData(for: selectedRange.value)
+        viewModel.smartAutoRefresh(for: selectedRange.value)
+    }
+    
+    // MARK: - Parent Timer Management
+    
+    private func stopParentTimers() {
+        // Stop CoinListVC auto-refresh timer
+        if let parentNav = navigationController,
+           let coinListVC = parentNav.viewControllers.first(where: { $0 is CoinListVC }) as? CoinListVC {
+            coinListVC.stopAutoRefreshFromChild()
+            print("⏸️ Stopped CoinListVC auto-refresh timer")
+        }
+        
+        // Stop WatchlistVC periodic updates (it's embedded in CoinListVC)
+        if let parentNav = navigationController,
+           let coinListVC = parentNav.viewControllers.first(where: { $0 is CoinListVC }) as? CoinListVC {
+            coinListVC.stopWatchlistTimersFromChild()
+            print("⏸️ Stopped WatchlistVC periodic updates timer")
+        }
+        
+        // Stop SearchVC timers if navigated from search
+        if let parentNav = navigationController,
+           let searchVC = parentNav.viewControllers.first(where: { $0 is SearchVC }) as? SearchVC {
+            searchVC.stopBackgroundOperationsFromChild()
+            print("⏸️ Stopped SearchVC background operations")
+        }
+    }
+    
+    private func resumeParentTimers() {
+        // Resume CoinListVC auto-refresh timer
+        if let parentNav = navigationController,
+           let coinListVC = parentNav.viewControllers.first(where: { $0 is CoinListVC }) as? CoinListVC {
+            coinListVC.resumeAutoRefreshFromChild()
+            print("🔄 Resumed CoinListVC auto-refresh timer")
+        }
+        
+        // Resume WatchlistVC periodic updates (it's embedded in CoinListVC)
+        if let parentNav = navigationController,
+           let coinListVC = parentNav.viewControllers.first(where: { $0 is CoinListVC }) as? CoinListVC {
+            coinListVC.resumeWatchlistTimersFromChild()
+            print("🔄 Resumed WatchlistVC periodic updates timer")
+        }
+        
+        // Resume SearchVC background operations if navigated from search
+        if let parentNav = navigationController,
+           let searchVC = parentNav.viewControllers.first(where: { $0 is SearchVC }) as? SearchVC {
+            searchVC.resumeBackgroundOperationsFromChild()
+            print("🔄 Resumed SearchVC background operations")
+        }
     }
 }
 

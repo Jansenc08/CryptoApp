@@ -352,42 +352,14 @@ final class ChartView: LineChartView {
     private func generateDates(for dataPoints: [Double], range: String) {
         let now = Date()
         
-        // Debug: Log current time and timezone for line chart
-        if range == "24h" {
-            let debugFormatter = DateFormatter()
-            debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            debugFormatter.timeZone = TimeZone.current
-            print("📊 DEBUG LineChart: Current time (\(TimeZone.current.identifier)): \(debugFormatter.string(from: now))")
-        }
-        
         let timeInterval: TimeInterval = range == "24h" ? 86400 :
                                          range == "7d" ? 604800 :
                                          range == "30d" ? 2592000 : 31536000
         let start = now.addingTimeInterval(-timeInterval)
         
-        // Debug: Log start time for line chart
-        if range == "24h" {
-            let debugFormatter = DateFormatter()
-            debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            debugFormatter.timeZone = TimeZone.current
-            print("📊 DEBUG LineChart: Start time (\(TimeZone.current.identifier)): \(debugFormatter.string(from: start))")
-        }
-        
-        let step = timeInterval / Double(dataPoints.count)
-        
-        // Generate evenly spaced dates
-        self.allDates = (0..<dataPoints.count).map { i in
-            let date = start.addingTimeInterval(Double(i) * step)
-            
-            // Debug: Log first few dates for 24h range
-            if range == "24h" && i < 5 {
-                let debugFormatter = DateFormatter()
-                debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                debugFormatter.timeZone = TimeZone.current
-                print("📊 DEBUG LineChart: Index \(i) date: \(debugFormatter.string(from: date))")
-            }
-            
-            return date
+        let step = timeInterval / Double(dataPoints.count - 1)
+        allDates = (0..<dataPoints.count).map { i in
+            start.addingTimeInterval(Double(i) * step)
         }
     }
 
@@ -452,22 +424,6 @@ final class ChartView: LineChartView {
         if let xAxisFormatter = xAxis.valueFormatter as? DateValueFormatter {
             xAxisFormatter.updateDates(allDates)
             xAxisFormatter.updateRange(currentRange)
-        }
-        
-        // Debug: Log the actual dates being used for X-axis labels to compare with candlestick
-        if currentRange == "24h" && !allDates.isEmpty {
-            let debugFormatter = DateFormatter()
-            debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            debugFormatter.timeZone = TimeZone.current
-            print("📊 DEBUG LineChart X-axis: First date: \(debugFormatter.string(from: allDates.first!))")
-            print("📊 DEBUG LineChart X-axis: Last date: \(debugFormatter.string(from: allDates.last!))")
-            
-            // Show what the actual X-axis labels will be
-            let testFormatter = DateFormatter()
-            testFormatter.timeZone = TimeZone.current
-            testFormatter.dateFormat = "h a"
-            let labelStrings = allDates.prefix(5).map { testFormatter.string(from: $0) }
-            print("📊 DEBUG LineChart X-axis: Label strings: \(labelStrings.joined(separator: ", "))")
         }
         
         // Update marker with current range for proper tooltip display

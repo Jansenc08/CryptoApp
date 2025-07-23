@@ -1,6 +1,17 @@
 import Foundation
 import Combine
 
+/**
+ * CoinService - Dual API Integration
+ * 
+ * - CoinMarketCap API: Used for coin listings, prices, metadata
+ * - CoinGecko Demo API: Used for chart data and OHLC data
+ * 
+ * Rate Limits:
+ * - CoinMarketCap: Professional plan limits
+ * - CoinGecko Demo: 30 calls/minute (0.5 calls/second)
+ */
+
 enum NetworkError: Error, Equatable {
     case badURL
     case invalidResponse
@@ -26,6 +37,7 @@ final class CoinService: CoinServiceProtocol {
     private let baseURL = "https://pro-api.coinmarketcap.com/v1"
     private let apiKey = "9257c6de-ff87-48e2-886b-09f0cc34e666"
     private let coinGeckoBaseURL = "https://api.coingecko.com/api/v3" // CoinGecko Base URL
+    private let coinGeckoApiKey = "CG-yzBqmCqY8VybDQbMxbRZhaL9" // CoinGecko Demo API Key
     
     // Injected Dependencies
     private let cacheService: CacheServiceProtocol
@@ -408,6 +420,7 @@ final class CoinService: CoinServiceProtocol {
         
         print("🔄 Mapping '\(coinId)' → '\(geckoId)' for OHLC data")
         print("🌐 CoinGecko OHLC URL: \(endpoint)")
+        print("🔑 Using CoinGecko Demo API key: \(String(coinGeckoApiKey.prefix(8)))...")
         
         guard let url = URL(string: endpoint) else {
             return Fail(error: .badURL).eraseToAnyPublisher()
@@ -415,6 +428,7 @@ final class CoinService: CoinServiceProtocol {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.setValue(coinGeckoApiKey, forHTTPHeaderField: "x-cg-demo-api-key")
         
         return URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { output in
@@ -441,6 +455,7 @@ final class CoinService: CoinServiceProtocol {
             .map { response in
                 let ohlcData = response.toOHLCData()
                 print("✅ Successfully fetched \(ohlcData.count) OHLC candles for '\(geckoId)'")
+                print("🔑 CoinGecko Demo API key working! Rate limit: 30 calls/minute")
                 return ohlcData
             }
             .receive(on: DispatchQueue.main)
@@ -464,13 +479,15 @@ final class CoinService: CoinServiceProtocol {
         
         print("🔄 Mapping '\(coinId)' → '\(geckoId)'")
         print("🌐 CoinGecko URL: \(endpoint)")
+        print("🔑 Using CoinGecko Demo API key: \(String(coinGeckoApiKey.prefix(8)))...")
 
         guard let url = URL(string: endpoint) else {
             return Fail(error: .badURL).eraseToAnyPublisher()
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "GET" // No API key needed for CoinGecko public endpoints
+        request.httpMethod = "GET"
+        request.setValue(coinGeckoApiKey, forHTTPHeaderField: "x-cg-demo-api-key") // CoinGecko Demo API key
 
         return URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { output in
@@ -503,6 +520,7 @@ final class CoinService: CoinServiceProtocol {
                 // CoinGecko returns prices as [[timestamp, price]]. We only want the price.
                 let prices = response.prices.map { $0[1] }
                 print("✅ Successfully fetched \(prices.count) price points for '\(geckoId)'")
+                print("🔑 CoinGecko Demo API key working! Rate limit: 30 calls/minute")
                 return prices
             }
             .receive(on: DispatchQueue.main)

@@ -109,6 +109,18 @@ final class SearchVM: ObservableObject {
     private let maxSearchResults = 50 // Limit results for performance
     private let minimumSearchLength = 1 // Start searching after 1 character
     
+    // MARK: - Lifecycle Management
+    
+    func cancelAllRequests() {
+        // Cancel all active Combine subscriptions
+        cancellables.removeAll()
+        
+        // Reset loading state
+        isLoadingSubject.send(false)
+        
+        print("🛑 SearchVM: Cancelled all ongoing requests")
+    }
+    
     // MARK: - Init
     
     // MARK: - Dependency Injection Initializer

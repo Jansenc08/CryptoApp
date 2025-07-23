@@ -377,19 +377,12 @@ final class CandlestickChartView: CandleStickChartView {
         
         // Create candlestick entries using INTEGER indices instead of timestamps
         let entries = allOHLCData.enumerated().map { index, ohlc in
-            let entry = CandleChartDataEntry(x: Double(index),  // Using simple index, not timestamp
+            CandleChartDataEntry(x: Double(index),  // Using simple index, not timestamp
                                shadowH: ohlc.high,
                                shadowL: ohlc.low,
                                open: ohlc.open,
                                close: ohlc.close,
                                icon: nil)
-            
-            // Debug: Print the first few entries to check data
-            if index < 3 {
-                print("📊 OHLC Entry \(index): X=\(index), Open=\(String(format: "%.0f", ohlc.open)), High=\(String(format: "%.0f", ohlc.high)), Low=\(String(format: "%.0f", ohlc.low)), Close=\(String(format: "%.0f", ohlc.close)), Bullish=\(ohlc.close >= ohlc.open)")
-            }
-            
-            return entry
         }
         
         guard let minY = allOHLCData.map({ min($0.low, min($0.open, $0.close)) }).min(),
@@ -403,17 +396,15 @@ final class CandlestickChartView: CandleStickChartView {
         rightAxis.axisMinimum = minY - buffer
         rightAxis.axisMaximum = maxY + buffer
         
-        let displayRange = (maxY + buffer) - (minY - buffer)
-        print("📊 Y-axis range: \(String(format: "%.0f", minY - buffer)) - \(String(format: "%.0f", maxY + buffer)) (display range: \(String(format: "%.0f", displayRange)))")
-        
         let dataSet = CandleChartDataSet(entries: entries, label: "")
         
         dataSet.drawValuesEnabled = false
         dataSet.drawIconsEnabled = false
         
-        // Set Candlestick colors - darker green, vibrant red
+        // Set Candlestick colors - darker green, vibrant red, gray for doji
         dataSet.increasingColor = UIColor(red: 0.0, green: 0.7, blue: 0.0, alpha: 1.0)  // Darker green
         dataSet.decreasingColor = UIColor(red: 0.9, green: 0.2, blue: 0.2, alpha: 1.0)  // Vibrant red
+        dataSet.neutralColor = UIColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1.0)     // Gray for doji (open == close)
         dataSet.increasingFilled = true
         dataSet.decreasingFilled = true
         
@@ -423,14 +414,6 @@ final class CandlestickChartView: CandleStickChartView {
         
         // Balanced spacing between bars
         dataSet.barSpace = 0.2 
-        
-        print("📊 Created candlestick dataset with \(entries.count) entries")
-        print("📊 Sample: Open=\(String(format: "%.0f", entries.first?.open ?? 0)), Close=\(String(format: "%.0f", entries.first?.close ?? 0)), BodySize=\(String(format: "%.0f", abs((entries.first?.close ?? 0) - (entries.first?.open ?? 0))))")
-        
-        // Debug dataset properties
-        print("📊 Dataset config: barSpace=\(dataSet.barSpace), shadowWidth=\(dataSet.shadowWidth)")
-        print("📊 Colors: increasing=\(dataSet.increasingColor), decreasing=\(dataSet.decreasingColor)")
-        print("📊 Filled: increasing=\(dataSet.increasingFilled), decreasing=\(dataSet.decreasingFilled)")
         
         let chartData = CandleChartData(dataSet: dataSet)
         self.data = chartData
@@ -462,15 +445,6 @@ final class CandlestickChartView: CandleStickChartView {
             return formatter.string(from: date)
         }
         
-        // Debug: Log the actual dates being used for X-axis labels
-        if currentRange == "24h" && !allDates.isEmpty {
-            let debugFormatter = DateFormatter()
-            debugFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            debugFormatter.timeZone = TimeZone.current
-            print("📊 DEBUG Candlestick X-axis: First date: \(debugFormatter.string(from: allDates.first!))")
-            print("📊 DEBUG Candlestick X-axis: Last date: \(debugFormatter.string(from: allDates.last!))")
-            print("📊 DEBUG Candlestick X-axis: Date strings: \(dateStrings.prefix(5).joined(separator: ", "))")
-        }
         xAxis.valueFormatter = IndexAxisValueFormatter(values: dateStrings)
         
         // Update marker with current dates and range for proper tooltip display

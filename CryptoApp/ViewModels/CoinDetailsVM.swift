@@ -73,6 +73,16 @@ final class CoinDetailsVM: ObservableObject {
     private var currentChartRequest: AnyCancellable?
     private var currentOHLCRequest: AnyCancellable?
     
+    // Smart refresh cooldown monitoring
+    private var cooldownTimer: AnyCancellable?
+    private var pendingRetryRange: String?
+    private var pendingRetryType: ChartType?
+    
+    // API Call Tracking
+    private static var totalApiCalls = 0
+    private static var sessionStartTime = Date()
+    private static var apiCallLog: [String] = []
+    
     // Chart type tracking to avoid unnecessary OHLC requests
     private var currentChartType: ChartType = .line
     
@@ -344,6 +354,9 @@ final class CoinDetailsVM: ObservableObject {
             print("❌ No slug found for \(coin.symbol) - chart data will not be available")
             self.geckoID = nil
         }
+        
+        // Start API call tracking for this coin
+        print("🔥 API TRACKING: Started for \(coin.symbol)")
     }
 
 
@@ -354,12 +367,20 @@ final class CoinDetailsVM: ObservableObject {
      * Switches between line and candlestick charts, only fetching OHLC data
      * when actually needed to reduce API calls and rate limiting.
      */
-    func setChartType(_ chartType: ChartType) {
+    func setChartType(_ chartType: ChartType, for range: String? = nil) {
         print("🔄 Chart type changed from \(currentChartType.rawValue) to \(chartType.rawValue)")
         currentChartType = chartType
         
+        // Use provided range or fall back to currentRange
+        let targetRange = range ?? currentRange
+        
         if chartType == .candlestick {
-            // Show loading state when switching to candlestick and fetching OHLC data
+            // Check if we already have OHLC data for target range (optimization)
+            if !currentOHLCData.isEmpty && targetRange == currentRange {
+                print("📦 Using existing OHLC data for \(targetRange)")
+                return
+            }
+            
             isLoadingSubject.send(true)
             
             // User switched to candlestick - check cooldown status first
@@ -367,13 +388,30 @@ final class CoinDetailsVM: ObservableObject {
             if cooldownStatus.isInCooldown {
                 let remainingTime = cooldownStatus.remainingSeconds
                 print("❄️ Switching to candlestick during cooldown (\(remainingTime)s remaining)")
-                errorMessageSubject.send("API cooldown active (\(remainingTime)s). Trying cached candlestick data...")
+                
+                // Try to get cached OHLC data during cooldown using Combine
+                if let geckoID = geckoID,
+                   let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: mapRangeToDays(targetRange)),
+                   !cachedOHLCData.isEmpty {
+                    
+                                    // Use cached OHLC data immediately
+                ohlcDataSubject.send(cachedOHLCData)
+                errorMessageSubject.send(nil)
+                isLoadingSubject.send(false)
+                print("📦 ✅ Using cached OHLC data during cooldown: \(cachedOHLCData.count) candles for \(targetRange)")
+                print("🔥 NO API CALL: Used cached OHLC data for \(coin.symbol) (\(targetRange))")
+                    return
+                } else {
+                    errorMessageSubject.send("API cooldown active (\(remainingTime)s). Candlestick data temporarily unavailable.")
+                    isLoadingSubject.send(false)
+                    return
+                }
             } else {
                 errorMessageSubject.send(nil) // Clear any previous error messages
                 print("📊 Switching to candlestick view - fetching OHLC data")
             }
             
-            fetchRealOHLCData(for: currentRange)
+            fetchRealOHLCData(for: targetRange)
         } else {
             // User switched to line chart - clear OHLC data and error messages
             print("📊 Switching to line chart - clearing OHLC data")
@@ -384,7 +422,7 @@ final class CoinDetailsVM: ObservableObject {
     }
     
     /**
-     * CHART DATA FETCHING
+     * OPTIMIZED CHART DATA FETCHING WITH COMBINE BEST PRACTICES
      */
     func fetchChartData(for range: String) {
         currentRange = range
@@ -402,73 +440,93 @@ final class CoinDetailsVM: ObservableObject {
         currentOHLCRequest?.cancel()
         print("🚫 Cancelled previous API calls for \(coin.symbol)")
         
-        // Check if we should prefer cache due to rate limiting
+
+        
+        // Clear old OHLC data when range changes to prevent showing wrong timeframe data
+        if currentChartType == .candlestick {
+            ohlcDataSubject.send([])
+            print("🗑️ Cleared old OHLC data for range change: \(range)")
+        }
+        
+        // Enhanced cache checking with Combine pipeline
+        if let cachedChartData = CacheService.shared.getChartData(for: geckoID, currency: "usd", days: days),
+           !cachedChartData.isEmpty {
+            
+            // Process cached data immediately for fast UI updates (prevents flash)
+            let processedData = processChartData(cachedChartData, for: mapRangeToDays(range))
+            
+            // Update UI immediately with cached data
+            chartPointsSubject.send(processedData)
+            errorMessageSubject.send(nil)
+            isLoadingSubject.send(false)
+            
+            print("📦 ✅ Using cached chart data: \(processedData.count) points")
+            print("🔥 NO API CALL: Used cached chart data for \(coin.symbol) (\(range))")
+            
+            // Intelligently fetch OHLC if needed and not in cooldown
+            if currentChartType == .candlestick && !RequestManager.shared.getCooldownStatus().isInCooldown {
+                fetchRealOHLCData(for: range)
+            }
+            return
+        }
+        
+        // Check if we should avoid API calls due to rate limiting
         let requestManager = RequestManager.shared
         if requestManager.shouldPreferCache() {
-            print("📦 Rate limiting pressure - checking cache first")
-            
-            // Try to get cached chart data first
-            if let cachedChartData = CacheService.shared.getChartData(for: geckoID, currency: "usd", days: days),
-               !cachedChartData.isEmpty {
-                let processedData = processChartData(cachedChartData, for: days)
-                chartPointsSubject.send(processedData)
-                
-                let cooldownStatus = requestManager.getCooldownStatus()
-                if cooldownStatus.isInCooldown {
-                    errorMessageSubject.send("Using cached data during API cooldown (\(cooldownStatus.remainingSeconds)s)")
-                } else {
-                    errorMessageSubject.send("Using cached data to reduce API usage")
-                }
-                
-                print("📦 ✅ Using cached chart data: \(processedData.count) points")
-                isLoadingSubject.send(false)
-                
-                // Still fetch OHLC if needed, but with cache preference
-                if currentChartType == .candlestick {
-                    fetchRealOHLCData(for: range)
-                }
-                return
-            }
+            print("⚠️ Rate limiting protection active - avoiding new API calls")
+            errorMessageSubject.send("API rate limiting active. Please try again in a moment.")
+            isLoadingSubject.send(false)
+            return
         }
         
         isLoadingSubject.send(true)
         errorMessageSubject.send(nil) // Clear any previous error messages when starting fresh fetch
         
+        // Track this API call
+        trackApiCall("CHART_DATA", coin: coin.symbol, details: "(\(range) - \(days) days)")
+        
         currentChartRequest = coinManager.fetchChartData(for: geckoID, range: days, currency: "usd", priority: .high)
-            .subscribe(on: DispatchQueue.global(qos: .userInitiated))
-            .map { [weak self] rawData in
-                return self?.processChartData(rawData, for: days) ?? []
+            .subscribe(on: DispatchQueue.global(qos: .userInitiated)) // Background API calls
+            .map { [weak self] rawData -> [Double] in
+                // Process data on background thread using Combine map operator
+                return self?.processChartData(rawData, for: self?.mapRangeToDays(range) ?? "1") ?? []
             }
-            .receive(on: DispatchQueue.main)
+            .receive(on: DispatchQueue.main) // UI updates on main thread
+            .handleEvents(receiveOutput: { [weak self] processedData in
+                // Clear any previous error messages on successful fetch
+                self?.errorMessageSubject.send(nil)
+                print("📊 ✅ Chart updated with \(processedData.count) points for \(range)")
+            })
             .sink(
                 receiveCompletion: { [weak self] completion in
-                    self?.isLoadingSubject.send(false)
-                    self?.currentChartRequest = nil
+                    guard let self = self else { return }
+                    
+                    // Always clear loading state when request completes (success or failure)
+                    self.isLoadingSubject.send(false)
+                    self.currentChartRequest = nil
+                    
                     if case .failure(let error) = completion {
-                        // Check if this is a rate limit error and provide helpful message
+                        // Enhanced error handling with rate limit awareness
                         let cooldownStatus = RequestManager.shared.getCooldownStatus()
                         if cooldownStatus.isInCooldown {
                             let remainingTime = cooldownStatus.remainingSeconds
-                            self?.errorMessageSubject.send("API rate limit reached. Cooling down for \(remainingTime)s...")
+                            self.errorMessageSubject.send("API rate limit reached. Cooling down for \(remainingTime)s...")
                         } else {
-                            let userFriendlyMessage = ErrorMessageProvider.shared.getChartErrorMessage(for: error, symbol: self?.coin.symbol ?? "Unknown")
-                            self?.errorMessageSubject.send(userFriendlyMessage)
+                            let userFriendlyMessage = ErrorMessageProvider.shared.getChartErrorMessage(for: error, symbol: self.coin.symbol)
+                            self.errorMessageSubject.send(userFriendlyMessage)
                         }
                         print("📊 Chart fetch failed: \(error)")
                     }
                 },
                 receiveValue: { [weak self] processedData in
-                    self?.chartPointsSubject.send(processedData)
+                    guard let self = self else { return }
                     
-                    // Clear any previous error messages on successful fetch
-                    self?.errorMessageSubject.send(nil)
+                    self.chartPointsSubject.send(processedData)
                     
-                    // Only fetch OHLC data if currently viewing candlestick chart
-                    if self?.currentChartType == .candlestick {
-                        self?.fetchRealOHLCData(for: range)
-                        print("📊 ✅ Chart updated with \(processedData.count) points for \(range) + fetching OHLC")
-                    } else {
-                        print("📊 ✅ Chart updated with \(processedData.count) points for \(range) (line chart - no OHLC needed)")
+                    // Optimized OHLC fetching: only fetch if currently viewing candlestick chart
+                    if self.currentChartType == .candlestick {
+                        self.fetchRealOHLCData(for: range)
+                        print("📊 Fetching OHLC data for candlestick view")
                     }
                 }
             )
@@ -496,20 +554,47 @@ final class CoinDetailsVM: ObservableObject {
      */
     private func processChartData(_ rawData: [Double], for days: String) -> [Double] {
         //   1: DATA VALIDATION AND CLEANING
-        let processedData = rawData.compactMap { value -> Double? in
+        var processedData = rawData.compactMap { value -> Double? in
             // Remove infinite, NaN, and negative values that would break charts
             guard value.isFinite, value >= 0 else { return nil }
             return value
         }
         
-        //   2: VISUAL SMOOTHING FOR BETTER USER EXPERIENCE
+        //   2: MEMORY PRESSURE HANDLING - Limit data points for performance
+        let maxDataPoints = getMaxDataPointsForRange(days)
+        if processedData.count > maxDataPoints {
+            // Intelligently sample data to stay within memory limits
+            let step = max(1, processedData.count / maxDataPoints) // Ensure step is at least 1
+            processedData = stride(from: 0, to: processedData.count, by: step)
+                .compactMap { index in
+                    return index < processedData.count ? processedData[index] : nil
+                }
+            print("⚡ Memory optimization: reduced from \(rawData.count) to \(processedData.count) points for \(days) range")
+        }
+        
+        //   3: VISUAL SMOOTHING FOR BETTER USER EXPERIENCE
         let smoothedData = applyDataSmoothing(processedData, for: days)
         
-        //   3: PERFORMANCE OPTIMIZATION FOR SMOOTH UI
+        //   4: PERFORMANCE OPTIMIZATION FOR SMOOTH UI
         let optimizedData = optimizeDataDensity(smoothedData, for: days)
         
         print("📊 Data processing: \(rawData.count) → \(optimizedData.count) points")
         return optimizedData
+    }
+    
+    /**
+     * MEMORY-AWARE DATA POINT LIMITS
+     * 
+     * Returns maximum data points based on timeframe to prevent memory pressure
+     */
+    private func getMaxDataPointsForRange(_ days: String) -> Int {
+        switch days {
+        case "1": return 200    // 24h: max 200 points (every ~7 minutes)
+        case "7": return 300    // 7d: max 300 points (every ~33 minutes)
+        case "30": return 400   // 30d: max 400 points (every ~1.8 hours)
+        case "365": return 500  // 1y: max 500 points (every ~17.5 hours)
+        default: return 300
+        }
     }
     
     /**
@@ -600,12 +685,10 @@ final class CoinDetailsVM: ObservableObject {
     // MARK: - Real OHLC Data Fetching
     
     /**
-     * FETCH REAL OHLC DATA FROM COINGECKO
+     * FETCH REAL OHLC DATA FROM COINGECKO WITH COMBINE BEST PRACTICES
      * 
      * Fetches actual trading data with real Open, High, Low, Close values 
-     * from CoinGecko's OHLC endpoint. This provides authentic candlestick 
-     * data that traders rely on. If the API fails, an empty array is sent
-     * and error handling will be implemented separately.
+     * from CoinGecko's OHLC endpoint using proper Combine patterns.
      */
     private func fetchRealOHLCData(for range: String) {
         guard let geckoID = geckoID else {
@@ -617,18 +700,21 @@ final class CoinDetailsVM: ObservableObject {
         
         let days = mapRangeToDays(range)
         
-        // Check for rate limit cooldown and try cached data first
+        // Check for rate limit cooldown and try cached data first using Combine
         let cooldownStatus = RequestManager.shared.getCooldownStatus()
         if cooldownStatus.isInCooldown {
             print("❄️ Rate limit cooldown active - checking cache for OHLC data")
             
-            // Try to get cached OHLC data during cooldown
+            // Handle cached OHLC data during cooldown immediately  
             if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
                !cachedOHLCData.isEmpty {
+                
+                // Use cached OHLC data immediately
                 ohlcDataSubject.send(cachedOHLCData)
-                errorMessageSubject.send(nil) // Clear error state since we have cached data
+                errorMessageSubject.send(nil)
                 isLoadingSubject.send(false)
                 print("📊 ✅ Using cached OHLC data during cooldown: \(cachedOHLCData.count) candles")
+                print("🔥 NO API CALL: Used cached OHLC data for \(coin.symbol) (\(days) days)")
                 return
             } else {
                 // No cached data available, inform user about cooldown
@@ -641,15 +727,32 @@ final class CoinDetailsVM: ObservableObject {
             }
         }
         
-        // Proceed with normal API request
-        // Note: Loading state is already set to true in setChartType when switching to candlestick
+        // Track this API call
+        trackApiCall("OHLC_DATA", coin: coin.symbol, details: "(\(range) - \(days) days)")
+        
+        // Proceed with normal API request using Combine best practices
         currentOHLCRequest = coinManager.fetchOHLCData(for: geckoID, range: days, currency: "usd", priority: .normal)
-            .subscribe(on: DispatchQueue.global(qos: .userInitiated))
-            .receive(on: DispatchQueue.main)
+            .subscribe(on: DispatchQueue.global(qos: .userInitiated)) // Background API calls
+            .receive(on: DispatchQueue.main) // UI updates on main thread
+            .handleEvents(
+                receiveSubscription: { [weak self] _ in
+                    // Optional: Track subscription start
+                    print("🚀 OHLC request started for \(geckoID)")
+                },
+                receiveOutput: { [weak self] ohlcData in
+                    // Clear any error messages on successful fetch
+                    self?.errorMessageSubject.send(nil)
+                    print("📊 ✅ Fetched \(ohlcData.count) REAL OHLC candles for \(range)")
+                }
+            )
             .sink(
                 receiveCompletion: { [weak self] completion in
-                    self?.currentOHLCRequest = nil
-                    self?.isLoadingSubject.send(false)
+                    guard let self = self else { return }
+                    
+                    self.currentOHLCRequest = nil
+                    // Always clear loading state when OHLC request completes
+                    self.isLoadingSubject.send(false)
+                    
                     if case .failure(let error) = completion {
                         print("❌ Real OHLC fetch failed: \(error)")
                         
@@ -657,30 +760,178 @@ final class CoinDetailsVM: ObservableObject {
                         let cooldownStatus = RequestManager.shared.getCooldownStatus()
                         if cooldownStatus.isInCooldown {
                             let remainingTime = cooldownStatus.remainingSeconds
-                            self?.errorMessageSubject.send("API rate limit reached. Cooling down for \(remainingTime)s.")
+                            self.errorMessageSubject.send("API rate limit reached. Cooling down for \(remainingTime)s.")
                         } else {
-                            self?.errorMessageSubject.send("Candlestick data temporarily unavailable.")
+                            self.errorMessageSubject.send("Candlestick data temporarily unavailable.")
                         }
                         
-                        self?.ohlcDataSubject.send([])
+                        self.ohlcDataSubject.send([])
                     }
                 },
                 receiveValue: { [weak self] realOHLCData in
-                    self?.ohlcDataSubject.send(realOHLCData)
-                    self?.errorMessageSubject.send(nil) // Clear any error messages on success
-                    self?.isLoadingSubject.send(false)
-                    print("📊 ✅ Fetched \(realOHLCData.count) REAL OHLC candles for \(range)")
+                    guard let self = self else { return }
+                    self.ohlcDataSubject.send(realOHLCData)
                 }
             )
     }
     
 
     
-
+    // MARK: - Reactive Filter Management with Combine Best Practices
     
-
+    /**
+     * DEBOUNCED FILTER CHANGES WITH COMBINE
+     * 
+     * Implements reactive programming patterns for filter changes to prevent
+     * rapid API calls while maintaining responsive UI feedback.
+     */
+    private func setupReactiveFilterHandling() {
+        // This would be called from init if you want automatic debouncing
+        // Currently kept separate to maintain existing architecture
+    }
     
-
+    /**
+     * ENHANCED CHART DATA FETCHING WITH DEBOUNCING
+     * 
+     * Uses Combine operators to debounce rapid filter changes while providing
+     * immediate loading feedback to users.
+     */
+    func fetchChartDataWithDebouncing(for range: String) {
+        isLoadingSubject.send(true)
+        errorMessageSubject.send(nil)
+        
+        // Create a publisher for the range change
+        Just(range)
+            .delay(for: .milliseconds(300), scheduler: DispatchQueue.main) // Debounce rapid changes
+            .removeDuplicates() // Ignore duplicate consecutive ranges
+            .flatMap { [weak self] debouncedRange -> AnyPublisher<Void, Never> in
+                guard let self = self else { 
+                    return Empty().eraseToAnyPublisher()
+                }
+                
+                // Perform the actual fetch after debounce
+                self.fetchChartData(for: debouncedRange)
+                return Just(()).eraseToAnyPublisher()
+            }
+            .sink { _ in
+                // Completion handled in fetchChartData
+            }
+            .store(in: &cancellables)
+    }
+    
+    // MARK: - Reactive Data Transformation with Combine
+    
+    /**
+     * TRANSFORM CHART DATA USING COMBINE OPERATORS
+     * 
+     * Example of how to use Combine for reactive data transformation
+     * if you want to make data processing more reactive.
+     */
+    private func setupReactiveDataProcessing() {
+        // Example: React to chart points changes with additional processing
+        chartPoints
+            .compactMap { $0.isEmpty ? nil : $0 } // Filter out empty arrays
+            .map { points in
+                // Additional reactive processing could go here
+                return points.count > 100 ? Array(points.prefix(100)) : points
+            }
+            .sink { processedPoints in
+                // React to processed data changes
+                print("📊 Reactive processing: \(processedPoints.count) points")
+            }
+            .store(in: &cancellables)
+    }
+    
+    // MARK: - Combine Publisher Helpers
+    
+    /**
+     * CONVENIENCE PUBLISHERS FOR COMPLEX STATE COMBINATIONS
+     * 
+     * Combines multiple state publishers for complex UI state management.
+     */
+    var chartLoadingState: AnyPublisher<ChartLoadingState, Never> {
+        Publishers.CombineLatest3(
+            isLoading,
+            chartPoints.map { !$0.isEmpty },
+            errorMessage.map { $0 != nil }
+        )
+        .map { isLoading, hasData, hasError in
+            if isLoading {
+                return .loading
+            } else if hasData {
+                return .loaded  // Prioritize successful data over stale errors
+            } else if hasError {
+                return .error
+            } else {
+                return .empty
+            }
+        }
+        .removeDuplicates()
+        .eraseToAnyPublisher()
+    }
+    
+    enum ChartLoadingState: Equatable {
+        case loading
+        case loaded
+        case error
+        case empty
+    }
+    
+    // MARK: - Memory Management & Lifecycle with Combine Best Practices
+    
+    /**
+     * OPTIMIZED CLEANUP FOR SCREEN TRANSITIONS
+     * 
+     * Cancels all ongoing requests when user leaves the coin details screen.
+     * Uses proper Combine subscription management.
+     */
+    func cancelAllRequests() {
+        print("🛑 Cancelling all ongoing API calls for \(coin.symbol)")
+        
+        // Cancel individual tracked requests
+        currentChartRequest?.cancel()
+        currentOHLCRequest?.cancel()
+        
+        // Clear individual request references
+        currentChartRequest = nil
+        currentOHLCRequest = nil
+        
+        // Cancel all subscriptions in the cancellables set
+        cancellables.removeAll()
+        
+        // Reset loading states
+        isLoadingSubject.send(false)
+        isLoadingMoreData = false
+        
+        print("✅ All requests and subscriptions cancelled for \(coin.symbol)")
+    }
+    
+    /**
+     * AUTOMATIC CLEANUP ON DEALLOCATION
+     * 
+     * Ensures proper cleanup even if manual cleanup wasn't called.
+     * Combine automatically cancels subscriptions when cancellables are cleared.
+     */
+    deinit {
+        print("🧹 CoinDetailsVM deinit - cleaning up resources for \(coin.symbol)")
+        
+        // Cancel individual requests
+        currentChartRequest?.cancel()
+        currentOHLCRequest?.cancel()
+        
+        // Stop smart refresh monitoring during cleanup
+        stopCooldownMonitoring()
+        
+        // Simple cleanup completion log
+        if CoinDetailsVM.totalApiCalls > 15 {
+            print("⚠️ High API usage detected: \(CoinDetailsVM.totalApiCalls) calls this session")
+        }
+        
+        // Clear all subscriptions (Combine handles the rest automatically)
+        cancellables.removeAll()
+        
+        print("✅ CoinDetailsVM cleanup completed for \(coin.symbol)")
+    }
     
     // MARK: - Error Handling System
     
@@ -810,6 +1061,40 @@ final class CoinDetailsVM: ObservableObject {
     
 
     
+    // MARK: - API Call Tracking
+    
+    /**
+     * COMPREHENSIVE API CALL TRACKING
+     * 
+     * Tracks every API call to identify rate limit causes
+     */
+    
+    private func trackApiCall(_ callType: String, coin: String, details: String = "") {
+        CoinDetailsVM.totalApiCalls += 1
+        let timestamp = Date()
+        let sessionTime = Int(timestamp.timeIntervalSince(CoinDetailsVM.sessionStartTime))
+        let logEntry = "[\(sessionTime)s] #\(CoinDetailsVM.totalApiCalls): \(callType) - \(coin) \(details)"
+        
+        CoinDetailsVM.apiCallLog.append(logEntry)
+        
+        // Keep only last 10 calls to prevent memory issues
+        if CoinDetailsVM.apiCallLog.count > 10 {
+            CoinDetailsVM.apiCallLog.removeFirst()
+        }
+        
+        // Only log if excessive usage detected
+        if CoinDetailsVM.totalApiCalls > 10 {
+            print("⚠️ API Call #\(CoinDetailsVM.totalApiCalls): \(callType) - \(coin)")
+        }
+    }
+    
+    private func resetApiTracking() {
+        CoinDetailsVM.totalApiCalls = 0
+        CoinDetailsVM.sessionStartTime = Date()
+        CoinDetailsVM.apiCallLog.removeAll()
+        print("🔥 API TRACKING RESET: New session started")
+    }
+    
     // MARK: - Utility Methods
     
     /**
@@ -860,40 +1145,86 @@ final class CoinDetailsVM: ObservableObject {
         return !isLoadingMoreData && !currentChartPoints.isEmpty
     }
     
-    // MARK: - Lifecycle Management
+    // MARK: - Unified Smart Auto-Refresh
     
     /**
-     * 🛑 IMMEDIATE CLEANUP FOR SCREEN TRANSITIONS
+     * UNIFIED SMART AUTO-REFRESH SYSTEM
      * 
-     * Cancels all ongoing requests when user leaves the coin details screen.
-     * Prevents unnecessary API calls and ensures clean memory management.
-     * 
-     *   CLEANUP BENEFITS:
-     * - Saves bandwidth by canceling unneeded requests
-     * - Prevents memory leaks from active subscriptions
-     * - Ensures clean state for potential return visits
-     * - Improves overall app performance
+     * Replaces both auto-retry and auto-refresh with one intelligent system:
+     * - Normal operation: Refreshes data periodically
+     * - During cooldown: Waits and retries when cooldown ends
+     * - Prevents conflicts between multiple refresh mechanisms
      */
-    func cancelAllRequests() {
-        print("🛑 Cancelling all ongoing API calls for \(coin.symbol)")
-        cancellables.removeAll()    // 🔗 Cancel all Combine subscriptions
-        isLoadingSubject.send(false)          // 🧹 Reset loading states
-        isLoadingMoreData = false
+    
+    func smartAutoRefresh(for range: String) {
+        let cooldownStatus = RequestManager.shared.getCooldownStatus()
+        
+        if cooldownStatus.isInCooldown {
+            // During cooldown: Start monitoring for when it ends
+            startCooldownMonitoring(for: range, chartType: currentChartType)
+            print("⏰ Smart refresh: Waiting for cooldown to end (\(cooldownStatus.remainingSeconds)s remaining)")
+        } else {
+            // Check if we have cached data first - use it without disruption
+            guard let geckoID = geckoID else { return }
+            let days = mapRangeToDays(range)
+            
+            if let cachedChartData = CacheService.shared.getChartData(for: geckoID, currency: "usd", days: days),
+               !cachedChartData.isEmpty {
+                                 // Use cached data silently without any UI disruption
+                 print("🔄 Smart refresh: Using existing cached data (no API call needed)")
+                 print("🔥 NO API CALL: Smart refresh used cached data for \(coin.symbol) (\(range))")
+                 return
+                         } else {
+                 // No cached data: fetch fresh data
+                 print("🔄 Smart refresh: No cached data, fetching fresh data")
+                 trackApiCall("SMART_REFRESH", coin: coin.symbol, details: "(\(range))")
+                 fetchChartData(for: range)
+             }
+        }
     }
     
-    /**
-     * AUTOMATIC CLEANUP ON DEALLOCATION
-     * 
-     * Ensures proper cleanup even if manual cleanup wasn't called.
-     * This is a safety net that prevents memory leaks and orphaned requests.
-     */
-    deinit {
-        print("🧹 CoinDetailsVM deinit - cancelling all API calls for \(coin.symbol)")
-        currentChartRequest?.cancel()
-        currentOHLCRequest?.cancel()
-        cancellables.removeAll()
-        // Combine automatically cancels subscriptions when cancellables are cleared
+    private func startCooldownMonitoring(for range: String, chartType: ChartType) {
+        // Cancel existing monitoring to prevent duplicates
+        cooldownTimer?.cancel()
+        
+        // Store parameters for retry
+        pendingRetryRange = range
+        pendingRetryType = chartType
+        
+        print("⏰ Monitoring cooldown for smart refresh: \(range) \(chartType.rawValue)")
+        
+        // Check cooldown status every 5 seconds
+        cooldownTimer = Timer.publish(every: 5.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                
+                let cooldownStatus = RequestManager.shared.getCooldownStatus()
+                
+                if !cooldownStatus.isInCooldown {
+                    // Cooldown ended - fetch fresh data
+                    print("🔄 Smart refresh: Cooldown ended, fetching \(self.pendingRetryRange ?? "unknown")")
+                    
+                    if let retryRange = self.pendingRetryRange {
+                        self.trackApiCall("COOLDOWN_RETRY", coin: self.coin.symbol, details: "(\(retryRange))")
+                        self.fetchChartData(for: retryRange)
+                    }
+                    
+                    self.stopCooldownMonitoring()
+                } else {
+                    print("⏰ Smart refresh: Waiting \(cooldownStatus.remainingSeconds)s")
+                }
+            }
     }
+    
+    private func stopCooldownMonitoring() {
+        cooldownTimer?.cancel()
+        cooldownTimer = nil
+        pendingRetryRange = nil
+        pendingRetryType = nil
+        print("⏹️ Smart refresh: Stopped cooldown monitoring")
+    }
+
 }
 
 

@@ -105,6 +105,20 @@ import Combine
         cancellables.removeAll()
     }
     
+    // MARK: - Child ViewController Timer Management
+    
+    func stopBackgroundOperationsFromChild() {
+        // Called by CoinDetailsVC to stop any background operations
+        viewModel.cancelAllRequests()
+        print("⏸️ SearchVC: Stopped background operations from child request")
+    }
+    
+    func resumeBackgroundOperationsFromChild() {
+        // Called by CoinDetailsVC when returning - no specific action needed
+        // SearchVC doesn't have continuous timers like the other VCs
+        print("🔄 SearchVC: Child returned (no specific action needed)")
+    }
+    
     // MARK: - UI Setup
     
     private func configureView() {

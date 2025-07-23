@@ -97,6 +97,7 @@ class FilterHeaderView: UIView {
         let stackView = UIStackView()
         stackView.axis = .horizontal
         stackView.distribution = .fill
+        stackView.alignment = .center  // Center align to prevent height conflicts
         stackView.spacing = 12
         stackView.translatesAutoresizingMaskIntoConstraints = false
         
@@ -116,6 +117,7 @@ class FilterHeaderView: UIView {
             let buttonContainer = UIStackView()
             buttonContainer.axis = .horizontal
             buttonContainer.distribution = .fill
+            buttonContainer.alignment = .center  // Center align for consistency
             buttonContainer.spacing = 12
             buttonContainer.addArrangedSubview(priceChangeButton)
             buttonContainer.addArrangedSubview(topCoinsButton)
