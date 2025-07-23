@@ -236,16 +236,6 @@ final class ChartCell: UITableViewCell {
             self.currentPoints = points
             if !points.isEmpty {
                 lineChartView.update(points, range: range)
-                
-                // If we're in candlestick mode but receiving line data, clear old candlestick data
-                if currentChartType == .candlestick {
-                    print("📊 Clearing old candlestick data - waiting for new OHLC data for \(range)")
-                    self.currentOHLCData = [] // Clear old candlestick data
-                    currentState = .loading // Show loading until OHLC data arrives
-                    updateViewsForState()
-                    return
-                }
-                
                 hasData = true
             }
         }
@@ -256,10 +246,10 @@ final class ChartCell: UITableViewCell {
                 candlestickChartView.update(ohlcData, range: range)
                 hasData = true
             } else {
-                // Clear candlestick chart when empty OHLC data is received
-                print("📊 Received empty OHLC data - clearing candlestick chart for \(range)")
-                candlestickChartView.clear() // Clear the candlestick display
-                if currentChartType == .candlestick {
+                // FIXED: Only clear and show loading if we're actually in candlestick mode and expecting data
+                if currentChartType == .candlestick && points == nil {
+                    print("📊 Received empty OHLC data - clearing candlestick chart for \(range)")
+                    candlestickChartView.clear() // Clear the candlestick display
                     currentState = .loading // Show loading when candlestick data is cleared
                     updateViewsForState()
                     return
@@ -267,10 +257,13 @@ final class ChartCell: UITableViewCell {
             }
         }
         
-        // Update state based on whether we have data
+        // FIXED: Only update state if we actually have data or if we're not in a loading scenario
         if hasData {
             currentState = .data
             updateViewsForState()
+        } else if ohlcData != nil && ohlcData!.isEmpty && currentChartType == .line {
+            // If we received empty OHLC data but we're in line mode, don't show loading
+            print("📊 Ignoring empty OHLC data - in line chart mode")
         }
         
         print("📊 Updated chart cell with range: \(range), chart type: \(currentChartType)")

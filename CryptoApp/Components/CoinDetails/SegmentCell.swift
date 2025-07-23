@@ -196,6 +196,13 @@ final class SegmentCell: UITableViewCell {
             segmentView.setSelectedIndex(index)
         }
     }
+    
+    func setSelectedRangeSilently(_ range: String) {
+        let ranges = ["24h", "7d", "30d", "All"]
+        if let index = ranges.firstIndex(of: range) {
+            segmentView.setSelectedIndexSilently(index)
+        }
+    }
   
     required init?(coder: NSCoder) { fatalError() }
 }

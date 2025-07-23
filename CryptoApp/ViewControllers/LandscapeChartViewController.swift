@@ -252,11 +252,10 @@ final class LandscapeChartViewController: UIViewController {
             let ranges = ["24h", "7d", "30d", "All"]
             self.selectedRange = ranges[index]
             
-            // Fetch new data for the selected range
+            // FIXED: Don't fetch data directly - let parent handle state synchronization
             print("📊 Landscape chart range changed to: \(self.selectedRange)")
-            self.viewModel.fetchChartData(for: self.selectedRange)
             
-            // Notify parent about filter change
+            // Only notify parent about filter change - parent will handle data fetching
             self.onStateChanged?(self.selectedRange, self.selectedChartType)
         }
         

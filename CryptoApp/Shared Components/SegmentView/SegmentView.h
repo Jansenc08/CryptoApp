@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) void (^onSelectionChanged)(NSInteger selectedIndex);
 - (void)configureWithItems:(NSArray<NSString *> *)items;
 - (void)setSelectedIndex:(NSInteger)index;
+- (void)setSelectedIndexSilently:(NSInteger)index;
 
 @end
 

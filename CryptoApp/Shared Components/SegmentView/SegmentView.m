@@ -49,6 +49,22 @@
     }
 }
 
+- (void)setSelectedIndexSilently:(NSInteger)index {
+    if (index >= 0 && index < self.segmentedControl.numberOfSegments) {
+        // Temporarily disable the callback to prevent recursive updates
+        id originalCallback = self.onSelectionChanged;
+        self.onSelectionChanged = nil;
+        
+        // Update selection without animation
+        [UIView performWithoutAnimation:^{
+            self.segmentedControl.selectedSegmentIndex = index;
+        }];
+        
+        // Restore the callback
+        self.onSelectionChanged = originalCallback;
+    }
+}
+
 - (void)valueChanged:(UISegmentedControl *)sender {
     if (self.onSelectionChanged) {
         self.onSelectionChanged(sender.selectedSegmentIndex);
