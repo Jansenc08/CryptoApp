@@ -960,8 +960,8 @@ final class CoinListVM: ObservableObject {
             let currentPercentChange = currentQuote.percentChange24h ?? 0.0
             let newPercentChange = newQuote.percentChange24h ?? 0.0
             
-            let priceChanged = abs(currentPrice - newPrice) > 0.01
-            let percentChanged = abs(currentPercentChange - newPercentChange) > 0.01
+            let priceChanged = abs(currentPrice - newPrice) > 0.001  // More sensitive threshold
+            let percentChanged = abs(currentPercentChange - newPercentChange) > 0.001  // More sensitive threshold
             
             if priceChanged || percentChanged {
                 updatedCoins[i].quote?["USD"] = newQuote
@@ -969,11 +969,41 @@ final class CoinListVM: ObservableObject {
             }
         }
         
+        // Capture old prices BEFORE updating currentCoins
+        let oldPrices = Dictionary(uniqueKeysWithValues: currentCoins.map { ($0.id, $0.quote?["USD"]?.price ?? 0.0) })
+        
         // Update the original array only once, atomically
         coinsSubject.send(updatedCoins)
         
         if !changedCoinIds.isEmpty {
             updatedCoinIdsSubject.send(changedCoinIds)
+            
+            // Log detailed price changes
+            #if DEBUG
+            let priceChanges = changedCoinIds.compactMap { coinId -> (symbol: String, oldPrice: String, newPrice: String, change: String)? in
+                guard let updatedCoin = updatedCoins.first(where: { $0.id == coinId }),
+                      let newQuote = updatedQuotes[coinId],
+                      let newPrice = newQuote.price,
+                      let changePercent = newQuote.percentChange24h else { return nil }
+                
+                // Get the actual old price from captured data before update
+                let oldPrice = oldPrices[coinId] ?? 0.0
+                
+                let formatter = NumberFormatter()
+                formatter.numberStyle = .currency
+                formatter.currencyCode = "USD"
+                formatter.maximumFractionDigits = 2
+                
+                let oldPriceStr = formatter.string(from: NSNumber(value: oldPrice)) ?? "$\(oldPrice)"
+                let newPriceStr = formatter.string(from: NSNumber(value: newPrice)) ?? "$\(newPrice)"
+                let changeStr = String(format: "%.2f%%", changePercent)
+                
+                return (updatedCoin.symbol, oldPriceStr, newPriceStr, changeStr)
+            }
+            
+            let title = "Coin List Price Updates (\(changedCoinIds.count) coins)" + (priceChanges.count > 3 ? " - showing top 3" : "")
+            AppLogger.priceTable(title, updates: Array(priceChanges.prefix(3)))
+            #endif
         }
     }
     
@@ -1025,14 +1055,14 @@ final class CoinListVM: ObservableObject {
                 for i in 0..<updatedCoins.count {
                     let id = updatedCoins[i].id
                     if visibleIds.contains(id), let updated = updatedQuotes[id] {
-                        // Change tracking
-                        let oldPrice = updatedCoins[i].quote?["USD"]?.price
-                        let newPrice = updated.price
-                        let oldPercentChange = updatedCoins[i].quote?["USD"]?.percentChange24h
-                        let newPercentChange = updated.percentChange24h
+                        // Change tracking with proper thresholds
+                        let oldPrice = updatedCoins[i].quote?["USD"]?.price ?? 0.0
+                        let newPrice = updated.price ?? 0.0
+                        let oldPercentChange = updatedCoins[i].quote?["USD"]?.percentChange24h ?? 0.0
+                        let newPercentChange = updated.percentChange24h ?? 0.0
                         
-                        let priceChanged = oldPrice != newPrice
-                        let percentChanged = oldPercentChange != newPercentChange
+                        let priceChanged = abs(oldPrice - newPrice) > 0.001  // Use threshold instead of exact equality
+                        let percentChanged = abs(oldPercentChange - newPercentChange) > 0.001  // Use threshold instead of exact equality
                         
                         if priceChanged || percentChanged {
                             updatedCoins[i].quote?["USD"] = updated
@@ -1041,12 +1071,39 @@ final class CoinListVM: ObservableObject {
                     }
                 }
                 
+                // Capture old prices BEFORE updating currentCoins
+                let oldPrices = Dictionary(uniqueKeysWithValues: self.currentCoins.map { ($0.id, $0.quote?["USD"]?.price ?? 0.0) })
+                
                 // UI UPDATE TRIGGER
                 if !changedCoinIds.isEmpty {
                     self.coinsSubject.send(updatedCoins)
                     self.updatedCoinIdsSubject.send(changedCoinIds)
+                    
+                    // Log detailed price changes for visible coins
                     #if DEBUG
-                    print("📱 Updated \(changedCoinIds.count) visible coins")
+                    let priceChanges = changedCoinIds.compactMap { coinId -> (symbol: String, oldPrice: String, newPrice: String, change: String)? in
+                        guard let updatedCoin = updatedCoins.first(where: { $0.id == coinId }),
+                              let newQuote = updatedQuotes[coinId],
+                              let newPrice = newQuote.price,
+                              let changePercent = newQuote.percentChange24h else { return nil }
+                        
+                        // Get the actual old price from captured data before update
+                        let oldPrice = oldPrices[coinId] ?? 0.0
+                        
+                        let formatter = NumberFormatter()
+                        formatter.numberStyle = .currency
+                        formatter.currencyCode = "USD"
+                        formatter.maximumFractionDigits = 2
+                        
+                        let oldPriceStr = formatter.string(from: NSNumber(value: oldPrice)) ?? "$\(oldPrice)"
+                        let newPriceStr = formatter.string(from: NSNumber(value: newPrice)) ?? "$\(newPrice)"
+                        let changeStr = String(format: "%.2f%%", changePercent)
+                        
+                        return (updatedCoin.symbol, oldPriceStr, newPriceStr, changeStr)
+                    }
+                    
+                    let title = "Visible Coins Price Updates (\(changedCoinIds.count) coins)" + (priceChanges.count > 3 ? " - showing top 3" : "")
+                    AppLogger.priceTable(title, updates: Array(priceChanges.prefix(3)))
                     #endif
                 } else {
                     #if DEBUG
