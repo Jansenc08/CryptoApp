@@ -74,22 +74,9 @@ final class WatchlistVC: UIViewController {
         cancellables.removeAll()
     }
     
-    // MARK: - Parent-Child Timer Management
+    // MARK: - Container View Controller Lifecycle
     
-    func stopPeriodicUpdatesFromParent() {
-        // Called by parent CoinListVC when child view needs to stop background timers
-        viewModel.stopPeriodicUpdates()
-        viewModel.cancelAllRequests()
-        print("⏸️ WatchlistVC: Stopped periodic updates from parent request")
-    }
-    
-    func resumePeriodicUpdatesFromParent() {
-        // Called by parent CoinListVC when returning from child view
-        viewModel.startPeriodicUpdates()
-        // Also refresh data to ensure we have current prices
-        viewModel.refreshWatchlist()
-        print("🔄 WatchlistVC: Resumed periodic updates from parent request")
-    }
+    // These methods are called by the container view controller (CoinListVC)
     
     // MARK: - UI Setup
     

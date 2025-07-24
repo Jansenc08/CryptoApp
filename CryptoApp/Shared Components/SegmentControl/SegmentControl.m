@@ -279,4 +279,89 @@
     }
 }
 
+// MARK: - Smooth Sliding Animation Support
+
+- (void)updateUnderlineProgressFromSegment:(NSInteger)fromIndex toSegment:(NSInteger)toIndex withProgress:(CGFloat)progress {
+    // Clamp progress between 0.0 and 1.0
+    progress = MAX(0.0, MIN(1.0, progress));
+    
+    // Validate indices
+    if (fromIndex < 0 || fromIndex >= self.segmentButtons.count ||
+        toIndex < 0 || toIndex >= self.segmentButtons.count) {
+        return;
+    }
+    
+    UIButton *fromButton = self.segmentButtons[fromIndex];
+    UIButton *toButton = self.segmentButtons[toIndex];
+    
+    // Get button frames
+    CGRect fromFrame = fromButton.frame;
+    CGRect toFrame = toButton.frame;
+    
+    // Interpolate position and width
+    CGFloat interpolatedX = fromFrame.origin.x + (toFrame.origin.x - fromFrame.origin.x) * progress;
+    CGFloat interpolatedWidth = fromFrame.size.width + (toFrame.size.width - fromFrame.size.width) * progress;
+    
+    // Update constraints directly for smooth real-time animation
+    self.underlineLeadingConstraint.active = NO;
+    self.underlineWidthConstraint.active = NO;
+    
+    self.underlineLeadingConstraint = [self.underlineIndicator.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:interpolatedX];
+    self.underlineWidthConstraint = [self.underlineIndicator.widthAnchor constraintEqualToConstant:interpolatedWidth];
+    
+    self.underlineLeadingConstraint.active = YES;
+    self.underlineWidthConstraint.active = YES;
+    
+    // Update text colors with smooth interpolation
+    for (NSInteger i = 0; i < self.segmentButtons.count; i++) {
+        UIButton *button = self.segmentButtons[i];
+        UIColor *textColor;
+        
+        if (i == fromIndex) {
+            // From button: fade from selected to unselected
+            textColor = [self interpolateColorFrom:[UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0]
+                                                to:[UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0]
+                                      withProgress:progress];
+        } else if (i == toIndex) {
+            // To button: fade from unselected to selected
+            textColor = [self interpolateColorFrom:[UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0]
+                                                to:[UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0]
+                                      withProgress:progress];
+        } else {
+            // Other buttons: stay unselected
+            textColor = [UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0];
+        }
+        
+        // Apply color based on iOS version
+        if (@available(iOS 15.0, *)) {
+            if (button.configuration != nil) {
+                UIButtonConfiguration *config = button.configuration;
+                config.baseForegroundColor = textColor;
+                button.configuration = config;
+            }
+        } else {
+            [button setTitleColor:textColor forState:UIControlStateNormal];
+            [button setTitleColor:textColor forState:UIControlStateHighlighted];
+        }
+    }
+    
+    // Force immediate layout update
+    [self layoutIfNeeded];
+}
+
+- (UIColor *)interpolateColorFrom:(UIColor *)fromColor to:(UIColor *)toColor withProgress:(CGFloat)progress {
+    CGFloat fromR, fromG, fromB, fromA;
+    CGFloat toR, toG, toB, toA;
+    
+    [fromColor getRed:&fromR green:&fromG blue:&fromB alpha:&fromA];
+    [toColor getRed:&toR green:&toG blue:&toB alpha:&toA];
+    
+    CGFloat interpolatedR = fromR + (toR - fromR) * progress;
+    CGFloat interpolatedG = fromG + (toG - fromG) * progress;
+    CGFloat interpolatedB = fromB + (toB - fromB) * progress;
+    CGFloat interpolatedA = fromA + (toA - fromA) * progress;
+    
+    return [UIColor colorWithRed:interpolatedR green:interpolatedG blue:interpolatedB alpha:interpolatedA];
+}
+
 @end 

@@ -33,6 +33,11 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private var isRefreshing = false                                        // Track if refresh is in progress
     private var lastAutoRefreshTime: Date?                                  // Track last auto-refresh time
     
+    // MARK: - Sliding Gesture Properties
+    
+    private var currentPageIndex: Int = 0
+    private var isTransitioning: Bool = false
+    
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
@@ -55,12 +60,26 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             print("📱 View appeared - data already loaded, skipping fetch")
         }
         
-        startAutoRefresh()     // Start auto-refreshing price updates
+        // Start resources for the currently active tab only
+        startResourcesForActiveTab()
+    }
+    
+    private func startResourcesForActiveTab() {
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
+        
+        // Use proper container view controller lifecycle
+        notifyChildViewWillAppear(currentIndex)
+        notifyChildViewDidAppear(currentIndex)
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        stopAutoRefresh() //  Stop Timer immediately when transition starts
+        
+        // Stop resources for the currently active tab when leaving the entire CoinListVC
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
+        notifyChildViewWillDisappear(currentIndex)
+        
+        AppLogger.performance("Stopped resources for active tab - leaving CoinListVC")
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -69,16 +88,21 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // Only cancel API calls if we're actually leaving (not just a partial swipe)
         if isMovingFromParent || isBeingDismissed {
             viewModel.cancelAllRequests()
-            print("🚪 Officially leaving coin list page - cancelled all API calls")
+            AppLogger.performance("🚪 Officially leaving coin list page - cancelled all API calls")
         } else {
-            print("🔄 Transition cancelled - staying on coin list page")
+            AppLogger.performance("🔄 Transition cancelled - staying on coin list page")
         }
     }
     
     deinit {
-        print("🧹 CoinListVC deinit - cleaning up resources")
+        AppLogger.performance("🧹 CoinListVC deinit - cleaning up all resources")
+        
+        // Clean up all resources
         stopAutoRefresh()
+        viewModel.cancelAllRequests()
         cancellables.removeAll()
+        
+        // Child view controllers are automatically cleaned up by the container
     }
     
     
@@ -92,6 +116,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         setupContainerViews()
         setupFilterHeaderView()
         setupSortHeaderView()
+        // setupSwipeGestures() is already called in setupContainerViews()
     }
     
     private func setupFilterHeaderView() {
@@ -226,34 +251,257 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     }
     
     @objc private func handleContainerPan(_ gesture: UIPanGestureRecognizer) {
-        guard gesture.state == .ended else { return }
-        
-        let velocity = gesture.velocity(in: view)
         let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
         
-        // Determine swipe direction - need significant horizontal movement
-        let minimumSwipeDistance: CGFloat = 50
-        let minimumVelocity: CGFloat = 300
+        switch gesture.state {
+        case .began:
+            isTransitioning = true
+            
+            // Ensure both containers are visible for smooth transition
+            coinsContainerView.isHidden = false
+            watchlistContainerView.isHidden = false
+            
+        case .changed:
+            // Only respond to horizontal gestures
+            guard abs(translation.x) > abs(translation.y) else { return }
+            
+            // Calculate how much to move each container
+            let offset = translation.x
+            updateContainerPositions(offset: offset)
+            
+            // Update segment control underline in real-time
+            updateSegmentControlProgress(offset: offset)
+            
+        case .ended, .cancelled:
+            // Determine if we should switch pages based on distance and velocity
+            let currentIndex = segmentControl.selectedSegmentIndex
+            let shouldSwitch = shouldSwitchPage(translation: translation, velocity: velocity)
+            
+            if shouldSwitch {
+                let newIndex = translation.x > 0 ? max(0, currentIndex - 1) : min(1, currentIndex + 1)
+                if newIndex != currentIndex {
+                    segmentControl.setSelectedSegmentIndex(newIndex, animated: true)
+                    transitionToPage(newIndex)
+                    return
+                }
+            }
+            
+            // Snap back to current page if we didn't switch
+            animateToPage(currentIndex)
+            
+        default:
+            break
+        }
+    }
+    
+    private func shouldSwitchPage(translation: CGPoint, velocity: CGPoint) -> Bool {
+        let minimumDistance: CGFloat = view.bounds.width * 0.3  // 30% of screen width
+        let minimumVelocity: CGFloat = 500
         
-        let isSignificantHorizontalSwipe = abs(translation.x) > minimumSwipeDistance && abs(velocity.x) > minimumVelocity
-        let isMainlyHorizontal = abs(translation.x) > abs(translation.y)
+        return abs(translation.x) > minimumDistance || abs(velocity.x) > minimumVelocity
+    }
+    
+    private func updateContainerPositions(offset: CGFloat) {
+        let currentIndex = segmentControl.selectedSegmentIndex
+        let screenWidth = view.bounds.width
         
-        guard isSignificantHorizontalSwipe && isMainlyHorizontal else { return }
-        
+        if currentIndex == 0 { // Currently on Coins page
+            // Coins container: moves left as we swipe left (to reveal Watchlist)
+            coinsContainerView.transform = CGAffineTransform(translationX: offset, y: 0)
+            // Watchlist container: starts off-screen right, moves in as we swipe left
+            watchlistContainerView.transform = CGAffineTransform(translationX: screenWidth + offset, y: 0)
+        } else { // Currently on Watchlist page
+            // Watchlist container: moves right as we swipe right (to reveal Coins)
+            watchlistContainerView.transform = CGAffineTransform(translationX: offset, y: 0)
+            // Coins container: starts off-screen left, moves in as we swipe right
+            coinsContainerView.transform = CGAffineTransform(translationX: -screenWidth + offset, y: 0)
+        }
+    }
+    
+    private func updateSegmentControlProgress(offset: CGFloat) {
+        let screenWidth = view.bounds.width
         let currentIndex = segmentControl.selectedSegmentIndex
         
-        if translation.x > 0 { // Swipe right - go to previous tab
-            if currentIndex > 0 {
-                let newIndex = currentIndex - 1
-                segmentControl.setSelectedSegmentIndex(newIndex, animated: true)
-                switchToTab(newIndex)
+        // Calculate progress based on how far we've moved
+        var progress: CGFloat = 0.0
+        var fromIndex = currentIndex
+        var toIndex = currentIndex
+        
+        if currentIndex == 0 { // Currently on Coins page
+            if offset < 0 { // Swiping left (toward Watchlist)
+                toIndex = 1
+                progress = abs(offset) / screenWidth
             }
-        } else { // Swipe left - go to next tab
-            if currentIndex < 1 { // We have 2 tabs (0 and 1)
-                let newIndex = currentIndex + 1
-                segmentControl.setSelectedSegmentIndex(newIndex, animated: true)
-                switchToTab(newIndex)
+        } else { // Currently on Watchlist page
+            if offset > 0 { // Swiping right (toward Coins)
+                toIndex = 0
+                progress = offset / screenWidth
             }
+        }
+        
+        // Clamp progress to prevent overscroll effects
+        progress = max(0.0, min(1.0, progress))
+        
+        // Only update if we're actually transitioning between segments
+        if fromIndex != toIndex || progress > 0.0 {
+            segmentControl.updateUnderlineProgress(fromSegment: fromIndex, toSegment: toIndex, withProgress: progress)
+        }
+    }
+    
+    // MARK: - Container View Controller Resource Management
+    
+    private func transitionToPage(_ pageIndex: Int) {
+        let currentIndex = segmentControl.selectedSegmentIndex
+        
+        // Don't transition if we're already on the target page
+        guard currentIndex != pageIndex else { return }
+        
+        AppLogger.ui("Transitioning from \(currentIndex == 0 ? "Coins" : "Watchlist") to \(pageIndex == 0 ? "Coins" : "Watchlist")")
+        
+        // Step 1: Notify current child that it will disappear
+        notifyChildViewWillDisappear(currentIndex)
+        
+        // Step 2: Notify new child that it will appear
+        notifyChildViewWillAppear(pageIndex)
+        
+        // Step 3: Perform the UI animation
+        animateToPage(pageIndex)
+        
+        // Step 4: Complete the transition (handled in animation completion)
+    }
+    
+    private func notifyChildViewWillAppear(_ pageIndex: Int) {
+        if pageIndex == 0 {
+            // Coins page becoming active
+            AppLogger.performance("Coins page will appear - starting resources")
+            startAutoRefresh()
+        } else {
+            // Watchlist page becoming active  
+            AppLogger.performance("Watchlist page will appear - starting resources")
+            watchlistVC?.viewWillAppear(true)
+        }
+    }
+    
+    private func notifyChildViewWillDisappear(_ pageIndex: Int) {
+        if pageIndex == 0 {
+            // Coins page becoming inactive
+            AppLogger.performance("Coins page will disappear - stopping resources")
+            stopAutoRefresh()
+        } else {
+            // Watchlist page becoming inactive
+            AppLogger.performance("Watchlist page will disappear - stopping resources")
+            watchlistVC?.viewWillDisappear(true)
+        }
+    }
+    
+    private func notifyChildViewDidAppear(_ pageIndex: Int) {
+        if pageIndex == 0 {
+            // Coins page is now active
+            AppLogger.performance("Coins page did appear")
+        } else {
+            // Watchlist page is now active
+            AppLogger.performance("Watchlist page did appear")
+            watchlistVC?.viewDidAppear(true)
+        }
+    }
+    
+    private func notifyChildViewDidDisappear(_ pageIndex: Int) {
+        if pageIndex == 0 {
+            // Coins page is now inactive
+            AppLogger.performance("Coins page did disappear")
+        } else {
+            // Watchlist page is now inactive
+            AppLogger.performance("Watchlist page did disappear")
+            watchlistVC?.viewDidDisappear(true)
+        }
+    }
+    
+    private func completeTransition(from fromPageIndex: Int, to toPageIndex: Int) {
+        // Step 1: Notify old child that it did disappear
+        notifyChildViewDidDisappear(fromPageIndex)
+        
+        // Step 2: Update UI state
+        updateUIForPage(toPageIndex)
+        
+        // Step 3: Notify new child that it did appear
+        notifyChildViewDidAppear(toPageIndex)
+        
+        // Step 4: Clean up transforms and visibility
+        cleanupAfterTransition(toPageIndex)
+    }
+    
+    private func updateUIForPage(_ pageIndex: Int) {
+        if pageIndex == 0 {
+            navigationItem.title = "Markets"
+        } else {
+            navigationItem.title = "Watchlist"
+            
+            #if DEBUG
+            // Show database contents when switching to watchlist
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                let items = WatchlistManager.shared.watchlistItems
+                let tableData = items.map { 
+                    ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
+                }
+                AppLogger.databaseTable("Watchlist Database Contents", items: tableData)
+            }
+            #endif
+        }
+    }
+    
+    private func cleanupAfterTransition(_ activePageIndex: Int) {
+        // Hide the off-screen container to improve performance
+        if activePageIndex == 0 {
+            watchlistContainerView.isHidden = true
+            coinsContainerView.isHidden = false
+        } else {
+            coinsContainerView.isHidden = true
+            watchlistContainerView.isHidden = false
+        }
+        
+        // Reset transforms for hidden containers
+        if coinsContainerView.isHidden {
+            coinsContainerView.transform = .identity
+        }
+        if watchlistContainerView.isHidden {
+            watchlistContainerView.transform = .identity
+        }
+    }
+    
+    // MARK: - Smooth Page Animation
+    
+    private func animateToPage(_ pageIndex: Int) {
+        let screenWidth = view.bounds.width
+        let animationDuration: TimeInterval = 0.35
+        let springDamping: CGFloat = 0.8
+        let springVelocity: CGFloat = 0.6
+        
+        let fromPageIndex = currentPageIndex
+        currentPageIndex = pageIndex
+        
+        UIView.animate(withDuration: animationDuration, delay: 0, usingSpringWithDamping: springDamping, initialSpringVelocity: springVelocity, options: [.curveEaseOut, .allowUserInteraction]) {
+            
+            if pageIndex == 0 { // Animate to Coins page
+                self.coinsContainerView.transform = .identity
+                self.watchlistContainerView.transform = CGAffineTransform(translationX: screenWidth, y: 0)
+            } else { // Animate to Watchlist page
+                self.coinsContainerView.transform = CGAffineTransform(translationX: -screenWidth, y: 0)
+                self.watchlistContainerView.transform = .identity
+            }
+            
+        } completion: { [weak self] finished in
+            guard let self = self, finished else { return }
+            
+            // Ensure segment control is in the correct final state
+            self.segmentControl.setSelectedSegmentIndex(pageIndex, animated: false)
+            
+            // Complete the container view controller transition
+            self.completeTransition(from: fromPageIndex, to: pageIndex)
+            
+            self.isTransitioning = false
+            
+            AppLogger.ui("Page transition completed to: \(pageIndex == 0 ? "Markets" : "Watchlist")")
         }
     }
     
@@ -503,30 +751,43 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         autoRefreshTimer = nil
     }
     
-    // MARK: - Child ViewController Timer Management
+    // MARK: - Legacy Child ViewController Timer Management
+    // TODO: Update CoinDetailsVC to use proper navigation lifecycle instead
     
     func stopAutoRefreshFromChild() {
-        // Called by CoinDetailsVC to stop background auto-refresh
-        stopAutoRefresh()
-        print("⏸️ CoinListVC: Stopped auto-refresh from child request")
+        // Legacy method - called by CoinDetailsVC to stop background auto-refresh
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
+        if currentIndex == 0 {
+            stopAutoRefresh()
+            AppLogger.performance("⏸️ CoinListVC: Stopped auto-refresh from child request")
+        }
     }
     
     func resumeAutoRefreshFromChild() {
-        // Called by CoinDetailsVC when returning to resume auto-refresh
-        startAutoRefresh()
-        print("🔄 CoinListVC: Resumed auto-refresh from child request")
+        // Legacy method - called by CoinDetailsVC when returning to resume auto-refresh
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
+        if currentIndex == 0 {
+            startAutoRefresh()
+            AppLogger.performance("🔄 CoinListVC: Resumed auto-refresh from child request")
+        }
     }
     
     func stopWatchlistTimersFromChild() {
-        // Stop the embedded WatchlistVC timers
-        watchlistVC?.stopPeriodicUpdatesFromParent()
-        print("⏸️ CoinListVC: Stopped watchlist timers from child request")
+        // Legacy method - stop the embedded WatchlistVC timers
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
+        if currentIndex == 1 {
+            watchlistVC?.viewWillDisappear(false)
+            AppLogger.performance("⏸️ CoinListVC: Stopped watchlist timers from child request")
+        }
     }
     
     func resumeWatchlistTimersFromChild() {
-        // Resume the embedded WatchlistVC timers
-        watchlistVC?.resumePeriodicUpdatesFromParent()
-        print("🔄 CoinListVC: Resumed watchlist timers from child request")
+        // Legacy method - resume the embedded WatchlistVC timers
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
+        if currentIndex == 1 {
+            watchlistVC?.viewWillAppear(false)
+            AppLogger.performance("🔄 CoinListVC: Resumed watchlist timers from child request")
+        }
     }
     
     // Timer throttled to prevent API spam
@@ -628,7 +889,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     
     func switchToTab(_ index: Int) {
         segmentControl.setSelectedSegmentIndex(index, animated: true)
-        segmentControl(segmentControl, didSelectSegmentAt: index)
+        transitionToPage(index)
     }
     
     private func updateSortHeaderForCurrentFilter() {
@@ -822,34 +1083,10 @@ extension CoinListVC: SegmentControlDelegate {
         let segmentName = index == 0 ? "Markets" : "Watchlist"
         AppLogger.ui("Segment switched to: \(segmentName)")
         
-        // Animate the container view transition
-        UIView.transition(with: view, duration: 0.3, options: .transitionCrossDissolve) {
-            switch index {
-            case 0: // Coins
-                self.coinsContainerView.isHidden = false
-                self.watchlistContainerView.isHidden = true
-                self.navigationItem.title = "Markets"
-                
-            case 1: // Watchlist
-                self.coinsContainerView.isHidden = true
-                self.watchlistContainerView.isHidden = false
-                self.navigationItem.title = "Watchlist"
-                
-                #if DEBUG
-                // Show database contents when switching to watchlist
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    let items = WatchlistManager.shared.watchlistItems
-                    let tableData = items.map { 
-                        ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
-                    }
-                    AppLogger.databaseTable("Watchlist Database Contents", items: tableData)
-                }
-                #endif
-                
-            default:
-                break
-            }
-        }
+        // Prevent multiple transitions
+        guard !isTransitioning else { return }
+        
+        transitionToPage(index)
     }
 }
 
@@ -883,11 +1120,32 @@ extension CoinListVC: SegmentControlDelegate {
 
 extension CoinListVC {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // Allow pan gestures to work simultaneously with collection view scroll gestures
-        if gestureRecognizer is UIPanGestureRecognizer && otherGestureRecognizer is UIPanGestureRecognizer {
-            return true
+        // Allow horizontal page swiping to work with vertical collection view scrolling
+        if let panGesture = gestureRecognizer as? UIPanGestureRecognizer,
+           let otherPanGesture = otherGestureRecognizer as? UIPanGestureRecognizer {
+            
+            let velocity = panGesture.velocity(in: view)
+            
+            // If the primary gesture is more horizontal than vertical, allow simultaneous recognition
+            if abs(velocity.x) > abs(velocity.y) {
+                return true
+            }
         }
         return false
+    }
+    
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Only allow our page-switching pan gestures to begin if they're primarily horizontal
+        if let panGesture = gestureRecognizer as? UIPanGestureRecognizer,
+           gestureRecognizer.view == coinsContainerView || gestureRecognizer.view == watchlistContainerView {
+            
+            let velocity = panGesture.velocity(in: view)
+            let translation = panGesture.translation(in: view)
+            
+            // Only begin if the gesture is primarily horizontal
+            return abs(velocity.x) > abs(velocity.y) || abs(translation.x) > abs(translation.y)
+        }
+        return true
     }
 }
 

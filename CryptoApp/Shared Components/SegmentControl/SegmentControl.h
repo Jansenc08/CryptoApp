@@ -23,6 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithItems:(NSArray<NSString *> *)items;
 - (void)setSelectedSegmentIndex:(NSInteger)index animated:(BOOL)animated;
 
+// For smooth sliding animation
+- (void)updateUnderlineProgressFromSegment:(NSInteger)fromIndex toSegment:(NSInteger)toIndex withProgress:(CGFloat)progress;
+
 @end
 
 NS_ASSUME_NONNULL_END 
