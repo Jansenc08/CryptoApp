@@ -887,5 +887,7 @@ final class WatchlistVM: ObservableObject {
         // Apply sorting to reflect the new filter
         applySortingToWatchlist()
     }
+    
+
 } 
 

@@ -587,7 +587,7 @@ extension CoinDetailsVC: UITableViewDelegate {
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         switch indexPath.section {
         case 0: return UITableView.automaticDimension
-        case 1: return 60
+        case 1: return 40
         case 2: return 300
         case 3: return UITableView.automaticDimension
         default: return 44
@@ -597,7 +597,7 @@ extension CoinDetailsVC: UITableViewDelegate {
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         switch indexPath.section {
         case 0: return 100
-        case 1: return 60
+        case 1: return 40
         case 2: return 300
         case 3: return 200
         default: return 44
