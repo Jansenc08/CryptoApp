@@ -389,14 +389,49 @@ final class CoinDetailsVM: ObservableObject {
             items.append(StatItem(title: "Volume (24h)", value: volume24h.abbreviatedString()))
         }
         
+        // Volume change (24h) - NEW
+        if let volumeChange24h = quote.volumeChange24h {
+            let changeString = String(format: "%.2f%%", volumeChange24h)
+            let color = volumeChange24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
+            items.append(StatItem(title: "Volume Change (24h)", value: changeString, valueColor: color))
+        }
+        
+        // Fully Diluted Market Cap - NEW
+        if let fullyDilutedMarketCap = quote.fullyDilutedMarketCap {
+            items.append(StatItem(title: "Fully Diluted Market Cap", value: fullyDilutedMarketCap.abbreviatedString()))
+        }
+        
+        // Market Cap Dominance - NEW
+        if let dominance = quote.marketCapDominance {
+            items.append(StatItem(title: "Market Dominance", value: String(format: "%.2f%%", dominance)))
+        }
+        
         // Time-specific changes
         addPercentageChangeStats(to: &items, from: quote, for: range)
         
-        // Supply info
+        // Supply information
         if let circulating = coin.circulatingSupply {
             items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
         }
         
+        // Total Supply - NEW
+        if let totalSupply = coin.totalSupply {
+            items.append(StatItem(title: "Total Supply", value: totalSupply.abbreviatedString()))
+        }
+        
+        // Max Supply - NEW
+        if let maxSupply = coin.maxSupply {
+            items.append(StatItem(title: "Max Supply", value: maxSupply.abbreviatedString()))
+        } else if coin.infiniteSupply == true {
+            items.append(StatItem(title: "Max Supply", value: "∞ (Infinite)", valueColor: .systemBlue))
+        }
+        
+        // Market pairs - NEW
+        if let numMarketPairs = coin.numMarketPairs {
+            items.append(StatItem(title: "Market Pairs", value: "\(numMarketPairs)"))
+        }
+        
+        // Rank
         items.append(StatItem(title: "Rank", value: "#\(coin.cmcRank)"))
         
         return items
@@ -405,14 +440,18 @@ final class CoinDetailsVM: ObservableObject {
     private func addPercentageChangeStats(to items: inout [StatItem], from quote: Quote, for range: String) {
         switch range {
         case "24h":
+            addPercentageStat(to: &items, title: "1h Change", percentage: quote.percentChange1h)
             addPercentageStat(to: &items, title: "24h Change", percentage: quote.percentChange24h)
         case "30d":
-            addPercentageStat(to: &items, title: "30d Change", percentage: quote.percentChange30d)
             addPercentageStat(to: &items, title: "7d Change", percentage: quote.percentChange7d)
+            addPercentageStat(to: &items, title: "30d Change", percentage: quote.percentChange30d)
         case "1y":
-            addPercentageStat(to: &items, title: "90d Change", percentage: quote.percentChange90d)
             addPercentageStat(to: &items, title: "60d Change", percentage: quote.percentChange60d)
+            addPercentageStat(to: &items, title: "90d Change", percentage: quote.percentChange90d)
         default:
+            // Default view - show most common changes
+            addPercentageStat(to: &items, title: "24h Change", percentage: quote.percentChange24h)
+            addPercentageStat(to: &items, title: "7d Change", percentage: quote.percentChange7d)
             break
         }
     }
