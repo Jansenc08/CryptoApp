@@ -15,6 +15,20 @@
 import Foundation
 import Combine
 
+// MARK: - Price Change Indicator
+
+struct PriceChangeIndicator {
+    let direction: PriceDirection
+    let amount: Double
+    let percentage: Double
+    
+    enum PriceDirection {
+        case up
+        case down
+        case neutral
+    }
+}
+
 final class CoinDetailsVM: ObservableObject {
 
     // MARK: - Private Subjects (Internal State Management)
@@ -24,6 +38,8 @@ final class CoinDetailsVM: ObservableObject {
     private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
     private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
     private let selectedStatsRangeSubject = CurrentValueSubject<String, Never>("24h")
+    private let coinDataSubject: CurrentValueSubject<Coin, Never>
+    private let priceChangeSubject = CurrentValueSubject<PriceChangeIndicator?, Never>(nil)
 
     // MARK: - Published AnyPublisher Properties (Reactive UI Binding)
     
@@ -47,6 +63,14 @@ final class CoinDetailsVM: ObservableObject {
         selectedStatsRangeSubject.eraseToAnyPublisher()
     }
     
+    var coinData: AnyPublisher<Coin, Never> {
+        coinDataSubject.eraseToAnyPublisher()
+    }
+    
+    var priceChange: AnyPublisher<PriceChangeIndicator?, Never> {
+        priceChangeSubject.eraseToAnyPublisher()
+    }
+    
     // MARK: - Current Value Accessors (For Internal Logic)
     
     var currentChartPoints: [Double] {
@@ -63,6 +87,10 @@ final class CoinDetailsVM: ObservableObject {
     
     var currentSelectedStatsRange: String {
         selectedStatsRangeSubject.value
+    }
+    
+    var currentCoin: Coin {
+        coinDataSubject.value
     }
 
     // MARK: - Core Dependencies
@@ -92,6 +120,7 @@ final class CoinDetailsVM: ObservableObject {
     init(coin: Coin, coinManager: CoinManagerProtocol = CoinManager()) {
         self.coin = coin
         self.coinManager = coinManager
+        self.coinDataSubject = CurrentValueSubject<Coin, Never>(coin)
 
         // ID MAPPING: Convert CMC slug to CoinGecko ID for chart API
         if let slug = coin.slug, !slug.isEmpty {
@@ -101,6 +130,76 @@ final class CoinDetailsVM: ObservableObject {
             print("❌ No slug found for \(coin.symbol) - chart data will not be available")
             self.geckoID = nil
         }
+        
+        // 🌐 SUBSCRIBE TO SHARED DATA: Get real-time price updates
+        setupSharedCoinDataListener()
+    }
+    
+    // MARK: - Shared Data Management
+    
+    /**
+     * SHARED COIN DATA LISTENER
+     * 
+     * Subscribes to SharedCoinDataManager for real-time price updates
+     * and triggers price change animations when prices change
+     */
+    private func setupSharedCoinDataListener() {
+        SharedCoinDataManager.shared.allCoins
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] allCoins in
+                guard let self = self else { return }
+                
+                // Find updated data for this specific coin
+                if let freshCoin = allCoins.first(where: { $0.id == self.coin.id }) {
+                    self.handleFreshCoinData(freshCoin)
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    /**
+     * Handle fresh coin data from SharedCoinDataManager
+     */
+    private func handleFreshCoinData(_ freshCoin: Coin) {
+        let currentCoin = coinDataSubject.value
+        
+        // Detect price changes
+        if let oldPrice = currentCoin.quote?["USD"]?.price,
+           let newPrice = freshCoin.quote?["USD"]?.price,
+           abs(oldPrice - newPrice) > 0.001 {
+            
+            // Calculate price change
+            let priceChange = newPrice - oldPrice
+            let percentageChange = (priceChange / oldPrice) * 100
+            
+            let direction: PriceChangeIndicator.PriceDirection
+            if priceChange > 0 {
+                direction = .up
+            } else if priceChange < 0 {
+                direction = .down
+            } else {
+                direction = .neutral
+            }
+            
+            let indicator = PriceChangeIndicator(
+                direction: direction,
+                amount: abs(priceChange),
+                percentage: abs(percentageChange)
+            )
+            
+            // Trigger price change animation
+            priceChangeSubject.send(indicator)
+            
+            print("💰 CoinDetails: \(freshCoin.symbol) price changed: $\(String(format: "%.2f", oldPrice)) → $\(String(format: "%.2f", newPrice)) (\(direction))")
+            
+            // Clear indicator after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                self?.priceChangeSubject.send(nil)
+            }
+        }
+        
+        // Update coin data
+        coinDataSubject.send(freshCoin)
     }
 
     // MARK: - Chart Type Management (Fixed Combine)
@@ -378,7 +477,8 @@ final class CoinDetailsVM: ObservableObject {
     private func getStats(for range: String) -> [StatItem] {
         var items: [StatItem] = []
         
-        guard let quote = coin.quote?["USD"] else { return items }
+        let currentCoinData = coinDataSubject.value
+        guard let quote = currentCoinData.quote?["USD"] else { return items }
         
         // Core metrics
         if let marketCap = quote.marketCap {
@@ -410,29 +510,29 @@ final class CoinDetailsVM: ObservableObject {
         addPercentageChangeStats(to: &items, from: quote, for: range)
         
         // Supply information
-        if let circulating = coin.circulatingSupply {
+        if let circulating = currentCoinData.circulatingSupply {
             items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
         }
         
         // Total Supply - NEW
-        if let totalSupply = coin.totalSupply {
+        if let totalSupply = currentCoinData.totalSupply {
             items.append(StatItem(title: "Total Supply", value: totalSupply.abbreviatedString()))
         }
         
         // Max Supply - NEW
-        if let maxSupply = coin.maxSupply {
+        if let maxSupply = currentCoinData.maxSupply {
             items.append(StatItem(title: "Max Supply", value: maxSupply.abbreviatedString()))
-        } else if coin.infiniteSupply == true {
+        } else if currentCoinData.infiniteSupply == true {
             items.append(StatItem(title: "Max Supply", value: "∞ (Infinite)", valueColor: .systemBlue))
         }
         
         // Market pairs - NEW
-        if let numMarketPairs = coin.numMarketPairs {
+        if let numMarketPairs = currentCoinData.numMarketPairs {
             items.append(StatItem(title: "Market Pairs", value: "\(numMarketPairs)"))
         }
         
         // Rank
-        items.append(StatItem(title: "Rank", value: "#\(coin.cmcRank)"))
+        items.append(StatItem(title: "Rank", value: "#\(currentCoinData.cmcRank)"))
         
         return items
     }

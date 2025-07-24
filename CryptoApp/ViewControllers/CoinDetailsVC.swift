@@ -254,8 +254,25 @@ final class CoinDetailsVC: UIViewController {
             }
             .store(in: &cancellables)
         
-        // No direct coin updates available in CoinDetailsVM
-        // Price updates will be handled through periodic refresh in performSmartRefresh
+        // 🌐 REAL-TIME COIN DATA: Listen for fresh coin data from SharedCoinDataManager
+        viewModel.coinData
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] updatedCoin in
+                guard let self = self else { return }
+                self.updateInfoCellWithRealTimeData(updatedCoin)
+                self.updateStatsCell() // Also update stats with fresh data
+            }
+            .store(in: &cancellables)
+        
+        // 💰 PRICE CHANGE ANIMATIONS: Listen for price change indicators
+        viewModel.priceChange
+            .receive(on: DispatchQueue.main)
+            .compactMap { $0 } // Only process non-nil indicators
+            .sink { [weak self] priceChange in
+                guard let self = self else { return }
+                self.animatePriceChange(priceChange)
+            }
+            .store(in: &cancellables)
     }
     
     // Simplified chart update logic
@@ -444,9 +461,9 @@ final class CoinDetailsVC: UIViewController {
         return formatter.string(from: NSNumber(value: price)) ?? "$\(price)"
     }
     
-    // MARK: - Stats and UI Updates
+    // MARK: - Real-Time Data Updates
     
-    private func updateInfoCellWithAnimation(coin: Coin) {
+    private func updateInfoCellWithRealTimeData(_ coin: Coin) {
         let infoIndexPath = IndexPath(row: 0, section: 0)
         
         guard infoIndexPath.section < tableView.numberOfSections,
@@ -456,17 +473,39 @@ final class CoinDetailsVC: UIViewController {
             return
         }
         
-        // Update with animation if price changed
-        infoCell.priceLabel.text = coin.priceString
-        if let oldPrice = lastKnownPrice, oldPrice != coin.priceString {
-            // Determine if positive change (simplified check)
-            let isPositive = coin.priceString > oldPrice
-            infoCell.flashPrice(isPositive: isPositive)
+        // Get updated 24h price change data
+        let percentChange24h = coin.quote?["USD"]?.percentChange24h ?? 0.0
+        let currentPrice = coin.quote?["USD"]?.price ?? 0.0
+        let priceChange24h = (percentChange24h / 100.0) * currentPrice / (1 + (percentChange24h / 100.0))
+        
+        // Update cell with fresh data including permanent price change indicator
+        infoCell.configure(name: coin.name, rank: coin.cmcRank, price: coin.priceString, priceChange: priceChange24h, percentageChange: percentChange24h)
+        lastKnownPrice = coin.priceString
+        
+        print("💰 CoinDetails: Updated InfoCell with fresh data for \(coin.symbol)")
+    }
+    
+    private func animatePriceChange(_ priceChange: PriceChangeIndicator) {
+        let infoIndexPath = IndexPath(row: 0, section: 0)
+        
+        guard infoIndexPath.section < tableView.numberOfSections,
+              let infoCell = tableView.cellForRow(at: infoIndexPath) as? InfoCell else {
+            return
         }
         
-        // Store the new price for next comparison
-        lastKnownPrice = coin.priceString
+        // Determine animation color based on price direction
+        let isPositive = priceChange.direction == .up
+        
+        // Trigger price animation
+        infoCell.flashPrice(isPositive: isPositive)
+        
+        // Update the price change indicator with temporary animation (real-time change)
+        infoCell.updatePriceChangeIndicator(priceChange: priceChange.amount * (isPositive ? 1 : -1), percentageChange: priceChange.percentage)
+        
+        print("🎨 CoinDetails: Animated price change - \(priceChange.direction) by $\(String(format: "%.2f", priceChange.amount))")
     }
+    
+
     
     private func updateStatsCell() {
         let statsIndexPath = IndexPath(row: 0, section: 3)
@@ -596,11 +635,19 @@ extension CoinDetailsVC: UITableViewDataSource {
         switch indexPath.section {
         case 0: // Info section
             let cell = tableView.dequeueReusableCell(withIdentifier: "InfoCell", for: indexPath) as! InfoCell
-            cell.configure(name: coin.name, rank: coin.cmcRank, price: coin.priceString)
+            let currentCoin = viewModel.currentCoin
+            
+            // Get 24h price change data from the coin
+            let percentChange24h = currentCoin.quote?["USD"]?.percentChange24h ?? 0.0
+            let currentPrice = currentCoin.quote?["USD"]?.price ?? 0.0
+            let priceChange24h = (percentChange24h / 100.0) * currentPrice / (1 + (percentChange24h / 100.0))
+            
+            // Configure with permanent price change indicator
+            cell.configure(name: currentCoin.name, rank: currentCoin.cmcRank, price: currentCoin.priceString, priceChange: priceChange24h, percentageChange: percentChange24h)
             
             // Initialize price tracking for animations
             if lastKnownPrice == nil {
-                lastKnownPrice = coin.priceString
+                lastKnownPrice = currentCoin.priceString
             }
             
             cell.selectionStyle = .none
