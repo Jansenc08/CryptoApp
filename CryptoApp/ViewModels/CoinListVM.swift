@@ -566,14 +566,12 @@ final class CoinListVM: ObservableObject {
                     let fallbackIds = sortedFallbackCoins.map { $0.id }
                     let uniqueFallbackIds = Set(fallbackIds)
                     if fallbackIds.count != uniqueFallbackIds.count {
-                        print("❌ WARNING: Fallback data contains duplicate coin IDs!")
-                        print("   Total: \(fallbackIds.count), Unique: \(uniqueFallbackIds.count)")
+                        AppLogger.data("Fallback data contains duplicate coin IDs (Total: \(fallbackIds.count), Unique: \(uniqueFallbackIds.count))", level: .warning)
                         
                         // Deduplicate fallback data
                         var seenIds = Set<Int>()
                         let deduplicatedFallbackCoins = sortedFallbackCoins.filter { coin in
                             if seenIds.contains(coin.id) {
-                                print("   Removing fallback duplicate: \(coin.name) (ID: \(coin.id))")
                                 return false
                             } else {
                                 seenIds.insert(coin.id)
@@ -592,7 +590,7 @@ final class CoinListVM: ObservableObject {
                         // Enable pagination if we have more data
                         self?.canLoadMore = deduplicatedFallbackCoins.count > pageSize
                         
-                        print("📱 UI: Displaying \(initialFallbackCoins.count) fallback coins (page 1 of \(deduplicatedFallbackCoins.count) total)")
+                        AppLogger.data("Fallback: Displaying \(initialFallbackCoins.count) cached coins (page 1 of \(deduplicatedFallbackCoins.count) total)", level: .warning)
                     } else {
                         // 🔧 PAGINATION FIX: Set fullFilteredCoins for proper fallback pagination
                         self?.fullFilteredCoins = sortedFallbackCoins
@@ -650,9 +648,7 @@ final class CoinListVM: ObservableObject {
             // Enable pagination only if we have more data
             self.canLoadMore = filteredAndSortedCoins.count > pageSize
 
-            #if DEBUG
-            print("📱 Displaying \(initialCoins.count) coins (page 1 of \(filteredAndSortedCoins.count) total)")
-            #endif
+            AppLogger.data("Displaying \(initialCoins.count) coins (page 1 of \(filteredAndSortedCoins.count) total)")
 
             //  LOGO FETCHING: Start downloading coin images (low priority, background)
             let ids = initialCoins.map { $0.id }

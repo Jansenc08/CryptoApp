@@ -18,6 +18,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Initialize Core Data
         _ = CoreDataManager.shared
         
+        #if DEBUG
+        AppLogger.ui("CryptoApp launched in DEBUG mode")
+        #endif
+        
         return true
     }
 

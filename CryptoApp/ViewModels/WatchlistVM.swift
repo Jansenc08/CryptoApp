@@ -342,35 +342,29 @@ final class WatchlistVM: ObservableObject {
                 guard let self = self else { return }
                 
                 #if DEBUG
-                print("💰 Price data updated for \(updatedCoins.count) watchlist coins:")
-                for coin in updatedCoins.prefix(3) {
-                    if let quote = coin.quote?["USD"],
-                       let currentPrice = quote.price,
-                       let changePercent = quote.percentChange24h {
-                        
-                        // Calculate the 24h price change from percentage
-                        let priceChange24h = (currentPrice * changePercent) / 100.0
-                        let price24hAgo = currentPrice - priceChange24h
-                        
-                        let formatter = NumberFormatter()
-                        formatter.numberStyle = .currency
-                        formatter.currencyCode = "USD"
-                        formatter.maximumFractionDigits = 2
-                        
-                        let oldPriceString = formatter.string(from: NSNumber(value: price24hAgo)) ?? "$\(price24hAgo)"
-                        let newPriceString = formatter.string(from: NSNumber(value: currentPrice)) ?? "$\(currentPrice)"
-                        
-                        let changePrefix = priceChange24h >= 0 ? "+" : ""
-                        let priceChangeString = formatter.string(from: NSNumber(value: abs(priceChange24h))) ?? "$\(abs(priceChange24h))"
-                        
-                        print("   ✅ \(coin.symbol): \(oldPriceString) → \(newPriceString) : \(changePrefix)\(priceChangeString) (\(String(format: "%.2f", changePercent))%)")
-                    } else {
-                        print("   ❌ \(coin.symbol): No price data")
-                    }
+                let priceUpdates = updatedCoins.prefix(3).compactMap { coin -> (symbol: String, oldPrice: String, newPrice: String, change: String)? in
+                    guard let quote = coin.quote?["USD"],
+                          let currentPrice = quote.price,
+                          let changePercent = quote.percentChange24h else { return nil }
+                    
+                    let priceChange24h = (currentPrice * changePercent) / 100.0
+                    let price24hAgo = currentPrice - priceChange24h
+                    
+                    let formatter = NumberFormatter()
+                    formatter.numberStyle = .currency
+                    formatter.currencyCode = "USD"
+                    formatter.maximumFractionDigits = 2
+                    
+                    let oldPrice = formatter.string(from: NSNumber(value: price24hAgo)) ?? "$\(price24hAgo)"
+                    let newPrice = formatter.string(from: NSNumber(value: currentPrice)) ?? "$\(currentPrice)"
+                    let changeStr = String(format: "%.2f%%", changePercent)
+                    
+                    return (coin.symbol, oldPrice, newPrice, changeStr)
                 }
-                if updatedCoins.count > 3 {
-                    print("   ... and \(updatedCoins.count - 3) more")
-                }
+                
+                let moreCount = max(0, updatedCoins.count - 3)
+                let title = "Watchlist Price Updates (\(updatedCoins.count) coins)" + (moreCount > 0 ? " - showing top 3" : "")
+                AppLogger.priceTable(title, updates: priceUpdates)
                 #endif
                 
                 self.watchlistCoinsSubject.send(updatedCoins)
@@ -599,31 +593,8 @@ final class WatchlistVM: ObservableObject {
                         
                         // Show detailed price changes for coins that actually changed
                         let changedCoins = updatedCoins.filter { changedCoinIds.contains($0.id) }
-                        for coin in changedCoins.prefix(3) {
-                            if let quote = coin.quote?["USD"],
-                               let currentPrice = quote.price,
-                               let changePercent = quote.percentChange24h {
-                                
-                                // Calculate the 24h price change from percentage
-                                let priceChange24h = (currentPrice * changePercent) / 100.0
-                                let price24hAgo = currentPrice - priceChange24h
-                                
-                                let formatter = NumberFormatter()
-                                formatter.numberStyle = .currency
-                                formatter.currencyCode = "USD"
-                                formatter.maximumFractionDigits = 2
-                                
-                                let oldPriceString = formatter.string(from: NSNumber(value: price24hAgo)) ?? "$\(price24hAgo)"
-                                let newPriceString = formatter.string(from: NSNumber(value: currentPrice)) ?? "$\(currentPrice)"
-                                
-                                let changePrefix = priceChange24h >= 0 ? "+" : ""
-                                let priceChangeString = formatter.string(from: NSNumber(value: abs(priceChange24h))) ?? "$\(abs(priceChange24h))"
-                                
-                                print("   📈 \(coin.symbol): \(oldPriceString) → \(newPriceString) : \(changePrefix)\(priceChangeString) (\(String(format: "%.2f", changePercent))%)")
-                            }
-                        }
-                        if changedCoins.count > 3 {
-                            print("   ... and \(changedCoins.count - 3) more")
+                        if !changedCoins.isEmpty {
+                            AppLogger.price("Detected \(changedCoins.count) price changes in watchlist")
                         }
                         #endif
                     }

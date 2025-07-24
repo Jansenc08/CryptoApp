@@ -229,7 +229,7 @@ final class RequestManager: RequestManagerProtocol {
                 let publisher = request()
                     .handleEvents(
                         receiveSubscription: { _ in
-                            print("🚀 \(priority.description) request started: \(key)")
+                            AppLogger.network("\(priority.description) request started: \(key)")
                         },
                         
                         // After we get a response, update lastRequestTimes so throttling can work next time.
@@ -243,9 +243,9 @@ final class RequestManager: RequestManagerProtocol {
                         receiveCompletion: { [weak self] completion in
                             switch completion {
                             case .finished:
-                                print("✅ \(priority.description) request completed: \(key)")
+                                AppLogger.success("\(priority.description) request completed: \(key)")
                             case .failure(let error):
-                                print("❌ \(priority.description) request failed: \(key) - \(error)")
+                                AppLogger.error("\(priority.description) request failed: \(key)", error: error)
                             }
                             self?.queue.async(flags: .barrier) {
                                 self?.activeRequests.removeValue(forKey: key)

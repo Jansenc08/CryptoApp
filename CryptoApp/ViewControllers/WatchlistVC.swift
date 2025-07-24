@@ -30,6 +30,13 @@ final class WatchlistVC: UIViewController {
         configureDataSource()
         bindViewModel()
         setupEmptyState()
+        
+        #if DEBUG
+        // Show database contents on load
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.showDatabaseContents()
+        }
+        #endif
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -41,8 +48,11 @@ final class WatchlistVC: UIViewController {
         // Refresh data when returning to tab
         viewModel.refreshWatchlist()
         
+        AppLogger.ui("Entering Watchlist Tab")
+        
         #if DEBUG
-        print("📱 Entering Watchlist Tab")
+        // Auto-show database contents immediately
+        showDatabaseContents()
         #endif
     }
     
@@ -139,14 +149,17 @@ final class WatchlistVC: UIViewController {
     
     #if DEBUG
     @objc private func debugDatabaseTapped() {
-        WatchlistManager.shared.printDatabaseContents()
+        AppLogger.database("Debug button tapped - showing database info")
         
-        let stats = WatchlistManager.shared.getDatabaseStats()
-        let performanceMetrics = viewModel.getPerformanceMetrics()
+        let items = WatchlistManager.shared.watchlistItems
+        let tableData = items.map { 
+            ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
+        }
+        AppLogger.databaseTable("Manual Database Debug - \(items.count) items", items: tableData)
         
         let alert = UIAlertController(
-            title: "🚀 Optimized Watchlist Debug",
-            message: "\(stats)\n\n⚡ Performance Metrics:\n• Operations: \(performanceMetrics["operationCount"] ?? 0)\n• Cache Size: \(performanceMetrics["cacheSize"] ?? 0)\n• Lookup: O(1)\n• Background Ops: ✅\n\nCheck console for detailed output",
+            title: "🗄️ Database Debug",
+            message: "Found \(items.count) watchlist items\n\nCheck console for detailed output",
             preferredStyle: .alert
         )
         
@@ -156,6 +169,15 @@ final class WatchlistVC: UIViewController {
         
         alert.addAction(UIAlertAction(title: "OK", style: .cancel))
         present(alert, animated: true)
+    }
+    
+    private func showDatabaseContents() {
+        let items = WatchlistManager.shared.watchlistItems
+        let tableData = items.map { item in
+            let details = "ID: \(item.id) | Rank: \(item.cmcRank) | Added: \(item.dateAdded?.description.prefix(10) ?? "Unknown")"
+            return ("\(item.symbol ?? "?") (\(item.name ?? "Unknown"))", details)
+        }
+        AppLogger.databaseTable("Auto Database View - \(items.count) items", items: tableData)
     }
     
     @objc private func performanceTestTapped() {

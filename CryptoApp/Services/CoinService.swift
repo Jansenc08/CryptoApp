@@ -496,21 +496,16 @@ final class CoinService: CoinServiceProtocol {
                     throw NetworkError.invalidResponse
                 }
                 
-                print("📡 CoinGecko response: HTTP \(response.statusCode)")
+                AppLogger.apiSummary(endpoint: "CoinGecko Chart", status: response.statusCode)
                 
                 if response.statusCode == 404 {
-                    print("❌ CoinGecko: Coin '\(geckoId)' not found")
-                    // Attempt to decode CoinGecko specific error message
-                    if let errorResponse = try? JSONSerialization.jsonObject(with: output.data, options: []) as? [String: Any],
-                       let errorMsg = errorResponse["error"] as? String {
-                        print("❌ CoinGecko error: \(errorMsg)")
-                    }
+                    AppLogger.error("CoinGecko: Coin '\(geckoId)' not found")
                     throw NetworkError.badURL
                 } else if response.statusCode == 429 {
-                    print("⚠️ CoinGecko: Rate limit exceeded (429). Requests too frequent.")
+                    AppLogger.error("CoinGecko: Rate limit exceeded - requests too frequent", error: nil)
                     throw NetworkError.invalidResponse // Will trigger exponential backoff retry
                 } else if response.statusCode != 200 {
-                    print("❌ CoinGecko: HTTP \(response.statusCode)")
+                    AppLogger.error("CoinGecko: HTTP \(response.statusCode)")
                     throw NetworkError.invalidResponse
                 }
                 return output.data
@@ -519,8 +514,8 @@ final class CoinService: CoinServiceProtocol {
             .map { response in
                 // CoinGecko returns prices as [[timestamp, price]]. We only want the price.
                 let prices = response.prices.map { $0[1] }
-                print("✅ Successfully fetched \(prices.count) price points for '\(geckoId)'")
-                print("🔑 CoinGecko Demo API key working! Rate limit: 30 calls/minute")
+                AppLogger.success("Fetched \(prices.count) price points for '\(geckoId)'")
+                AppLogger.network("CoinGecko API key working | Rate limit: 30 calls/minute")
                 return prices
             }
             .receive(on: DispatchQueue.main)

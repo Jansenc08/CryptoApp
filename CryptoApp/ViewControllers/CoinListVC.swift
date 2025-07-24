@@ -343,13 +343,11 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             
             // Load the coin logo image if available
             if let urlString = self?.viewModel.currentCoinLogos[coin.id] {
-                // Removed verbose logo loading logs - only log if debugging needed
-                // print("🖼️ CoinListVC | Loading logo for \(coin.name) (ID: \(coin.id)): \(urlString)")
                 cell.coinImageView.downloadImage(fromURL: urlString)
             } else {
                 // Only log missing logos for top coins (helps identify data issues)
                 if coin.cmcRank <= 50 {
-                    print("❌ CoinListVC | No logo URL for top coin \(coin.name) (Rank: \(coin.cmcRank), ID: \(coin.id))")
+                    AppLogger.cache("Missing logo for top coin \(coin.name) (Rank: \(coin.cmcRank))", level: .warning)
                 }
                 cell.coinImageView.setPlaceholder()
             }
@@ -821,7 +819,8 @@ extension CoinListVC: FilterModalVCDelegate {
 
 extension CoinListVC: SegmentControlDelegate {
     func segmentControl(_ segmentControl: SegmentControl, didSelectSegmentAt index: Int) {
-        print("🔄 Segment control selected index: \(index)")
+        let segmentName = index == 0 ? "Markets" : "Watchlist"
+        AppLogger.ui("Segment switched to: \(segmentName)")
         
         // Animate the container view transition
         UIView.transition(with: view, duration: 0.3, options: .transitionCrossDissolve) {
@@ -836,12 +835,49 @@ extension CoinListVC: SegmentControlDelegate {
                 self.watchlistContainerView.isHidden = false
                 self.navigationItem.title = "Watchlist"
                 
+                #if DEBUG
+                // Show database contents when switching to watchlist
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let items = WatchlistManager.shared.watchlistItems
+                    let tableData = items.map { 
+                        ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
+                    }
+                    AppLogger.databaseTable("Watchlist Database Contents", items: tableData)
+                }
+                #endif
+                
             default:
                 break
             }
         }
     }
 }
+
+
+    
+    #if DEBUG
+    private func showWatchlistDatabaseContents() {
+        let items = WatchlistManager.shared.watchlistItems
+        print("\n🗄️ === WATCHLIST DATABASE VIEW ===")
+        print("📊 Total watchlist items: \(items.count)")
+        
+        if items.isEmpty {
+            print("📝 Watchlist database is empty")
+        } else {
+            for (index, item) in items.enumerated() {
+                print("\n📝 Database Item \(index + 1):")
+                print("   • ID: \(item.id)")
+                print("   • Symbol: \(item.symbol ?? "nil")")
+                print("   • Name: \(item.name ?? "nil")")
+                print("   • CMC Rank: \(item.cmcRank)")
+                print("   • Date Added: \(item.dateAdded?.description ?? "nil")")
+                print("   • Logo URL: \(item.logoURL?.prefix(50) ?? "none")...")
+                print("   • Slug: \(item.slug ?? "none")")
+            }
+        }
+        print("🗄️ ============================\n")
+    }
+    #endif
 
 // MARK: - UIGestureRecognizerDelegate
 
@@ -854,3 +890,5 @@ extension CoinListVC {
         return false
     }
 }
+
+

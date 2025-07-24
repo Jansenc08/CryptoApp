@@ -97,11 +97,7 @@ final class WatchlistManager: ObservableObject {
                 self.watchlistItems = sortedItems
                 self.watchlistCoinIds = Set(sortedItems.map { $0.coinId })
                 
-                #if DEBUG
-                if !items.isEmpty {
-                    print("✅ WatchlistManager initialized: \(items.count) items")
-                }
-                #endif
+                AppLogger.database("WatchlistManager initialized with \(items.count) items")
             }
         }
     }
@@ -596,30 +592,11 @@ final class WatchlistManager: ObservableObject {
             let items = self.coreDataManager.fetchWatchlistItems()
             
             DispatchQueue.main.async {
-                print("\n🗄️ ===== OPTIMIZED WATCHLIST STATE =====")
-                print("📊 Database items: \(items.count)")
-                print("💾 Local cache items: \(self.localWatchlistItems.count)")
-                print("🔍 Local cache IDs: \(self.localWatchlistCoinIds.count)")
-                print("⚡ Operations performed: \(self.operationCount)")
-                
-                if items.isEmpty {
-                    print("❌ Database is empty")
-                } else {
-                    print("✅ Database contents:")
-                    for (index, item) in items.enumerated() {
-                        print("   \(index + 1). \(item.symbol ?? "N/A") (ID: \(item.coinId))")
-                    }
+                let tableData = items.map { 
+                    ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.coinId)")
                 }
-                
-                // Performance stats
-                let timeSinceLastLog = Date().timeIntervalSince(self.lastPerformanceLog)
-                if timeSinceLastLog > 1.0 {
-                    print("📈 Cache hit rate: ~100% (O(1) lookups)")
-                    print("⏱️ Avg operation time: <1ms (optimistic updates)")
-                    self.lastPerformanceLog = Date()
-                }
-                
-                print("🗄️ =====================================\n")
+                AppLogger.databaseTable("Watchlist Manager State - \(items.count) items", items: tableData)
+                AppLogger.performance("Operations: \(self.operationCount) | Cache: \(self.localWatchlistItems.count) items | Hit rate: ~100%")
             }
         }
     }
