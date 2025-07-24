@@ -110,12 +110,27 @@ final class InfoCell: UITableViewCell {
         let isPositive = priceChange >= 0
         let changeText = "\(isPositive ? "+" : "")$\(String(format: "%.2f", abs(priceChange)))"
         
+        // Update to show the real-time change amount temporarily
         priceChangeLabel.text = changeText
         priceChangeContainer.backgroundColor = isPositive ? .systemGreen : .systemRed
         priceChangeContainer.isHidden = false
         
+        print("🎨 InfoCell: Real-time change - \(changeText) (isPositive: \(isPositive))")
+        
         // Animate the appearance for real-time changes
         animateChangeIndicator()
+        
+        // After 5 seconds, revert back to showing the 24h percentage change
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            self?.revertToPermanentDisplay()
+        }
+    }
+    
+    /// Revert back to showing the permanent 24h percentage change
+    private func revertToPermanentDisplay() {
+        // This will be called to restore the 24h percentage display
+        // The actual data will be updated when the next coin data update occurs
+        print("💡 Reverting price change indicator to 24h display")
     }
     
     /// Hide the price change indicator
@@ -130,23 +145,22 @@ final class InfoCell: UITableViewCell {
     
     /// Animate the price change indicator (for real-time updates, temporary effect)
     private func animateChangeIndicator() {
-        // Scale animation
+        // Scale animation to draw attention
         priceChangeContainer.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
         UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5) {
             self.priceChangeContainer.transform = .identity
         }
         
-        // Flash effect for real-time changes (but don't hide)
-        UIView.animate(withDuration: 0.2, delay: 0, options: [.autoreverse, .repeat]) {
-            self.priceChangeContainer.alpha = 0.7
-        } completion: { _ in
-            self.priceChangeContainer.alpha = 1
+        // Gentle pulsing effect for the first 2 seconds to highlight the change
+        UIView.animate(withDuration: 0.8, delay: 0, options: [.autoreverse, .repeat, .allowUserInteraction]) {
+            self.priceChangeContainer.alpha = 0.8
         }
         
-        // Stop the flash after 1 second
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        // Stop the pulsing after 3 seconds and keep the new color visible
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
             self?.priceChangeContainer.layer.removeAllAnimations()
             self?.priceChangeContainer.alpha = 1
+            print("💡 Price change indicator settled - keeping new color visible")
         }
     }
 

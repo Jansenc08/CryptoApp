@@ -32,7 +32,19 @@ struct Coin: Codable {
 extension Coin {
     var priceString: String {
         if let price = quote?["USD"]?.price {
-            return String(format: "$%.2f", price)
+            // Use NumberFormatter with explicit $ symbol to avoid locale-specific "US$"
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.maximumFractionDigits = 2
+            formatter.minimumFractionDigits = 2
+            formatter.groupingSeparator = ","
+            formatter.usesGroupingSeparator = true
+            
+            if let formattedNumber = formatter.string(from: NSNumber(value: price)) {
+                return "$\(formattedNumber)"
+            } else {
+                return "$\(String(format: "%.2f", price))"
+            }
         } else {
             return "N/A"
         }

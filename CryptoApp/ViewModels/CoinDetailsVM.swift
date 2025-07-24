@@ -191,6 +191,7 @@ final class CoinDetailsVM: ObservableObject {
             priceChangeSubject.send(indicator)
             
             print("💰 CoinDetails: \(freshCoin.symbol) price changed: $\(String(format: "%.2f", oldPrice)) → $\(String(format: "%.2f", newPrice)) (\(direction))")
+            print("💰 CoinDetails: Change amount: \(priceChange >= 0 ? "+" : "")$\(String(format: "%.2f", priceChange)), percentage: \(percentageChange >= 0 ? "+" : "")\(String(format: "%.2f", percentageChange))%")
             
             // Clear indicator after animation
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in

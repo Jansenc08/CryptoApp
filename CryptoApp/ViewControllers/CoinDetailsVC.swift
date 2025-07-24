@@ -499,10 +499,13 @@ final class CoinDetailsVC: UIViewController {
         // Trigger price animation
         infoCell.flashPrice(isPositive: isPositive)
         
-        // Update the price change indicator with temporary animation (real-time change)
-        infoCell.updatePriceChangeIndicator(priceChange: priceChange.amount * (isPositive ? 1 : -1), percentageChange: priceChange.percentage)
+        // Update the price change indicator with correct sign based on direction
+        let signedPriceChange = priceChange.amount * (isPositive ? 1 : -1)
+        let signedPercentageChange = priceChange.percentage * (isPositive ? 1 : -1)
         
-        print("🎨 CoinDetails: Animated price change - \(priceChange.direction) by $\(String(format: "%.2f", priceChange.amount))")
+        infoCell.updatePriceChangeIndicator(priceChange: signedPriceChange, percentageChange: signedPercentageChange)
+        
+        print("🎨 CoinDetails: Animated price change - \(priceChange.direction) by $\(String(format: "%.2f", signedPriceChange))")
     }
     
 
