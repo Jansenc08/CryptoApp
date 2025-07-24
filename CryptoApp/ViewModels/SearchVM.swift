@@ -146,6 +146,7 @@ final class SearchVM: ObservableObject {
         setupSearchDebounce()
         loadInitialData()
         setupCacheUpdateListener()
+        setupSharedCoinDataListener()
     }
     
     // MARK: - Cache Update Listener
@@ -161,6 +162,29 @@ final class SearchVM: ObservableObject {
             .sink { [weak self] _ in
                 print("🔍 Search: Received cache update notification")
                 self?.refreshSearchData()
+            }
+            .store(in: &cancellables)
+    }
+    
+    /**
+     * SHARED COIN DATA LISTENER
+     * 
+     * Listens to SharedCoinDataManager for fresh price updates
+     * and refreshes search results with updated data
+     */
+    private func setupSharedCoinDataListener() {
+        SharedCoinDataManager.shared.allCoins
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] freshCoins in
+                guard let self = self else { return }
+                
+                // Only update if we have search results to refresh
+                guard !self.currentSearchResults.isEmpty else { return }
+                
+                print("🔍 Search: Received fresh coin data from SharedCoinDataManager - updating search results")
+                
+                // Re-perform current search to merge fresh prices
+                self.performSearch(for: self.currentSearchText)
             }
             .store(in: &cancellables)
     }
@@ -264,8 +288,19 @@ final class SearchVM: ObservableObject {
                 return false
             }
             
+            // 🌐 MERGE FRESH PRICES: Update search results with latest prices from SharedCoinDataManager
+            let sharedCoins = SharedCoinDataManager.shared.currentCoins
+            let coinsWithFreshPrices = filteredCoins.map { searchCoin in
+                // Try to find fresh data for this coin
+                if let freshCoin = sharedCoins.first(where: { $0.id == searchCoin.id }) {
+                    return freshCoin  // Use fresh coin with updated prices
+                } else {
+                    return searchCoin  // Fallback to cached coin
+                }
+            }
+            
             // Sort by market cap (most relevant first) and limit results
-            let sortedResults = filteredCoins
+            let sortedResults = coinsWithFreshPrices
                 .sorted { coin1, coin2 in
                     let marketCap1 = coin1.quote?["USD"]?.marketCap ?? 0
                     let marketCap2 = coin2.quote?["USD"]?.marketCap ?? 0
@@ -278,7 +313,13 @@ final class SearchVM: ObservableObject {
                 guard let self = self else { return }
                 let results = Array(sortedResults)
                 self.searchResultsSubject.send(results)
-                print("🔍 Search: Found \(results.count) results for '\(trimmedText)'")
+                
+                // Count how many got fresh prices
+                let freshCount = results.filter { result in
+                    sharedCoins.contains { $0.id == result.id }
+                }.count
+                
+                print("🔍 Search: Found \(results.count) results for '\(trimmedText)' (\(freshCount) with fresh prices)")
                 
                 // Fetch missing logos for search results
                 self.fetchLogosIfNeeded(for: results)

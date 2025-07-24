@@ -562,8 +562,19 @@ extension SearchVC: UICollectionViewDelegate {
         // Dismiss keyboard
         searchBarComponent.resignFirstResponder()
         
-        // Navigate to coin details
-        let selectedCoin = currentSearchResults[indexPath.item]
+        // Navigate to coin details with fresh data
+        let searchCoin = currentSearchResults[indexPath.item]
+        
+        // 🌐 TRY TO GET FRESH DATA: Check SharedCoinDataManager for most recent prices
+        let sharedCoins = SharedCoinDataManager.shared.currentCoins
+        let selectedCoin: Coin
+        if let freshCoin = sharedCoins.first(where: { $0.id == searchCoin.id }) {
+            print("✅ Using FRESH coin data for \(searchCoin.symbol) from SharedCoinDataManager")
+            selectedCoin = freshCoin
+        } else {
+            print("⚠️ Using search result data for \(searchCoin.symbol) (not in SharedCoinDataManager)")
+            selectedCoin = searchCoin
+        }
         
         // Save this as a recent search since user selected it
         let logoUrl = viewModel.currentCoinLogos[selectedCoin.id]
@@ -640,17 +651,26 @@ extension SearchVC {
      * Handle recent search button tap - find real coin data and navigate
      */
     private func recentSearchButtonTapped(_ searchItem: RecentSearchItem) {
-        print("🔍 Recent Search: Tapped \(searchItem.symbol) - finding real coin data")
+        print("🔍 Recent Search: Tapped \(searchItem.symbol) - finding fresh coin data")
         
-        // First try to find the coin in current search results
+        // 🌐 FIRST: Try to get fresh data from SharedCoinDataManager
+        let sharedCoins = SharedCoinDataManager.shared.currentCoins
+        if let freshCoin = sharedCoins.first(where: { $0.id == searchItem.coinId }) {
+            print("✅ Found FRESH coin data for \(searchItem.symbol) from SharedCoinDataManager")
+            let detailsVC = CoinDetailsVC(coin: freshCoin)
+            navigationController?.pushViewController(detailsVC, animated: true)
+            return
+        }
+        
+        // FALLBACK: Try to find the coin in current search results
         if let cachedCoin = findCoinInCache(coinId: searchItem.coinId) {
-            print("🔍 Found cached coin data for \(searchItem.symbol)")
+            print("⚠️ Using cached coin data for \(searchItem.symbol) (SharedCoinDataManager didn't have it)")
             let detailsVC = CoinDetailsVC(coin: cachedCoin)
             navigationController?.pushViewController(detailsVC, animated: true)
             return
         }
         
-        // If not found, search for the coin by symbol to get real data
+        // LAST RESORT: Search for the coin by symbol to get real data
         print("🔍 Searching for \(searchItem.symbol) to get real coin data")
         searchForCoinAndNavigate(searchItem: searchItem)
     }
