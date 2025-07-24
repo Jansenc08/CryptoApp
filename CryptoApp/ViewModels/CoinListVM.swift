@@ -22,7 +22,7 @@ import Combine
  * - Automatic memory management via cancellables
  * 
  *  KEY FEATURES:
- * - Real-time price updates every 15 seconds
+ * - Real-time price updates every 30 seconds
  * - Smart pagination (20 coins per page)
  * - Multi-layer caching (memory, disk, offline)
  * - Priority-based API request management
@@ -199,6 +199,14 @@ final class CoinListVM: ObservableObject {
             persistenceService.clearCache()
             print("🗑️ Cleared insufficient cache (\(cachedCoins.count) coins) to force fresh data fetch")
         }
+        
+        // 🌐 SUBSCRIBE TO SHARED DATA: Listen to shared coin data for consistency
+        SharedCoinDataManager.shared.allCoins
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] allCoins in
+                self?.handleSharedDataUpdate(allCoins)
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Utility Methods
@@ -206,6 +214,89 @@ final class CoinListVM: ObservableObject {
     // Called when filters change to prevent stale optimization state from affecting new data.
     private func resetOptimizationState() {
         pendingLogoRequests.removeAll()  // Clear pending logo requests for fresh start
+    }
+    
+    // MARK: - Shared Data Handling
+    
+    /// Handle updates from SharedCoinDataManager
+    private func handleSharedDataUpdate(_ allCoins: [Coin]) {
+        // Only update if we don't have fresh data or if this is more recent
+        guard !allCoins.isEmpty else { return }
+        
+        let timestamp = Date().timeIntervalSince1970
+        let btcPrice = allCoins.first(where: { $0.symbol == "BTC" })?.quote?["USD"]?.price ?? 0
+        print("🌐 CoinListVM: Received shared data update with \(allCoins.count) coins at \(timestamp) | BTC: $\(String(format: "%.2f", btcPrice))")
+        
+        // Apply current filters and sorting
+        let filteredCoins = applyCurrentFilters(to: allCoins)
+        let sortedCoins = sortCoins(filteredCoins)
+        
+        // Store full dataset for pagination
+        fullFilteredCoins = sortedCoins
+        
+        // Show first page
+        let pageSize = itemsPerPage
+        let initialCoins = Array(sortedCoins.prefix(pageSize))
+        
+        // 💰 PRICE CHANGE DETECTION: Check if prices changed for current displayed coins
+        let currentDisplayedCoins = currentCoins
+        let changedCoinIds = findChangedCoins(current: currentDisplayedCoins, updated: initialCoins)
+        
+        // Update UI
+        coinsSubject.send(initialCoins)
+        canLoadMore = sortedCoins.count > pageSize
+        
+        // 🎯 TRIGGER ANIMATIONS: If prices changed, trigger UI animations
+        if !changedCoinIds.isEmpty {
+            updatedCoinIdsSubject.send(changedCoinIds)
+            print("💰 CoinListVM: \(changedCoinIds.count) coins had price changes - triggering UI animations")
+            
+            // Log the changed prices
+            for coin in initialCoins.filter({ changedCoinIds.contains($0.id) }) {
+                if let price = coin.quote?["USD"]?.price {
+                    print("📈 \(coin.symbol): Updated to $\(String(format: "%.2f", price))")
+                }
+            }
+        } else {
+            print("💰 CoinListVM: No price changes detected in displayed coins")
+        }
+        
+        // 🖼️ FETCH LOGOS: Start downloading coin images for visible coins
+        let displayedIds = initialCoins.map { $0.id }
+        fetchCoinLogosIfNeeded(forIDs: displayedIds)
+        
+        print("📱 CoinListVM: Updated UI with \(initialCoins.count) coins from shared data")
+    }
+    
+    /// Find coins that have price changes between current and updated arrays
+    private func findChangedCoins(current: [Coin], updated: [Coin]) -> Set<Int> {
+        var changedIds = Set<Int>()
+        
+        let currentPrices = Dictionary(uniqueKeysWithValues: current.map { 
+            ($0.id, $0.quote?["USD"]?.price ?? 0.0) 
+        })
+        
+        for updatedCoin in updated {
+            let newPrice = updatedCoin.quote?["USD"]?.price ?? 0.0
+            let oldPrice = currentPrices[updatedCoin.id] ?? 0.0
+            
+            if abs(newPrice - oldPrice) > 0.001 { // Price changed significantly
+                changedIds.insert(updatedCoin.id)
+            }
+        }
+        
+        return changedIds
+    }
+    
+    /// Apply current filters to coin list
+    private func applyCurrentFilters(to coins: [Coin]) -> [Coin] {
+        // Apply top coins filter
+        let topCoinsLimit = currentFilterState.topCoinsFilter.rawValue
+        let topCoins = Array(coins.prefix(topCoinsLimit))
+        
+        // PriceChangeFilter is just for time period display, not for filtering coins
+        // All coins are shown regardless of the price change filter
+        return topCoins
     }
 
     // MARK: - Filter Management
@@ -241,8 +332,14 @@ final class CoinListVM: ObservableObject {
         // Reset optimization state for fresh data
         resetOptimizationState()
         
-        // Trigger data refresh with high priority (user action)
-        fetchCoins(priority: .high)
+        // Apply filter to current shared data instead of fetching new data
+        let allCoins = SharedCoinDataManager.shared.currentCoins
+        if !allCoins.isEmpty {
+            handleSharedDataUpdate(allCoins)
+        } else {
+            // Force SharedCoinDataManager to fetch if no data available
+            SharedCoinDataManager.shared.forceUpdate()
+        }
     }
     
     // MARK: - Sorting Management

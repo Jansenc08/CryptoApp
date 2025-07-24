@@ -499,13 +499,19 @@ final class WatchlistVC: UIViewController {
                   let cell = collectionView.cellForItem(at: indexPath) as? CoinCell else { continue }
             
             let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            let currentFilter = viewModel.currentFilterState.priceChangeFilter
             
-            cell.updatePriceData(
-                withPrice: coin.priceString,
-                percentChange24h: coin.percentChangeString(for: viewModel.currentFilterState.priceChangeFilter),
-                sparklineData: sparklineNumbers,
-                isPositiveChange: coin.isPositiveChange(for: viewModel.currentFilterState.priceChangeFilter)
-            )
+            // Get old price for animation comparison
+            let oldPrice = cell.priceLabel.text ?? coin.priceString
+            let newPrice = coin.priceString
+            
+            // Update cell with animated price changes
+            cell.updatePriceDataAnimated(withOldPrice: oldPrice,
+                                                   newPrice: newPrice,
+                                           percentChange24h: coin.percentChangeString(for: currentFilter),
+                                              sparklineData: sparklineNumbers,
+                                          isPositiveChange: coin.isPositiveChange(for: currentFilter),
+                                                  animated: true)
         }
         
         viewModel.clearUpdatedCoinIds()

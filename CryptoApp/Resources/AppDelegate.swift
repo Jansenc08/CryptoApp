@@ -18,6 +18,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Initialize Core Data
         _ = CoreDataManager.shared
         
+        // 🌐 START SHARED DATA MANAGER: Ensure background price updates start immediately
+        _ = SharedCoinDataManager.shared
+        print("🌐 AppDelegate: SharedCoinDataManager started at app launch")
+        
         #if DEBUG
         AppLogger.ui("CryptoApp launched in DEBUG mode")
         #endif

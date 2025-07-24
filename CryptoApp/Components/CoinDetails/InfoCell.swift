@@ -6,9 +6,9 @@
 //
 
 final class InfoCell: UITableViewCell {
-    private let nameLabel = UILabel()
-    private let rankLabel = UILabel()
-    private let priceLabel = UILabel()
+    let nameLabel = UILabel() // Made internal for animation access
+    let rankLabel = UILabel() // Made internal for animation access
+    let priceLabel = UILabel() // Made internal for animation access
     private let stack = UIStackView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -50,6 +50,11 @@ final class InfoCell: UITableViewCell {
         nameLabel.text = name
         rankLabel.text = "#\(rank)"
         priceLabel.text = price
+    }
+    
+    /// Flash the price label when price changes
+    func flashPrice(isPositive: Bool) {
+        PriceFlashHelper.shared.flashPriceLabel(priceLabel, isPositive: isPositive)
     }
 
     required init?(coder: NSCoder) {

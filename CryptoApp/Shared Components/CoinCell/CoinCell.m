@@ -153,6 +153,44 @@
     });
 }
 
+- (void)updatePriceDataAnimatedWithOldPrice:(NSString *)oldPrice
+                                   newPrice:(NSString *)newPrice
+                           percentChange24h:(NSString *)percentChange24h
+                              sparklineData:(NSArray<NSNumber *> *)sparklineData
+                          isPositiveChange:(BOOL)isPositiveChange
+                                  animated:(BOOL)animated {
+    
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return; // Cell was deallocated - skip update
+        
+        // Update percentage and sparkline first (non-animated)
+        strongSelf.percentChangeLabel.text = percentChange24h;
+        strongSelf.percentChangeLabel.textColor = isPositiveChange ? [UIColor systemGreenColor] : [UIColor systemRedColor];
+        [strongSelf.sparklineView configureWith:sparklineData isPositive:isPositiveChange];
+        
+        if (animated && oldPrice && newPrice && ![oldPrice isEqualToString:newPrice]) {
+            // Use Swift animation system for price label animation
+            [strongSelf animatePriceLabelFromOldPrice:oldPrice toNewPrice:newPrice isPositiveChange:isPositiveChange];
+        } else {
+            // Direct update without animation
+            strongSelf.priceLabel.text = newPrice;
+        }
+    });
+}
+
+// Simple price flash animation
+- (void)animatePriceLabelFromOldPrice:(NSString *)oldPrice 
+                           toNewPrice:(NSString *)newPrice 
+                    isPositiveChange:(BOOL)isPositiveChange {
+    // First update the text
+    self.priceLabel.text = newPrice;
+    
+    // Then flash the label
+    [[PriceFlashHelper shared] flashPriceLabel:self.priceLabel isPositive:isPositiveChange];
+}
+
 
 // Resets the image when cells are reused by the collection view.
 // Avoids image flickering / wrong images showing

@@ -54,10 +54,8 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private func preloadAllTabData() {
         AppLogger.performance("🚀 Preloading all tab data for seamless experience")
         
-        // Load coins data
-        if viewModel.currentCoins.isEmpty {
-            viewModel.fetchCoins()
-        }
+        // SharedCoinDataManager handles all data loading automatically
+        // No need to call viewModel.fetchCoins() - it will get data from shared manager
         
         // Preload watchlist data without showing loading state
         watchlistVC?.preloadDataSilently()
@@ -78,14 +76,11 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private func startResourcesForActiveTab() {
         let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
         
+        // SharedCoinDataManager handles all updates now, so just log which tab is active
         if currentIndex == 0 {
-            // Coins tab is active - start auto-refresh
-            startAutoRefresh()
-            AppLogger.performance("Started auto-refresh for active Coins tab")
+            AppLogger.performance("Coins tab is active - using SharedCoinDataManager")
         } else {
-            // Watchlist tab is active - start watchlist updates (seamlessly)
-            watchlistVC?.resumePeriodicUpdates()
-            AppLogger.performance("Started periodic updates for active Watchlist tab")
+            AppLogger.performance("Watchlist tab is active - using SharedCoinDataManager")
         }
     }
     
@@ -487,21 +482,18 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         print("  UI: \(sortHeaderView.currentSortColumn) \(sortHeaderView.currentSortOrder == .descending ? "DESC" : "ASC")")
         print("  VM: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
         
-        viewModel.fetchCoins(onFinish: {
-            print("🏁 Pull-to-Refresh | Data fetch completed")
-            
-            // Debug: Print sort state after refresh
-            print("🔍 Pull-to-refresh - After fetch:")
-            print("  VM: \(self.viewModel.getCurrentSortColumn()) \(self.viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
-            
-            self.isRefreshing = false
-            self.refreshControl.endRefreshing()
-            
-            // Sync SortHeaderView UI with ViewModel's current sort state
-            self.syncSortHeaderWithViewModel()
-            
-            print("🎯 Pull-to-Refresh | Spinner stopped, refresh complete")
-        })
+        // Use SharedCoinDataManager for pull-to-refresh instead of individual ViewModel calls
+        SharedCoinDataManager.shared.forceUpdate()
+        
+        print("🏁 Pull-to-Refresh | Data fetch completed")
+        
+        self.isRefreshing = false
+        self.refreshControl.endRefreshing()
+        
+        // Sync SortHeaderView UI with ViewModel's current sort state
+        self.syncSortHeaderWithViewModel()
+        
+        print("🎯 Pull-to-Refresh | Spinner stopped, refresh complete")
     }
     
     // MARK: - Diffable Data Source Setup
@@ -671,7 +663,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     }
     
     // MARK: - Auto-Refresh Logic
-    // The timer runs independently every 15 seconds
+    // The timer runs independently every 30 seconds
     // It triggers viewModel.fetchPriceUpdatesForVisibleCoins(...)
     // The fetch logic inside the view model runs asynchronously, updates only visible prices
     // After fetching, the Combine publisher emits new prices, which trigger targeted UI updates
@@ -765,7 +757,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     }
 
     
-    // MARK: - Optimized Price Update Logic
+    // MARK: - Optimized Price Update Logic with Animations
     // Updates Prices only if it changes otherwise no  
     private func updateCellsForChangedCoins(_ updatedCoinIds: Set<Int>) {
         // Skip if no changes
@@ -782,13 +774,17 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
             let currentFilter = viewModel.currentFilterState.priceChangeFilter
             
-            // Update cell without reloading the whole list
-            cell.updatePriceData(
-                withPrice: coin.priceString,
-                percentChange24h: coin.percentChangeString(for: currentFilter), // Now uses current filter
-                sparklineData: sparklineNumbers,
-                isPositiveChange: coin.isPositiveChange(for: currentFilter)     // Also uses current filter
-            )
+            // Get old price for animation comparison
+            let oldPrice = cell.priceLabel.text ?? coin.priceString
+            let newPrice = coin.priceString
+            
+            // Update cell with animated price changes
+            cell.updatePriceDataAnimated(withOldPrice: oldPrice,
+                                                   newPrice: newPrice,
+                                           percentChange24h: coin.percentChangeString(for: currentFilter),
+                                              sparklineData: sparklineNumbers,
+                                          isPositiveChange: coin.isPositiveChange(for: currentFilter),
+                                                  animated: true)
             
             updatedCellsCount += 1
         }

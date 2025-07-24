@@ -46,6 +46,13 @@ NS_ASSUME_NONNULL_BEGIN
                  sparklineData:(NSArray<NSNumber *> *)sparklineData
              isPositiveChange:(BOOL)isPositiveChange;
 
+// New method for animated price updates
+- (void)updatePriceDataAnimatedWithOldPrice:(NSString *)oldPrice
+                                   newPrice:(NSString *)newPrice
+                           percentChange24h:(NSString *)percentChange24h
+                              sparklineData:(NSArray<NSNumber *> *)sparklineData
+                          isPositiveChange:(BOOL)isPositiveChange
+                                  animated:(BOOL)animated;
 
 
 // reuse method returning reuse identifier

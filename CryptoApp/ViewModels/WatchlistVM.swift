@@ -127,7 +127,7 @@ final class WatchlistVM: ObservableObject {
      */
     
     private var lastPriceUpdate: Date = Date()
-    private let priceUpdateInterval: TimeInterval = 15.0
+    private let priceUpdateInterval: TimeInterval = 30.0
     private var isPriceUpdateInProgress = false
     
     // Cache for reducing API calls
@@ -148,6 +148,15 @@ final class WatchlistVM: ObservableObject {
     init(coinManager: CoinManagerProtocol = CoinManager()) {
         self.coinManager = coinManager
         setupOptimizedBindings()
+        
+        // 🌐 SUBSCRIBE TO SHARED DATA: Use same data as CoinListVM for consistency
+        SharedCoinDataManager.shared.allCoins
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] allCoins in
+                self?.handleSharedDataUpdate(allCoins)
+            }
+            .store(in: &cancellables)
+        
         loadInitialData()
         startOptimizedPeriodicUpdates()
     }
@@ -175,7 +184,7 @@ final class WatchlistVM: ObservableObject {
     // Triggers UI Updates only after fresh prices are available
     
     func loadInitialData() {
-        // Use optimized manager's instant O(1) data access
+        // Get watchlist coin IDs from manager
         let coins = watchlistManager.getWatchlistCoins()
         
         if coins.isEmpty {
@@ -186,8 +195,15 @@ final class WatchlistVM: ObservableObject {
             return
         }
         
-        // Always fetch fresh price data first, don't show coins without prices
-        refreshPriceData(for: coins)
+        // Check if SharedCoinDataManager already has data
+        let sharedCoins = SharedCoinDataManager.shared.currentCoins
+        if !sharedCoins.isEmpty {
+            handleSharedDataUpdate(sharedCoins)
+        } else {
+            // Force SharedCoinDataManager to fetch data
+            SharedCoinDataManager.shared.forceUpdate()
+            isLoadingSubject.send(true)
+        }
     }
     
     
@@ -203,8 +219,15 @@ final class WatchlistVM: ObservableObject {
             watchlistCoinsSubject.send([])
             isLoadingSubject.send(false)
         } else {
-            // Always fetch fresh price data to ensure we have complete information
-            refreshPriceData(for: coins)
+            // Use SharedCoinDataManager data instead of making separate API calls
+            let sharedCoins = SharedCoinDataManager.shared.currentCoins
+            if !sharedCoins.isEmpty {
+                handleSharedDataUpdate(sharedCoins)
+            } else {
+                // Force SharedCoinDataManager to fetch data
+                SharedCoinDataManager.shared.forceUpdate()
+                isLoadingSubject.send(true)
+            }
         }
     }
     
@@ -217,8 +240,12 @@ final class WatchlistVM: ObservableObject {
         if coins.isEmpty {
             watchlistCoinsSubject.send([])
         } else {
-            // Fetch fresh price data WITHOUT showing loading state for seamless tab switching
-            refreshPriceDataSilently(for: coins)
+            // Use SharedCoinDataManager data - no separate API calls
+            let sharedCoins = SharedCoinDataManager.shared.currentCoins
+            if !sharedCoins.isEmpty {
+                handleSharedDataUpdate(sharedCoins)
+            }
+            // Don't force update for silent refresh to avoid interfering with user actions
         }
     }
     
@@ -285,10 +312,15 @@ final class WatchlistVM: ObservableObject {
         
         // Only update if there's an actual change
         if oldCoinIds != newCoinIds {
-            // Don't update UI immediately with coins that have no price data
-            // Instead, fetch prices first, then update UI with complete data
+            // Use SharedCoinDataManager data instead of separate API calls
             if !newCoins.isEmpty {
-                refreshPriceData(for: newCoins)
+                let sharedCoins = SharedCoinDataManager.shared.currentCoins
+                if !sharedCoins.isEmpty {
+                    handleSharedDataUpdate(sharedCoins)
+                } else {
+                    // If no shared data yet, just show the coins without prices and wait for shared data
+                    watchlistCoinsSubject.send(newCoins)
+                }
             } else {
                 // If empty, update immediately
                 watchlistCoinsSubject.send(newCoins)
@@ -339,175 +371,80 @@ final class WatchlistVM: ObservableObject {
     // Calls applySortingToWatchlist()
     // Triggers logo fetching in background
     
-    private func refreshPriceData(for coins: [Coin]) {
-        guard !coins.isEmpty else {
-            watchlistCoinsSubject.send([])
-            isLoadingSubject.send(false)
-            return
-        }
-        
-        isLoadingSubject.send(true)
-        errorMessageSubject.send(nil)
-        
-        let coinIds = coins.map { $0.id }
-        
-        fetchPriceUpdates(for: coinIds) { [weak self] updatedCoins in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                #if DEBUG
-                let priceUpdates = updatedCoins.prefix(3).compactMap { coin -> (symbol: String, oldPrice: String, newPrice: String, change: String)? in
-                    guard let quote = coin.quote?["USD"],
-                          let currentPrice = quote.price,
-                          let changePercent = quote.percentChange24h else { return nil }
-                    
-                    let priceChange24h = (currentPrice * changePercent) / 100.0
-                    let price24hAgo = currentPrice - priceChange24h
-                    
-                    let formatter = NumberFormatter()
-                    formatter.numberStyle = .currency
-                    formatter.currencyCode = "USD"
-                    formatter.maximumFractionDigits = 2
-                    
-                    let oldPrice = formatter.string(from: NSNumber(value: price24hAgo)) ?? "$\(price24hAgo)"
-                    let newPrice = formatter.string(from: NSNumber(value: currentPrice)) ?? "$\(currentPrice)"
-                    let changeStr = String(format: "%.2f%%", changePercent)
-                    
-                    return (coin.symbol, oldPrice, newPrice, changeStr)
-                }
-                
-                let moreCount = max(0, updatedCoins.count - 3)
-                let title = "Watchlist Price Updates (\(updatedCoins.count) coins)" + (moreCount > 0 ? " - showing top 3" : "")
-                AppLogger.priceTable(title, updates: priceUpdates)
-                #endif
-                
-                self.watchlistCoinsSubject.send(updatedCoins)
-                self.isLoadingSubject.send(false)
-                self.lastPriceUpdate = Date()
-                
-                // Apply current sorting after price update
-                self.applySortingToWatchlist()
-                
-                // Fetch missing logos efficiently
-                self.fetchMissingLogos(for: updatedCoins)
-            }
-        }
-    }
-    
-    private func refreshPriceDataSilently(for coins: [Coin]) {
-        guard !coins.isEmpty else {
-            watchlistCoinsSubject.send([])
-            return
-        }
-        
-        // NO loading state change - for seamless tab switching
-        errorMessageSubject.send(nil)
-        
-        let coinIds = coins.map { $0.id }
-        
-        fetchPriceUpdates(for: coinIds) { [weak self] updatedCoins in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                AppLogger.performance("🔄 Silent price update completed for \(updatedCoins.count) coins")
-                
-                self.watchlistCoinsSubject.send(updatedCoins)
-                // NO isLoadingSubject.send(false) - keep current loading state
-                self.lastPriceUpdate = Date()
-                
-                // Apply current sorting after price update
-                self.applySortingToWatchlist()
-                
-                // Fetch missing logos efficiently
-                self.fetchMissingLogos(for: updatedCoins)
-            }
-        }
-    }
+    // REMOVED: Old price fetching methods - now using SharedCoinDataManager exclusively
     
     
     // Uses Combine to fetch prices from coinManager.getQuotes
     // Handles error fallback to show old data if needed
     // Injects the new quotes into existing Coin models
     
-    private func fetchPriceUpdates(for coinIds: [Int], completion: @escaping ([Coin]) -> Void) {
-        guard !coinIds.isEmpty else {
-            completion([])
-            return
+    /// Handle updates from SharedCoinDataManager
+    private func handleSharedDataUpdate(_ allCoins: [Coin]) {
+        guard !allCoins.isEmpty else { return }
+        
+        // Get watchlist coin IDs
+        let watchlistCoinIds = watchlistManager.getWatchlistCoins().map { $0.id }
+        guard !watchlistCoinIds.isEmpty else { 
+            watchlistCoinsSubject.send([])
+            return 
         }
         
-        print("🔄 Fetching fresh price data for \(coinIds.count) coins...")
+        let timestamp = Date().timeIntervalSince1970
+        let btcPrice = allCoins.first(where: { $0.symbol == "BTC" })?.quote?["USD"]?.price ?? 0
+        print("🌐 WatchlistVM: Received shared data update - filtering for \(watchlistCoinIds.count) watchlist coins at \(timestamp) | BTC: $\(String(format: "%.2f", btcPrice))")
         
-        // Create subscription on main queue to avoid race conditions
-        let subscription = coinManager.getQuotes(for: coinIds, convert: "USD", priority: .normal)
-            .receive(on: DispatchQueue.main) // Ensure all updates happen on main thread
-            .sink(
-                receiveCompletion: { [weak self] completionResult in
-                    guard let self = self else { return }
-                    
-                    self.isPriceUpdateInProgress = false
-                    
-                    if case .failure(let error) = completionResult {
-                        #if DEBUG
-                        print("⚠️ Price fetch failed: \(error)")
-                        #endif
-                        
-                        // For newly added coins, don't show error - just show coins without price data
-                        // This prevents the decoding error from blocking the watchlist display
-                        let baseCoins = self.watchlistManager.getWatchlistCoins()
-                        if !baseCoins.isEmpty {
-                            self.watchlistCoinsSubject.send(baseCoins)
-                            self.isLoadingSubject.send(false)
-                            #if DEBUG
-                            print("⚠️ Showing \(baseCoins.count) coins without price data due to API error")
-                            #endif
-                            
-                            // Try to fetch prices again after a delay for newly added coins
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                                guard let self = self else { return }
-                                let retryCoins = self.watchlistManager.getWatchlistCoins()
-                                if !retryCoins.isEmpty {
-                                    self.refreshPriceData(for: retryCoins)
-                                }
-                            }
-                        } else {
-                            // Only show error message if we have no coins to display
-                            self.errorMessageSubject.send(ErrorMessageProvider.shared.getWatchlistErrorMessage(for: error))
-                            self.isLoadingSubject.send(false)
-                        }
-                        completion(baseCoins)
-                    }
-                },
-                receiveValue: { [weak self] quotes in
-                    guard let self = self else { 
-                        completion([])
-                        return 
-                    }
-                    
-                    #if DEBUG
-                    print("📊 Quote API returned data for \(quotes.count) coins")
-                    #endif
-                    
-                    // Use optimized manager's cached coins instead of redundant database calls
-                    let baseCoins = self.watchlistManager.getWatchlistCoins()
-                    
-                    let updatedCoins = baseCoins.map { coin -> Coin in
-                        var updatedCoin = coin
-                        if let quote = quotes[coin.id] {
-                            updatedCoin.quote = ["USD": quote]
-                        }
-                        return updatedCoin
-                    }
-                    
-                    self.isPriceUpdateInProgress = false
-                    completion(updatedCoins)
+        // Filter shared data for watchlist coins
+        let idSet = Set(watchlistCoinIds)
+        let watchlistCoins = allCoins.filter { idSet.contains($0.id) }
+        
+        print("✅ WatchlistVM: Found \(watchlistCoins.count) watchlist coins in shared data")
+        
+        // Check for price changes and detect which coins changed
+        let currentCoins = currentWatchlistCoins
+        let changedCoinIds = findChangedCoins(current: currentCoins, updated: watchlistCoins)
+        
+        // Always update UI with new data
+        watchlistCoinsSubject.send(watchlistCoins)
+        isLoadingSubject.send(false)
+        
+        // If prices changed, trigger animation updates
+        if !changedCoinIds.isEmpty {
+            updatedCoinIdsSubject.send(changedCoinIds)
+            print("💰 WatchlistVM: \(changedCoinIds.count) coins had price changes - triggering UI animations")
+            
+            // Log the changed prices
+            for coin in watchlistCoins.filter({ changedCoinIds.contains($0.id) }) {
+                if let price = coin.quote?["USD"]?.price {
+                    print("📈 \(coin.symbol): Updated to $\(String(format: "%.2f", price))")
                 }
-            )
-        
-        // Store subscription safely on main queue
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            subscription.store(in: &self.requestCancellables)
+            }
+        } else {
+            print("💰 WatchlistVM: No price changes detected in watchlist")
         }
+        
+        // Apply current sorting
+        applySortingToWatchlist()
+        
+        // 🖼️ FETCH LOGOS: Fetch missing logos efficiently
+        fetchMissingLogos(for: watchlistCoins)
+        
+        // Log price data for verification
+        if let btc = watchlistCoins.first(where: { $0.symbol == "BTC" }),
+           let price = btc.quote?["USD"]?.price {
+            print("📊 WatchlistVM: BTC price from shared data = $\(String(format: "%.2f", price))")
+        }
+        
+
+    }
+    
+    private func fetchPriceUpdates(for coinIds: [Int], completion: @escaping ([Coin]) -> Void) {
+        // 🌐 NOW USING SHARED DATA: Just get from shared manager instead of API call
+        let watchlistCoins = SharedCoinDataManager.shared.getCoinsForIds(coinIds)
+        
+        print("🌐 WatchlistVM: Using shared data for \(watchlistCoins.count) coins")
+        
+        isPriceUpdateInProgress = false
+        completion(watchlistCoins)
     }
     
     /**
@@ -582,13 +519,11 @@ final class WatchlistVM: ObservableObject {
      * - Efficient change detection
      */
     
-    // Runs every 15 seconds (priceUpdateInterval)
+    // Runs every 30 seconds (priceUpdateInterval)
     
     private func startOptimizedPeriodicUpdates() {
-        // More intelligent update timer
-        updateTimer = Timer.scheduledTimer(withTimeInterval: priceUpdateInterval, repeats: true) { [weak self] _ in
-            self?.updatePricesIfNeeded()
-        }
+        // SharedCoinDataManager handles all updates now, no need for individual timers
+        print("🌐 WatchlistVM: Using SharedCoinDataManager for updates, no individual timer needed")
     }
     
 
@@ -684,10 +619,12 @@ final class WatchlistVM: ObservableObject {
      */
     
     func startPeriodicUpdates() {
+        print("▶️ WatchlistVM: startPeriodicUpdates called - SharedCoinDataManager subscription continues")
         startOptimizedPeriodicUpdates()
     }
     
     func stopPeriodicUpdates() {
+        print("⏸️ WatchlistVM: stopPeriodicUpdates called - SharedCoinDataManager subscription continues")
         updateTimer?.invalidate()
         updateTimer = nil
     }
