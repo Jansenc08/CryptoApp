@@ -45,8 +45,10 @@ final class WatchlistVC: UIViewController {
         // Resume periodic price updates when tab becomes active
         viewModel.startPeriodicUpdates()
         
-        // Refresh data when returning to tab
-        viewModel.refreshWatchlist()
+        // Only refresh if data is empty (first time) - for seamless tab switching
+        if viewModel.currentWatchlistCoins.isEmpty {
+            viewModel.refreshWatchlist()
+        }
         
         AppLogger.ui("Entering Watchlist Tab")
         
@@ -77,6 +79,24 @@ final class WatchlistVC: UIViewController {
     // MARK: - Container View Controller Lifecycle
     
     // These methods are called by the container view controller (CoinListVC)
+    
+    func preloadDataSilently() {
+        // Preload data without showing loading state for seamless tab switching
+        AppLogger.performance("📱 WatchlistVC: Preloading data silently")
+        viewModel.refreshWatchlistSilently()
+    }
+    
+    func pausePeriodicUpdates() {
+        // Pause periodic updates without calling full lifecycle (for seamless tab switching)
+        viewModel.stopPeriodicUpdates()
+        AppLogger.performance("⏸️ WatchlistVC: Paused periodic updates for seamless tab switch")
+    }
+    
+    func resumePeriodicUpdates() {
+        // Resume periodic updates without calling full lifecycle (for seamless tab switching)
+        viewModel.startPeriodicUpdates()
+        AppLogger.performance("▶️ WatchlistVC: Resumed periodic updates for seamless tab switch")
+    }
     
     // MARK: - UI Setup
     

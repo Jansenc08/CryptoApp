@@ -65,10 +65,6 @@ import Combine
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
-        // Ensure proper navigation bar state
-        navigationController?.navigationBar.prefersLargeTitles = true
-        navigationItem.largeTitleDisplayMode = .always
-        
         // Refresh recent searches when returning to search
         loadRecentSearches()
         
@@ -94,11 +90,6 @@ import Combine
         
         // Dismiss keyboard when leaving
         searchBarComponent.resignFirstResponder()
-        
-        // Reset navigation bar state when leaving search
-        if isMovingFromParent || isBeingDismissed {
-            navigationController?.navigationBar.prefersLargeTitles = false
-        }
     }
     
     deinit {
@@ -132,7 +123,7 @@ import Combine
         view.backgroundColor = .systemBackground
         navigationItem.title = "Search"
         
-        // Configure large title display mode only for this view
+        // Use per-VC large title control (best practice)
         navigationItem.largeTitleDisplayMode = .always
     }
     

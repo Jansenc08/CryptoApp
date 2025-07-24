@@ -24,7 +24,12 @@
                                                          image:[UIImage systemImageNamed:@"chart.line.uptrend.xyaxis"]
                                                            tag:0];
     
-    return [[UINavigationController alloc] initWithRootViewController:marketsVC];
+    UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:marketsVC];
+    
+    // Enable large titles support globally for this navigation stack (best practice)
+    navController.navigationBar.prefersLargeTitles = YES;
+    
+    return navController;
 }
 
 - (UINavigationController *)createSearchNC {
@@ -34,7 +39,12 @@
                                                         image:[UIImage systemImageNamed:@"magnifyingglass"]
                                                           tag:1];
     
-    return [[UINavigationController alloc] initWithRootViewController:searchVC];
+    UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:searchVC];
+    
+    // Enable large titles support globally for this navigation stack (best practice)
+    navController.navigationBar.prefersLargeTitles = YES;
+    
+    return navController;
 }
 
 @end

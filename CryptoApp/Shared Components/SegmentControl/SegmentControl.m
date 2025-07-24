@@ -50,7 +50,7 @@
         if (@available(iOS 15.0, *)) {
             UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
             config.title = self.segmentTitles[i];
-            config.baseForegroundColor = [UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0];
+            config.baseForegroundColor = [UIColor secondaryLabelColor];
             config.background.backgroundColor = [UIColor clearColor];
             config.titleTextAttributesTransformer = ^NSDictionary<NSAttributedStringKey,id> * _Nonnull(NSDictionary<NSAttributedStringKey,id> * _Nonnull textAttributes) {
                 NSMutableDictionary *attrs = [textAttributes mutableCopy];
@@ -63,13 +63,13 @@
             // Remove highlight behavior using configuration update handler
             button.configurationUpdateHandler = ^(UIButton * _Nonnull button) {
                 button.configuration.background.backgroundColor = [UIColor clearColor];
-                button.configuration.baseForegroundColor = [UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0];
+                button.configuration.baseForegroundColor = [UIColor secondaryLabelColor];
             };
         } else {
             // Fallback for iOS 14 and earlier
             [button setTitle:self.segmentTitles[i] forState:UIControlStateNormal];
-            [button setTitleColor:[UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0] forState:UIControlStateNormal];
-            [button setTitleColor:[UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0] forState:UIControlStateSelected];
+            [button setTitleColor:[UIColor secondaryLabelColor] forState:UIControlStateNormal];
+            [button setTitleColor:[UIColor labelColor] forState:UIControlStateSelected];
             button.titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightMedium];
             
             button.adjustsImageWhenHighlighted = NO;
@@ -82,7 +82,7 @@
             [button setBackgroundImage:nil forState:UIControlStateDisabled];
             
             // Override title color for highlighted state to match normal state
-            [button setTitleColor:[UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0] forState:UIControlStateHighlighted];
+            [button setTitleColor:[UIColor secondaryLabelColor] forState:UIControlStateHighlighted];
         }
         
         // Remove tint color that causes blue highlight
@@ -182,11 +182,11 @@
         
         UIColor *textColor;
         if (i == index) {
-            // Selected button - dark text
-            textColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0];
+            // Selected button - primary text color (adapts to dark/light mode)
+            textColor = [UIColor labelColor];
         } else {
-            // Unselected button - gray text
-            textColor = [UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0];
+            // Unselected button - secondary text color (adapts to dark/light mode)
+            textColor = [UIColor secondaryLabelColor];
         }
         
         // Update colors based on iOS version
@@ -319,17 +319,17 @@
         
         if (i == fromIndex) {
             // From button: fade from selected to unselected
-            textColor = [self interpolateColorFrom:[UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0]
-                                                to:[UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0]
+            textColor = [self interpolateColorFrom:[UIColor labelColor]
+                                                to:[UIColor secondaryLabelColor]
                                       withProgress:progress];
         } else if (i == toIndex) {
             // To button: fade from unselected to selected
-            textColor = [self interpolateColorFrom:[UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0]
-                                                to:[UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0]
+            textColor = [self interpolateColorFrom:[UIColor secondaryLabelColor]
+                                                to:[UIColor labelColor]
                                       withProgress:progress];
         } else {
             // Other buttons: stay unselected
-            textColor = [UIColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0];
+            textColor = [UIColor secondaryLabelColor];
         }
         
         // Apply color based on iOS version

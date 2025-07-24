@@ -208,6 +208,20 @@ final class WatchlistVM: ObservableObject {
         }
     }
     
+    func refreshWatchlistSilently() {
+        // Get instant data from watchlistManager
+        let coins = watchlistManager.getWatchlistCoins()
+        
+        AppLogger.performance("🔄 Silently refreshing watchlist with \(coins.count) coins")
+        
+        if coins.isEmpty {
+            watchlistCoinsSubject.send([])
+        } else {
+            // Fetch fresh price data WITHOUT showing loading state for seamless tab switching
+            refreshPriceDataSilently(for: coins)
+        }
+    }
+    
     func removeFromWatchlist(_ coin: Coin) {
         // Use optimized manager's O(1) remove operation
         watchlistManager.removeFromWatchlist(coinId: coin.id)
@@ -369,6 +383,36 @@ final class WatchlistVM: ObservableObject {
                 
                 self.watchlistCoinsSubject.send(updatedCoins)
                 self.isLoadingSubject.send(false)
+                self.lastPriceUpdate = Date()
+                
+                // Apply current sorting after price update
+                self.applySortingToWatchlist()
+                
+                // Fetch missing logos efficiently
+                self.fetchMissingLogos(for: updatedCoins)
+            }
+        }
+    }
+    
+    private func refreshPriceDataSilently(for coins: [Coin]) {
+        guard !coins.isEmpty else {
+            watchlistCoinsSubject.send([])
+            return
+        }
+        
+        // NO loading state change - for seamless tab switching
+        errorMessageSubject.send(nil)
+        
+        let coinIds = coins.map { $0.id }
+        
+        fetchPriceUpdates(for: coinIds) { [weak self] updatedCoins in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                AppLogger.performance("🔄 Silent price update completed for \(updatedCoins.count) coins")
+                
+                self.watchlistCoinsSubject.send(updatedCoins)
+                // NO isLoadingSubject.send(false) - keep current loading state
                 self.lastPriceUpdate = Date()
                 
                 // Apply current sorting after price update

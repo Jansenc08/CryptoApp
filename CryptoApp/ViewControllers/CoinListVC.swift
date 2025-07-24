@@ -46,19 +46,30 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         configureCollectionView()
         configureDataSource()
         bindViewModel()
+        
+        // Preload both tabs for seamless switching
+        preloadAllTabData()
+    }
+    
+    private func preloadAllTabData() {
+        AppLogger.performance("🚀 Preloading all tab data for seamless experience")
+        
+        // Load coins data
+        if viewModel.currentCoins.isEmpty {
+            viewModel.fetchCoins()
+        }
+        
+        // Preload watchlist data without showing loading state
+        watchlistVC?.preloadDataSilently()
+        
+        AppLogger.performance("✅ Tab preloading initiated")
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
-        // Only fetch data on initial load, not on every view appear
-        // Pull-to-refresh and auto-refresh handle data updates
-        if viewModel.currentCoins.isEmpty {
-            print("📱 Initial load - fetching data")
-            viewModel.fetchCoins()
-        } else {
-            print("📱 View appeared - data already loaded, skipping fetch")
-        }
+        // Data is already preloaded in viewDidLoad - just start timers
+        AppLogger.performance("📱 CoinListVC appeared - data preloaded, starting timers only")
         
         // Start resources for the currently active tab only
         startResourcesForActiveTab()
@@ -67,19 +78,25 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private func startResourcesForActiveTab() {
         let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
         
-        // Use proper container view controller lifecycle
-        notifyChildViewWillAppear(currentIndex)
-        notifyChildViewDidAppear(currentIndex)
+        if currentIndex == 0 {
+            // Coins tab is active - start auto-refresh
+            startAutoRefresh()
+            AppLogger.performance("Started auto-refresh for active Coins tab")
+        } else {
+            // Watchlist tab is active - start watchlist updates (seamlessly)
+            watchlistVC?.resumePeriodicUpdates()
+            AppLogger.performance("Started periodic updates for active Watchlist tab")
+        }
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         
-        // Stop resources for the currently active tab when leaving the entire CoinListVC
-        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
-        notifyChildViewWillDisappear(currentIndex)
+        // Stop all timers and resources when leaving the entire CoinListVC
+        stopAutoRefresh()
+        watchlistVC?.pausePeriodicUpdates()
         
-        AppLogger.performance("Stopped resources for active tab - leaving CoinListVC")
+        AppLogger.performance("Stopped all timers - leaving CoinListVC")
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -111,6 +128,10 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private func configureView() {
         view.backgroundColor = .systemBackground
         navigationItem.title = "Markets"
+        
+        // Use per-VC large title control (best practice)
+        navigationItem.largeTitleDisplayMode = .never
+        
         setupNavigationItems()
         setupSegmentControl()
         setupContainerViews()
@@ -282,7 +303,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 let newIndex = translation.x > 0 ? max(0, currentIndex - 1) : min(1, currentIndex + 1)
                 if newIndex != currentIndex {
                     segmentControl.setSelectedSegmentIndex(newIndex, animated: true)
-                    transitionToPage(newIndex)
+                    animateToPage(newIndex)
                     return
                 }
             }
@@ -349,125 +370,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         }
     }
     
-    // MARK: - Container View Controller Resource Management
-    
-    private func transitionToPage(_ pageIndex: Int) {
-        let currentIndex = segmentControl.selectedSegmentIndex
-        
-        // Don't transition if we're already on the target page
-        guard currentIndex != pageIndex else { return }
-        
-        AppLogger.ui("Transitioning from \(currentIndex == 0 ? "Coins" : "Watchlist") to \(pageIndex == 0 ? "Coins" : "Watchlist")")
-        
-        // Step 1: Notify current child that it will disappear
-        notifyChildViewWillDisappear(currentIndex)
-        
-        // Step 2: Notify new child that it will appear
-        notifyChildViewWillAppear(pageIndex)
-        
-        // Step 3: Perform the UI animation
-        animateToPage(pageIndex)
-        
-        // Step 4: Complete the transition (handled in animation completion)
-    }
-    
-    private func notifyChildViewWillAppear(_ pageIndex: Int) {
-        if pageIndex == 0 {
-            // Coins page becoming active
-            AppLogger.performance("Coins page will appear - starting resources")
-            startAutoRefresh()
-        } else {
-            // Watchlist page becoming active  
-            AppLogger.performance("Watchlist page will appear - starting resources")
-            watchlistVC?.viewWillAppear(true)
-        }
-    }
-    
-    private func notifyChildViewWillDisappear(_ pageIndex: Int) {
-        if pageIndex == 0 {
-            // Coins page becoming inactive
-            AppLogger.performance("Coins page will disappear - stopping resources")
-            stopAutoRefresh()
-        } else {
-            // Watchlist page becoming inactive
-            AppLogger.performance("Watchlist page will disappear - stopping resources")
-            watchlistVC?.viewWillDisappear(true)
-        }
-    }
-    
-    private func notifyChildViewDidAppear(_ pageIndex: Int) {
-        if pageIndex == 0 {
-            // Coins page is now active
-            AppLogger.performance("Coins page did appear")
-        } else {
-            // Watchlist page is now active
-            AppLogger.performance("Watchlist page did appear")
-            watchlistVC?.viewDidAppear(true)
-        }
-    }
-    
-    private func notifyChildViewDidDisappear(_ pageIndex: Int) {
-        if pageIndex == 0 {
-            // Coins page is now inactive
-            AppLogger.performance("Coins page did disappear")
-        } else {
-            // Watchlist page is now inactive
-            AppLogger.performance("Watchlist page did disappear")
-            watchlistVC?.viewDidDisappear(true)
-        }
-    }
-    
-    private func completeTransition(from fromPageIndex: Int, to toPageIndex: Int) {
-        // Step 1: Notify old child that it did disappear
-        notifyChildViewDidDisappear(fromPageIndex)
-        
-        // Step 2: Update UI state
-        updateUIForPage(toPageIndex)
-        
-        // Step 3: Notify new child that it did appear
-        notifyChildViewDidAppear(toPageIndex)
-        
-        // Step 4: Clean up transforms and visibility
-        cleanupAfterTransition(toPageIndex)
-    }
-    
-    private func updateUIForPage(_ pageIndex: Int) {
-        if pageIndex == 0 {
-            navigationItem.title = "Markets"
-        } else {
-            navigationItem.title = "Watchlist"
-            
-            #if DEBUG
-            // Show database contents when switching to watchlist
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                let items = WatchlistManager.shared.watchlistItems
-                let tableData = items.map { 
-                    ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
-                }
-                AppLogger.databaseTable("Watchlist Database Contents", items: tableData)
-            }
-            #endif
-        }
-    }
-    
-    private func cleanupAfterTransition(_ activePageIndex: Int) {
-        // Hide the off-screen container to improve performance
-        if activePageIndex == 0 {
-            watchlistContainerView.isHidden = true
-            coinsContainerView.isHidden = false
-        } else {
-            coinsContainerView.isHidden = true
-            watchlistContainerView.isHidden = false
-        }
-        
-        // Reset transforms for hidden containers
-        if coinsContainerView.isHidden {
-            coinsContainerView.transform = .identity
-        }
-        if watchlistContainerView.isHidden {
-            watchlistContainerView.transform = .identity
-        }
-    }
+
     
     // MARK: - Smooth Page Animation
     
@@ -477,7 +380,6 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         let springDamping: CGFloat = 0.8
         let springVelocity: CGFloat = 0.6
         
-        let fromPageIndex = currentPageIndex
         currentPageIndex = pageIndex
         
         UIView.animate(withDuration: animationDuration, delay: 0, usingSpringWithDamping: springDamping, initialSpringVelocity: springVelocity, options: [.curveEaseOut, .allowUserInteraction]) {
@@ -496,8 +398,43 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             // Ensure segment control is in the correct final state
             self.segmentControl.setSelectedSegmentIndex(pageIndex, animated: false)
             
-            // Complete the container view controller transition
-            self.completeTransition(from: fromPageIndex, to: pageIndex)
+            // Hide the off-screen container to improve performance
+            if pageIndex == 0 {
+                self.watchlistContainerView.isHidden = true
+                self.coinsContainerView.isHidden = false
+                self.navigationItem.title = "Markets"
+                
+                // Seamless tab resource management
+                self.startAutoRefresh()
+                self.watchlistVC?.pausePeriodicUpdates()
+            } else {
+                self.coinsContainerView.isHidden = true
+                self.watchlistContainerView.isHidden = false
+                self.navigationItem.title = "Watchlist"
+                
+                // Seamless tab resource management
+                self.stopAutoRefresh()
+                self.watchlistVC?.resumePeriodicUpdates()
+                
+                #if DEBUG
+                // Show database contents when switching to watchlist
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    let items = WatchlistManager.shared.watchlistItems
+                    let tableData = items.map { 
+                        ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
+                    }
+                    AppLogger.databaseTable("Watchlist Database Contents", items: tableData)
+                }
+                #endif
+            }
+            
+            // Reset transforms for hidden containers
+            if self.coinsContainerView.isHidden {
+                self.coinsContainerView.transform = .identity
+            }
+            if self.watchlistContainerView.isHidden {
+                self.watchlistContainerView.transform = .identity
+            }
             
             self.isTransitioning = false
             
@@ -776,7 +713,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // Legacy method - stop the embedded WatchlistVC timers
         let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
         if currentIndex == 1 {
-            watchlistVC?.viewWillDisappear(false)
+            watchlistVC?.pausePeriodicUpdates()
             AppLogger.performance("⏸️ CoinListVC: Stopped watchlist timers from child request")
         }
     }
@@ -785,7 +722,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // Legacy method - resume the embedded WatchlistVC timers
         let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
         if currentIndex == 1 {
-            watchlistVC?.viewWillAppear(false)
+            watchlistVC?.resumePeriodicUpdates()
             AppLogger.performance("🔄 CoinListVC: Resumed watchlist timers from child request")
         }
     }
@@ -889,7 +826,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     
     func switchToTab(_ index: Int) {
         segmentControl.setSelectedSegmentIndex(index, animated: true)
-        transitionToPage(index)
+        animateToPage(index)
     }
     
     private func updateSortHeaderForCurrentFilter() {
@@ -1086,7 +1023,7 @@ extension CoinListVC: SegmentControlDelegate {
         // Prevent multiple transitions
         guard !isTransitioning else { return }
         
-        transitionToPage(index)
+        animateToPage(index)
     }
 }
 
