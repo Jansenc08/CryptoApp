@@ -11,15 +11,40 @@ final class InfoCell: UITableViewCell {
     let priceLabel = UILabel() // Made internal for animation access
     let priceChangeLabel = UILabel() // Price change indicator
     private let priceChangeContainer = UIView() // Container for the price change label with background
+    private let rankContainer = UIView() // Container for the rank label with grey background
     private let stack = UIStackView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupUI() {
+        // Configure labels
         nameLabel.font = .boldSystemFont(ofSize: 24)
-        rankLabel.font = .systemFont(ofSize: 16)
+        rankLabel.font = .systemFont(ofSize: 14, weight: .medium)
         rankLabel.textColor = .secondaryLabel
+        rankLabel.textAlignment = .center
         priceLabel.font = .systemFont(ofSize: 20)
+        
+        // Configure rank container with grey background
+        rankContainer.backgroundColor = .tertiarySystemFill
+        rankContainer.layer.cornerRadius = 8
+        rankContainer.translatesAutoresizingMaskIntoConstraints = false
+        rankContainer.addSubview(rankLabel)
+        
+        // Set up rank label constraints inside container
+        rankLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            rankLabel.topAnchor.constraint(equalTo: rankContainer.topAnchor, constant: 4),
+            rankLabel.bottomAnchor.constraint(equalTo: rankContainer.bottomAnchor, constant: -4),
+            rankLabel.leadingAnchor.constraint(equalTo: rankContainer.leadingAnchor, constant: 8),
+            rankLabel.trailingAnchor.constraint(equalTo: rankContainer.trailingAnchor, constant: -8)
+        ])
         
         // Configure price change label
         priceChangeLabel.font = .systemFont(ofSize: 14, weight: .medium)
@@ -27,12 +52,13 @@ final class InfoCell: UITableViewCell {
         priceChangeLabel.textAlignment = .center
         priceChangeLabel.text = "" // Initially empty
         
-        // Configure price change container
+        // Configure price change container - MODERN APPROACH
         priceChangeContainer.layer.cornerRadius = 8
-        priceChangeContainer.isHidden = true // Initially hidden
+        priceChangeContainer.isHidden = true
         priceChangeContainer.translatesAutoresizingMaskIntoConstraints = false
         priceChangeContainer.addSubview(priceChangeLabel)
         
+        // MODERN CONSTRAINT-BASED LAYOUT
         priceChangeLabel.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             priceChangeLabel.topAnchor.constraint(equalTo: priceChangeContainer.topAnchor, constant: 4),
@@ -40,26 +66,53 @@ final class InfoCell: UITableViewCell {
             priceChangeLabel.leadingAnchor.constraint(equalTo: priceChangeContainer.leadingAnchor, constant: 8),
             priceChangeLabel.trailingAnchor.constraint(equalTo: priceChangeContainer.trailingAnchor, constant: -8)
         ])
+        
+        // CRITICAL: Set explicit width constraints for badge behavior
+        priceChangeContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+        priceChangeContainer.widthAnchor.constraint(lessThanOrEqualToConstant: 100).isActive = true
+        
+        rankContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 30).isActive = true
+        rankContainer.widthAnchor.constraint(lessThanOrEqualToConstant: 60).isActive = true
+        
+        // MODERN PRIORITY SETUP - Badges should stay compact
+        priceChangeContainer.setContentHuggingPriority(.required, for: .horizontal)
+        priceChangeContainer.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
+        rankContainer.setContentHuggingPriority(.required, for: .horizontal)
+        rankContainer.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
+        // Name priorities - Optimized for longer names
+        nameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        nameLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal) // Allow compression for long names
+        
+        // Price label priorities
+        priceLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        priceLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        // Set Name label to be beside rank label 
-        nameLabel.setContentHuggingPriority(.required, for: .horizontal)
-        nameLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-        // Horizontal Stack: name + rank
-        let topRow = UIStackView(arrangedSubviews: [nameLabel, rankLabel])
+        // MODERN STACKVIEW LAYOUT
+        // Create spacer for top row to keep name and rank together
+        let topSpacer = UIView()
+        topSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        
+        // Top row: name + rank container + spacer (keeps "Bitcoin #1" together)
+        let topRow = UIStackView(arrangedSubviews: [nameLabel, rankContainer, topSpacer])
         topRow.axis = .horizontal
         topRow.spacing = 8
         topRow.alignment = .firstBaseline
         topRow.distribution = .fill
         
-        // Horizontal Stack: price + price change indicator
-        let priceRow = UIStackView(arrangedSubviews: [priceLabel, priceChangeContainer])
+        // Create spacer for price row to push badge to the right
+        let priceSpacer = UIView()
+        priceSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        
+        // Bottom row: price + spacer + badge (ensures badge stays compact)
+        let priceRow = UIStackView(arrangedSubviews: [priceLabel, priceSpacer, priceChangeContainer])
         priceRow.axis = .horizontal
         priceRow.spacing = 12
         priceRow.alignment = .center
         priceRow.distribution = .fill
 
-        // Main Vertical Stack
+        // Main vertical stack
         stack.axis = .vertical
         stack.spacing = 8
         stack.addArrangedSubview(topRow)
@@ -162,9 +215,5 @@ final class InfoCell: UITableViewCell {
             self?.priceChangeContainer.alpha = 1
             print("💡 Price change indicator settled - keeping new color visible")
         }
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
     }
 }
