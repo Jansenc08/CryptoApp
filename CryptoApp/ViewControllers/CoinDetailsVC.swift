@@ -454,11 +454,17 @@ final class CoinDetailsVC: UIViewController {
     
     private func formatPrice(_ price: Double) -> String {
         let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
+        formatter.numberStyle = .decimal
+        formatter.currencySymbol = "$"
         formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        formatter.usesGroupingSeparator = true
         
-        return formatter.string(from: NSNumber(value: price)) ?? "$\(price)"
+        if let formattedNumber = formatter.string(from: NSNumber(value: price)) {
+            return "$\(formattedNumber)"
+        } else {
+            return "$\(String(format: "%.2f", price))"
+        }
     }
     
     // MARK: - Real-Time Data Updates

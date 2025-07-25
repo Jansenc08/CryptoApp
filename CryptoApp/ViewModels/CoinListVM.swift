@@ -1087,12 +1087,13 @@ final class CoinListVM: ObservableObject {
                 let oldPrice = oldPrices[coinId] ?? 0.0
                 
                 let formatter = NumberFormatter()
-                formatter.numberStyle = .currency
-                formatter.currencyCode = "USD"
+                formatter.numberStyle = .decimal
                 formatter.maximumFractionDigits = 2
+                formatter.minimumFractionDigits = 2
+                formatter.usesGroupingSeparator = true
                 
-                let oldPriceStr = formatter.string(from: NSNumber(value: oldPrice)) ?? "$\(oldPrice)"
-                let newPriceStr = formatter.string(from: NSNumber(value: newPrice)) ?? "$\(newPrice)"
+                let oldPriceStr = "$" + (formatter.string(from: NSNumber(value: oldPrice)) ?? String(format: "%.2f", oldPrice))
+                let newPriceStr = "$" + (formatter.string(from: NSNumber(value: newPrice)) ?? String(format: "%.2f", newPrice))
                 let changeStr = String(format: "%.2f%%", changePercent)
                 
                 return (updatedCoin.symbol, oldPriceStr, newPriceStr, changeStr)
@@ -1188,12 +1189,13 @@ final class CoinListVM: ObservableObject {
                         let oldPrice = oldPrices[coinId] ?? 0.0
                         
                         let formatter = NumberFormatter()
-                        formatter.numberStyle = .currency
-                        formatter.currencyCode = "USD"
+                        formatter.numberStyle = .decimal
                         formatter.maximumFractionDigits = 2
+                        formatter.minimumFractionDigits = 2
+                        formatter.usesGroupingSeparator = true
                         
-                        let oldPriceStr = formatter.string(from: NSNumber(value: oldPrice)) ?? "$\(oldPrice)"
-                        let newPriceStr = formatter.string(from: NSNumber(value: newPrice)) ?? "$\(newPrice)"
+                        let oldPriceStr = "$" + (formatter.string(from: NSNumber(value: oldPrice)) ?? String(format: "%.2f", oldPrice))
+                        let newPriceStr = "$" + (formatter.string(from: NSNumber(value: newPrice)) ?? String(format: "%.2f", newPrice))
                         let changeStr = String(format: "%.2f%%", changePercent)
                         
                         return (updatedCoin.symbol, oldPriceStr, newPriceStr, changeStr)
