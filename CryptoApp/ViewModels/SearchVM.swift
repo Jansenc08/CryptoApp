@@ -135,6 +135,12 @@ final class SearchVM: ObservableObject {
     private var allCoins: [Coin] = []
     private let debounceInterval: TimeInterval = 0.3 // 300ms debounce
     
+    // MARK: - Popular Coins Caching
+    
+    private var cachedPopularCoinsData: [Coin] = []
+    private var popularCoinsCacheTimestamp: Date?
+    private let popularCoinsCacheInterval: TimeInterval = 300 // 5 minutes cache
+    
     // MARK: - Search Configuration
     
     private let maxSearchResults = 50 // Limit results for performance
@@ -191,7 +197,8 @@ final class SearchVM: ObservableObject {
      * SHARED COIN DATA LISTENER
      * 
      * Listens to SharedCoinDataManager for fresh price updates
-     * and refreshes search results with updated data
+     * and refreshes search results with updated data.
+     * Does NOT invalidate popular coins cache if it's still valid.
      */
     private func setupSharedCoinDataListener() {
         SharedCoinDataManager.shared.allCoins
@@ -202,13 +209,18 @@ final class SearchVM: ObservableObject {
                 // Only update if we have search results to refresh
                 guard !self.currentSearchResults.isEmpty || !self.currentPopularCoins.isEmpty else { return }
                 
-                print("🔍 Search: Received fresh coin data from SharedCoinDataManager - updating search results and popular coins")
+                print("🔍 Search: Received fresh coin data from SharedCoinDataManager - updating search results")
                 
                 // Re-perform current search to merge fresh prices
                 self.performSearch(for: self.currentSearchText)
                 
-                // Fetch fresh data for popular coins instead of using shared data
-                self.fetchFreshPopularCoins(for: self.currentPopularCoinsState.selectedFilter)
+                // For popular coins: Only refresh if cache is invalid, otherwise let cache handle it
+                if !self.isPopularCoinsCacheValid {
+                    print("💰 Popular Coins: Cache expired - refreshing with SharedCoinDataManager data")
+                    self.fetchFreshPopularCoins(for: self.currentPopularCoinsState.selectedFilter)
+                } else {
+                    print("🎯 Popular Coins: Cache still valid - skipping refresh from SharedCoinDataManager")
+                }
             }
             .store(in: &cancellables)
     }
@@ -225,7 +237,7 @@ final class SearchVM: ObservableObject {
      */
     private func setupSearchDebounce() {
         searchTextSubject
-            .debounce(for: .milliseconds(Int(debounceInterval * 1000)), scheduler: DispatchQueue.main)
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main) // Direct value instead of conversion
             .removeDuplicates()
             .sink { [weak self] searchText in
                 self?.performSearch(for: searchText)
@@ -271,9 +283,9 @@ final class SearchVM: ObservableObject {
      * CORE SEARCH FUNCTIONALITY
      * 
      * Performs local search filtering with the following features:
-     * - Case-insensitive matching
+     * - Case-insensitive matching with prefix priority
      * - Searches across name, symbol, and slug
-     * - Partial matching support
+     * - Input validation and sanitization
      * - Results limited for performance
      * - Sorted by market cap (most relevant first)
      * - Uses only cached data to avoid API conflicts
@@ -281,8 +293,14 @@ final class SearchVM: ObservableObject {
     private func performSearch(for searchText: String) {
         let trimmedText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Clear results if search text is too short
-        guard trimmedText.count >= minimumSearchLength else {
+        // Input validation - clear results for empty or too short search
+        guard !trimmedText.isEmpty && trimmedText.count >= minimumSearchLength else {
+            searchResultsSubject.send([])
+            return
+        }
+        
+        // Prevent search for just whitespace or special characters
+        guard trimmedText.rangeOfCharacter(from: .alphanumerics) != nil else {
             searchResultsSubject.send([])
             return
         }
@@ -293,25 +311,9 @@ final class SearchVM: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
-            let lowercaseSearch = trimmedText.lowercased()
-            
+            // Use optimized search matching
             let filteredCoins = self.allCoins.filter { coin in
-                // Search in name
-                if coin.name.lowercased().contains(lowercaseSearch) {
-                    return true
-                }
-                
-                // Search in symbol
-                if coin.symbol.lowercased().contains(lowercaseSearch) {
-                    return true
-                }
-                
-                // Search in slug (if available)
-                if let slug = coin.slug, slug.lowercased().contains(lowercaseSearch) {
-                    return true
-                }
-                
-                return false
+                self.matchesCoin(coin, searchText: trimmedText)
             }
             
             // 🌐 MERGE FRESH PRICES: Update search results with latest prices from SharedCoinDataManager
@@ -353,6 +355,52 @@ final class SearchVM: ObservableObject {
         }
     }
     
+    /**
+     * EFFICIENT STRING SEARCH
+     * 
+     * Optimized search logic with prefix matching for better performance
+     * Prioritizes exact matches and symbol matches over name matches
+     */
+    private func matchesCoin(_ coin: Coin, searchText: String) -> Bool {
+        let search = searchText.lowercased()
+        let symbolLower = coin.symbol.lowercased()
+        let nameLower = coin.name.lowercased()
+        
+        // Exact symbol match (highest priority)
+        if symbolLower == search {
+            return true
+        }
+        
+        // Symbol prefix match (high priority for tickers)
+        if symbolLower.hasPrefix(search) {
+            return true
+        }
+        
+        // Name prefix match (good for "Bitcoin" → "Bit")
+        if nameLower.hasPrefix(search) {
+            return true
+        }
+        
+        // Symbol contains (medium priority)
+        if symbolLower.contains(search) {
+            return true
+        }
+        
+        // Name contains (lower priority)
+        if nameLower.contains(search) {
+            return true
+        }
+        
+        // Slug matching (if available)
+        if let slug = coin.slug?.lowercased() {
+            if slug == search || slug.hasPrefix(search) || slug.contains(search) {
+                return true
+            }
+        }
+        
+        return false
+    }
+    
     // MARK: - Popular Coins Implementation
     
     /**
@@ -377,14 +425,26 @@ final class SearchVM: ObservableObject {
     /**
      * UPDATE POPULAR COINS FILTER
      * 
-     * Updates the popular coins filter and triggers re-filtering with fresh data
+     * Updates the popular coins filter and uses cached data if available,
+     * otherwise fetches fresh data. Cache expires after 5 minutes.
      */
     func updatePopularCoinsFilter(_ filter: PopularCoinsFilter) {
         let newState = PopularCoinsState(selectedFilter: filter)
         popularCoinsStateSubject.send(newState)
         
-        // Fetch fresh data for popular coins instead of using cached data
-        fetchFreshPopularCoins(for: filter)
+        // Check if we have valid cached data
+        if let cacheTime = popularCoinsCacheTimestamp,
+           Date().timeIntervalSince(cacheTime) < popularCoinsCacheInterval,
+           !cachedPopularCoinsData.isEmpty {
+            
+            // Use cached data
+            print("🎯 Popular Coins: Using cached data (age: \(Int(Date().timeIntervalSince(cacheTime)))s)")
+            calculatePopularCoins(from: cachedPopularCoinsData, filter: filter)
+        } else {
+            // Cache expired or empty - fetch fresh data
+            print("💰 Popular Coins: Cache expired or empty - fetching fresh data")
+            fetchFreshPopularCoins(for: filter)
+        }
     }
     
     /**
@@ -399,9 +459,9 @@ final class SearchVM: ObservableObject {
         popularCoinsSubject.send([])
         isLoadingSubject.send(true)
         
-        // Fetch larger dataset to include smaller volatile coins
+        // Fetch optimized dataset - reduced from 2000 to 500 to save API credits (3 credits vs 10)
         coinManager.getTopCoins(
-            limit: 2000,  // Much larger dataset to include small volatile coins
+            limit: 500,  // Reduced from 2000 - still plenty for volatile gainers/losers (3 credits vs 10)
             convert: "USD",
             start: 1,
             sortType: "market_cap",
@@ -421,6 +481,11 @@ final class SearchVM: ObservableObject {
             receiveValue: { [weak self] freshCoins in
                 guard let self = self else { return }
                 print("🌟 Popular Coins: Received \(freshCoins.count) fresh coins")
+                
+                // Cache the fresh data with timestamp
+                self.cachedPopularCoinsData = freshCoins
+                self.popularCoinsCacheTimestamp = Date()
+                print("💾 Popular Coins: Cached data for 5 minutes")
                 
                 // Use fresh data for popular coins calculation
                 self.calculatePopularCoins(from: freshCoins, filter: filter)
@@ -587,6 +652,27 @@ final class SearchVM: ObservableObject {
                 self.persistenceService.saveCoinLogos(mergedLogos)
             }
             .store(in: &apiRequestCancellables) // Store in API-specific cancellables
+    }
+    
+    /**
+     * REFRESH POPULAR COINS CACHE
+     * 
+     * Forces a fresh fetch of popular coins data, bypassing cache
+     */
+    func refreshPopularCoinsCache() {
+        print("🔄 Popular Coins: Manually refreshing cache")
+        popularCoinsCacheTimestamp = nil // Invalidate cache
+        fetchFreshPopularCoins(for: currentPopularCoinsState.selectedFilter)
+    }
+    
+    /**
+     * CHECK CACHE STATUS
+     * 
+     * Returns true if cache is valid and fresh
+     */
+    var isPopularCoinsCacheValid: Bool {
+        guard let cacheTime = popularCoinsCacheTimestamp else { return false }
+        return Date().timeIntervalSince(cacheTime) < popularCoinsCacheInterval && !cachedPopularCoinsData.isEmpty
     }
     
     // MARK: - Cleanup

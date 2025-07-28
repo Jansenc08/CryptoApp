@@ -383,6 +383,18 @@ class PopularCoinsHeaderView: UIView {
         popularCoinsState = newState
     }
     
+    func setLoading(_ isLoading: Bool) {
+        // Disable button interactions during loading
+        gainersButton.isUserInteractionEnabled = !isLoading
+        losersButton.isUserInteractionEnabled = !isLoading
+        
+        // Reduce opacity during loading for visual feedback
+        UIView.animate(withDuration: 0.2) {
+            self.gainersButton.alpha = isLoading ? 0.6 : 1.0
+            self.losersButton.alpha = isLoading ? 0.6 : 1.0
+        }
+    }
+    
     // MARK: - Private Methods
     
     private func updateButtonAppearance() {

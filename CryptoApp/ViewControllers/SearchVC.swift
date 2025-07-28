@@ -45,6 +45,7 @@ import Combine
     private var popularCoinsCollectionView: UICollectionView!
     private var popularCoinsDataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
     private var popularCoinsHeightConstraint: NSLayoutConstraint!
+    private var popularCoinsLoadingView: UIActivityIndicatorView!
     
     // MARK: - Dynamic Constraints
     
@@ -385,6 +386,13 @@ import Combine
         popularCoinsCollectionView.dataSource = popularCoinsDataSource
         popularCoinsCollectionView.delegate = self
         
+        // Add loading indicator for popular coins
+        popularCoinsLoadingView = UIActivityIndicatorView(style: .medium)
+        popularCoinsLoadingView.translatesAutoresizingMaskIntoConstraints = false
+        popularCoinsLoadingView.hidesWhenStopped = true
+        popularCoinsLoadingView.color = .systemGray
+        popularCoinsContainer.addSubview(popularCoinsLoadingView)
+        
         // Create dynamic top constraints for popular coins header positioning
         popularCoinsTopWithRecentSearches = popularCoinsHeaderView.topAnchor.constraint(equalTo: recentSearchesContainer.bottomAnchor, constant: 8)
         popularCoinsTopWithoutRecentSearches = popularCoinsHeaderView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 24)
@@ -412,7 +420,11 @@ import Combine
             popularCoinsCollectionView.topAnchor.constraint(equalTo: popularCoinsContainer.topAnchor, constant: 12),
             popularCoinsCollectionView.leadingAnchor.constraint(equalTo: popularCoinsContainer.leadingAnchor, constant: 16),
             popularCoinsCollectionView.trailingAnchor.constraint(equalTo: popularCoinsContainer.trailingAnchor, constant: -16),
-            popularCoinsCollectionView.bottomAnchor.constraint(equalTo: popularCoinsContainer.bottomAnchor, constant: -12)
+            popularCoinsCollectionView.bottomAnchor.constraint(equalTo: popularCoinsContainer.bottomAnchor, constant: -12),
+            
+            // Loading indicator constraints (centered in container)
+            popularCoinsLoadingView.centerXAnchor.constraint(equalTo: popularCoinsContainer.centerXAnchor),
+            popularCoinsLoadingView.centerYAnchor.constraint(equalTo: popularCoinsContainer.centerYAnchor)
         ])
         
         // Start with the constraint for no recent searches (popular coins pushed up)
@@ -501,14 +513,20 @@ import Combine
             }
             .store(in: &cancellables)
         
-        // Bind loading state
+        // Bind loading state for popular coins
         viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
                 if isLoading {
-                    LoadingView.show(in: self?.collectionView)
+                    self?.popularCoinsLoadingView.startAnimating()
+                    self?.popularCoinsCollectionView.isHidden = true
+                    self?.popularCoinsHeaderView.setLoading(true) // Disable buttons during loading
+                    print("🔄 Popular Coins: Loading started")
                 } else {
-                    LoadingView.dismiss(from: self?.collectionView)
+                    self?.popularCoinsLoadingView.stopAnimating()
+                    self?.popularCoinsCollectionView.isHidden = false
+                    self?.popularCoinsHeaderView.setLoading(false) // Re-enable buttons
+                    print("✅ Popular Coins: Loading finished")
                 }
             }
             .store(in: &cancellables)
