@@ -251,3 +251,163 @@ struct FilterHeaderView_Previews: PreviewProvider {
     }
 }
 #endif
+
+// MARK: - PopularCoinsHeaderView Delegate
+
+protocol PopularCoinsHeaderViewDelegate: AnyObject {
+    func popularCoinsHeaderView(_ headerView: PopularCoinsHeaderView, didSelectFilter filter: PopularCoinsFilter)
+}
+
+// MARK: - PopularCoinsHeaderView
+
+class PopularCoinsHeaderView: UIView {
+    
+    // MARK: - Properties
+    
+    weak var delegate: PopularCoinsHeaderViewDelegate?
+    
+    private var popularCoinsState: PopularCoinsState = .defaultState {
+        didSet {
+            updateButtonAppearance()
+        }
+    }
+    
+    private var titleLabel: UILabel!
+    private var gainersButton: UIButton!
+    private var losersButton: UIButton!
+    
+    // MARK: - Initialization
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
+    }
+    
+    // MARK: - Setup
+    
+    private func setupUI() {
+        backgroundColor = UIColor.systemBackground
+        setupViews()
+        setupConstraints()
+        updateButtonAppearance()
+    }
+    
+    private func setupViews() {
+        // Title label
+        titleLabel = UILabel()
+        titleLabel.text = "Popular Coins"
+        titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.textColor = .systemGray
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+        
+        // Create styled buttons without arrows
+        gainersButton = createStyledButton(title: PopularCoinsFilter.topGainers.shortDisplayName)
+        gainersButton.addTarget(self, action: #selector(gainersButtonTapped), for: .touchUpInside)
+        addSubview(gainersButton)
+        
+        losersButton = createStyledButton(title: PopularCoinsFilter.topLosers.shortDisplayName)
+        losersButton.addTarget(self, action: #selector(losersButtonTapped), for: .touchUpInside)
+        addSubview(losersButton)
+    }
+    
+    private func createStyledButton(title: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.setTitleColor(.label, for: .normal)
+        button.setTitleColor(.white, for: .selected)
+        
+        // FilterButton-style appearance without arrow
+        button.backgroundColor = .systemBackground
+        button.layer.cornerRadius = 8.0
+        button.layer.borderWidth = 1.0
+        button.layer.borderColor = UIColor.systemGray4.cgColor
+        
+        // Shadow for depth
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4.0
+        button.layer.shadowOpacity = 0.1
+        
+        button.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add touch animations
+        button.addTarget(self, action: #selector(buttonTouchDown(_:)), for: .touchDown)
+        button.addTarget(self, action: #selector(buttonTouchUp(_:)), for: .touchUpInside)
+        button.addTarget(self, action: #selector(buttonTouchUp(_:)), for: .touchUpOutside)
+        button.addTarget(self, action: #selector(buttonTouchUp(_:)), for: .touchCancel)
+        
+        return button
+    }
+    
+    @objc private func buttonTouchDown(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.1) {
+            sender.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+            sender.alpha = 0.8
+        }
+    }
+    
+    @objc private func buttonTouchUp(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.1) {
+            sender.transform = .identity
+            sender.alpha = 1.0
+        }
+    }
+    
+    private func setupConstraints() {
+        NSLayoutConstraint.activate([
+            // Title label
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            
+            // Button stack - positioned to work with FilterButton's 36pt height
+            gainersButton.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            gainersButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            gainersButton.widthAnchor.constraint(equalToConstant: 140),
+            
+            losersButton.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            losersButton.leadingAnchor.constraint(equalTo: gainersButton.trailingAnchor, constant: 12),
+            losersButton.widthAnchor.constraint(equalToConstant: 140)
+        ])
+    }
+    
+    // MARK: - Public Methods
+    
+    func updatePopularCoinsState(_ newState: PopularCoinsState) {
+        popularCoinsState = newState
+    }
+    
+    // MARK: - Private Methods
+    
+    private func updateButtonAppearance() {
+        // Update button states based on current filter
+        let isGainersSelected = popularCoinsState.selectedFilter == .topGainers
+        let isLosersSelected = popularCoinsState.selectedFilter == .topLosers
+        
+        // Update gainers button
+        gainersButton.isSelected = isGainersSelected
+        gainersButton.backgroundColor = isGainersSelected ? .systemBlue : .systemBackground
+        gainersButton.layer.borderColor = isGainersSelected ? UIColor.systemBlue.cgColor : UIColor.systemGray4.cgColor
+        
+        // Update losers button  
+        losersButton.isSelected = isLosersSelected
+        losersButton.backgroundColor = isLosersSelected ? .systemBlue : .systemBackground
+        losersButton.layer.borderColor = isLosersSelected ? UIColor.systemBlue.cgColor : UIColor.systemGray4.cgColor
+    }
+    
+    // MARK: - Actions
+    
+    @objc private func gainersButtonTapped() {
+        delegate?.popularCoinsHeaderView(self, didSelectFilter: .topGainers)
+    }
+    
+    @objc private func losersButtonTapped() {
+        delegate?.popularCoinsHeaderView(self, didSelectFilter: .topLosers)
+    }
+}

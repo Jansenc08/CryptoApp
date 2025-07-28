@@ -95,6 +95,75 @@ extension Coin {
         return percentChange24hValue >= 0
     }
     
+    // MARK: - Stablecoin Detection
+    
+    /// Identifies if this coin is a stablecoin (should be excluded from gainers/losers)
+    var isStablecoin: Bool {
+        // Common stablecoin symbols and names
+        let stablecoinSymbols = [
+            "USDT", "USDC", "BUSD", "DAI", "TUSD", "USDP", "USDN", "UST", "FRAX",
+            "LUSD", "SUSD", "GUSD", "HUSD", "USDD", "USTC", "FDUSD", "PYUSD"
+        ]
+        
+        let stablecoinNames = [
+            "tether", "usd-coin", "binance-usd", "dai", "trueusd", "paxos-standard",
+            "neutrino-usd", "terraclassicusd", "frax", "liquity-usd", "nusd",
+            "gemini-dollar", "husd", "usdd", "terra-luna", "first-digital-usd", "paypal-usd"
+        ]
+        
+        // Check symbol (case-insensitive)
+        if stablecoinSymbols.contains(where: { $0.lowercased() == symbol.lowercased() }) {
+            return true
+        }
+        
+        // Check name (case-insensitive)
+        let lowercaseName = name.lowercased()
+        if stablecoinNames.contains(where: { lowercaseName.contains($0) }) {
+            return true
+        }
+        
+        // Check slug if available (case-insensitive)
+        if let slug = slug?.lowercased() {
+            if stablecoinNames.contains(where: { slug.contains($0) }) {
+                return true
+            }
+        }
+        
+        // Additional heuristics for stablecoins
+        if lowercaseName.contains("usd") && (lowercaseName.contains("stable") || lowercaseName.contains("dollar")) {
+            return true
+        }
+        
+        return false
+    }
+    
+    // MARK: - Popular Coins Filtering Criteria
+    
+    /// Check if coin meets criteria for popular coins lists (gainers/losers)
+    var meetsPopularCoinsCriteria: Bool {
+        // Must not be a stablecoin
+        guard !isStablecoin else { return false }
+        
+        // Must be in top ~75 by market cap rank (mobile app behavior)
+        guard cmcRank <= 75 else { return false }
+        
+        // Must have valid quote data
+        guard let usdQuote = quote?["USD"] else { return false }
+        
+        // Must have valid price and market cap
+        guard let _ = usdQuote.price, let _ = usdQuote.marketCap else { return false }
+        
+        // Must have valid 24h change data
+        guard let _ = usdQuote.percentChange24h else { return false }
+        
+        // Must have sufficient trading volume (basic quality filter)
+        if let volume24h = usdQuote.volume24h, volume24h < 1000000 { // $1M minimum volume
+            return false
+        }
+        
+        return true
+    }
+    
     var sparklineData: [Double] {
         // Generate sample sparkline data based on the 24h percentage change
         return SparklineView.generateSampleData(for: percentChange24hValue, points: 20)

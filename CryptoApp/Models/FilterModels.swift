@@ -118,6 +118,41 @@ struct FilterState: Equatable {
     }
 }
 
+// MARK: - Popular Coins Filter Types
+
+enum PopularCoinsFilter: String, CaseIterable {
+    case topGainers = "gainers"
+    case topLosers = "losers"
+    
+    var displayName: String {
+        switch self {
+        case .topGainers:
+            return "Top Gainers"
+        case .topLosers:
+            return "Top Losers"
+        }
+    }
+    
+    var shortDisplayName: String {
+        switch self {
+        case .topGainers:
+            return "Top Gainers"
+        case .topLosers:
+            return "Top Losers"
+        }
+    }
+}
+
+// MARK: - Popular Coins State
+
+struct PopularCoinsState: Equatable {
+    let selectedFilter: PopularCoinsFilter
+    
+    static let defaultState = PopularCoinsState(
+        selectedFilter: .topGainers
+    )
+}
+
 // MARK: - Filter Options Protocol
 
 protocol FilterOption {

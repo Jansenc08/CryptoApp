@@ -33,10 +33,22 @@ import Combine
     private var clearRecentSearchesButton: UIButton!
     private let recentSearchManager = RecentSearchManager.shared
     
+    // MARK: - Popular Coins Properties
+    
+    private var popularCoinsContainer: UIView!
+    private var popularCoinsHeaderView: PopularCoinsHeaderView!
+    private var popularCoinsCollectionView: UICollectionView!
+    private var popularCoinsDataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
+    
     // MARK: - Dynamic Constraints
     
     private var collectionViewTopWithRecentSearches: NSLayoutConstraint!
     private var collectionViewTopWithoutRecentSearches: NSLayoutConstraint!
+    private var collectionViewTopWithPopularCoins: NSLayoutConstraint!
+    
+    // Popular coins positioning constraints
+    private var popularCoinsTopWithRecentSearches: NSLayoutConstraint!
+    private var popularCoinsTopWithoutRecentSearches: NSLayoutConstraint!
     
     // MARK: - Navigation Properties
     
@@ -55,11 +67,16 @@ import Combine
         configureView()
         configureSearchBar()
         configureRecentSearches()
+        configurePopularCoins()
         configureCollectionView()
         configureDataSource()
         bindViewModel()
         setupEmptyState()
         loadRecentSearches()
+        
+        // Set initial state to show popular coins
+        showPopularCoins(true)
+        collectionView.isHidden = true
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -67,6 +84,23 @@ import Combine
         
         // Refresh recent searches when returning to search
         loadRecentSearches()
+        
+        // Maintain the current state - if no search is active, show popular coins
+        let currentSearchText = searchBarComponent.text ?? ""
+        if currentSearchText.isEmpty {
+            // No active search - show popular coins (not recent searches)
+            let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
+            showRecentSearches(hasRecentSearches)
+            showPopularCoins(true)
+            collectionView.isHidden = true // Keep main collection view hidden
+            
+            // Update popular coins position based on recent searches
+            updatePopularCoinsPosition(hasRecentSearches: hasRecentSearches)
+            
+            // Force layout update and reload popular coins data
+            view.layoutIfNeeded()
+            popularCoinsCollectionView.reloadData()
+        }
         
         // Setup but don't present keyboard yet - wait for viewDidAppear
     }
@@ -83,6 +117,20 @@ import Combine
             }
             shouldPresentKeyboardOnLoad = false
         }
+        
+        // Ensure popular coins are properly displayed if no search is active
+        let currentSearchText = searchBarComponent.text ?? ""
+        if currentSearchText.isEmpty {
+            // Force layout update and ensure popular coins fill the space
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.view.layoutIfNeeded()
+                self.popularCoinsCollectionView.reloadData()
+                
+                // Trigger a refresh of popular coins data to ensure it's current
+                self.viewModel.updatePopularCoinsFilter(self.viewModel.currentPopularCoinsState.selectedFilter)
+            }
+        }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -90,6 +138,17 @@ import Combine
         
         // Dismiss keyboard when leaving
         searchBarComponent.resignFirstResponder()
+    }
+    
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        
+        // Update border color when switching between light/dark mode
+        if #available(iOS 13.0, *) {
+            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+                popularCoinsContainer?.layer.borderColor = UIColor.systemGray5.cgColor
+            }
+        }
     }
     
     deinit {
@@ -217,6 +276,114 @@ import Combine
         ])
     }
     
+    private func configurePopularCoins() {
+        // Header view with filter buttons (outside the bordered container)
+        popularCoinsHeaderView = PopularCoinsHeaderView()
+        popularCoinsHeaderView.delegate = self
+        popularCoinsHeaderView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(popularCoinsHeaderView)
+        
+        // Container for popular coins list only (with styled border)
+        popularCoinsContainer = UIView()
+        popularCoinsContainer.translatesAutoresizingMaskIntoConstraints = false
+        popularCoinsContainer.backgroundColor = .systemBackground
+        popularCoinsContainer.isHidden = false // Always visible when search text is empty
+        
+        // Add border styling with proper dark mode support
+        popularCoinsContainer.layer.cornerRadius = 12
+        popularCoinsContainer.layer.borderWidth = 1
+        popularCoinsContainer.layer.borderColor = UIColor.systemGray5.cgColor // Lighter border color
+        
+        // Use pure white background for clean appearance
+        popularCoinsContainer.backgroundColor = .systemBackground // Clean white background
+        
+        // Add subtle shadow for depth
+        popularCoinsContainer.layer.shadowColor = UIColor.black.cgColor
+        popularCoinsContainer.layer.shadowOffset = CGSize(width: 0, height: 2)
+        popularCoinsContainer.layer.shadowRadius = 4
+        popularCoinsContainer.layer.shadowOpacity = 0.05
+        
+        view.addSubview(popularCoinsContainer)
+        
+        // Collection view for popular coins
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumLineSpacing = 0
+        layout.itemSize = CGSize(width: view.bounds.width, height: 80)
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        
+        popularCoinsCollectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        popularCoinsCollectionView.translatesAutoresizingMaskIntoConstraints = false
+        popularCoinsCollectionView.backgroundColor = .clear
+        popularCoinsCollectionView.showsVerticalScrollIndicator = true
+        popularCoinsCollectionView.register(CoinCell.self, forCellWithReuseIdentifier: CoinCell.reuseID())
+        popularCoinsContainer.addSubview(popularCoinsCollectionView)
+        
+        // Configure popular coins data source
+        popularCoinsDataSource = UICollectionViewDiffableDataSource<SearchSection, Coin>(
+            collectionView: popularCoinsCollectionView
+        ) { [weak self] collectionView, indexPath, coin in
+            guard let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: CoinCell.reuseID(),
+                for: indexPath
+            ) as? CoinCell else {
+                return UICollectionViewCell()
+            }
+            
+            let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
+            
+            // Configure the cell with full layout for vertical popular coins list
+            cell.configure(
+                withRank: coin.cmcRank,
+                name: coin.symbol, // Keep using symbol for consistent display
+                price: coin.priceString,
+                market: coin.marketSupplyString,
+                percentChange24h: coin.percentChange24hString,
+                sparklineData: sparklineNumbers,
+                isPositiveChange: coin.isPositiveChange
+            )
+            
+            // Load coin logo if available
+            if let urlString = self?.viewModel.currentCoinLogos[coin.id] {
+                cell.coinImageView.downloadImage(fromURL: urlString)
+            } else {
+                cell.coinImageView.setPlaceholder()
+            }
+            
+            return cell
+        }
+        
+        popularCoinsCollectionView.dataSource = popularCoinsDataSource
+        popularCoinsCollectionView.delegate = self
+        
+        // Create dynamic top constraints for popular coins header positioning
+        popularCoinsTopWithRecentSearches = popularCoinsHeaderView.topAnchor.constraint(equalTo: recentSearchesContainer.bottomAnchor, constant: 8)
+        popularCoinsTopWithoutRecentSearches = popularCoinsHeaderView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 24)
+        
+        // Layout constraints with header outside the bordered container
+        NSLayoutConstraint.activate([
+            // Header view constraints (outside the border)
+            popularCoinsHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            popularCoinsHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            popularCoinsHeaderView.heightAnchor.constraint(equalToConstant: 60),
+            
+            // Container constraints with margins for the border (positioned below header)
+            popularCoinsContainer.topAnchor.constraint(equalTo: popularCoinsHeaderView.bottomAnchor, constant: 8),
+            popularCoinsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            popularCoinsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            popularCoinsContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            
+            // Collection view constraints (fills the bordered container with proper padding)
+            popularCoinsCollectionView.topAnchor.constraint(equalTo: popularCoinsContainer.topAnchor, constant: 12),
+            popularCoinsCollectionView.leadingAnchor.constraint(equalTo: popularCoinsContainer.leadingAnchor, constant: 16),
+            popularCoinsCollectionView.trailingAnchor.constraint(equalTo: popularCoinsContainer.trailingAnchor, constant: -16),
+            popularCoinsCollectionView.bottomAnchor.constraint(equalTo: popularCoinsContainer.bottomAnchor, constant: -12)
+        ])
+        
+        // Start with the constraint for no recent searches (popular coins pushed up)
+        popularCoinsTopWithoutRecentSearches.isActive = true
+    }
+    
     private func configureCollectionView() {
         // Create layout
         let layout = UICollectionViewFlowLayout()
@@ -235,17 +402,20 @@ import Combine
         
         view.addSubview(collectionView)
         
-        // Create two different top constraints
+        // Create three different top constraints for different states
         collectionViewTopWithRecentSearches = collectionView.topAnchor.constraint(equalTo: recentSearchesContainer.bottomAnchor)
         collectionViewTopWithoutRecentSearches = collectionView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 8)
+        collectionViewTopWithPopularCoins = collectionView.topAnchor.constraint(equalTo: popularCoinsContainer.bottomAnchor)
         
         // Activate common constraints
         NSLayoutConstraint.activate([
-            collectionViewTopWithoutRecentSearches, // Start with no space (recent searches hidden)
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        
+        // Initially show popular coins (no search active)
+        collectionViewTopWithPopularCoins.isActive = true
     }
     
     private func configureDataSource() {
@@ -333,6 +503,22 @@ import Combine
                 }
             }
             .store(in: &cancellables)
+        
+        // Bind popular coins data
+        viewModel.popularCoins
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] popularCoins in
+                self?.updatePopularCoinsDataSource(popularCoins)
+            }
+            .store(in: &cancellables)
+        
+        // Bind popular coins state
+        viewModel.popularCoinsState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.popularCoinsHeaderView.updatePopularCoinsState(state)
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Data Source Updates
@@ -342,6 +528,13 @@ import Combine
         snapshot.appendSections([.main])
         snapshot.appendItems(coins)
         dataSource.apply(snapshot, animatingDifferences: true)
+    }
+    
+    private func updatePopularCoinsDataSource(_ coins: [Coin]) {
+        var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
+        snapshot.appendSections([.main])
+        snapshot.appendItems(coins)
+        popularCoinsDataSource.apply(snapshot, animatingDifferences: true)
     }
     
     // MARK: - Empty State
@@ -426,29 +619,25 @@ import Combine
             )
             emptyStateView.isHidden = false
             
-            // Hide recent searches when showing no results
+            // Hide both recent searches and popular coins when showing no results
             showRecentSearches(false)
+            showPopularCoins(false)
+            collectionView.isHidden = false
         } else if isEmpty && searchText.isEmpty {
-            // Show initial state or recent searches
-            let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
-            
-            if hasRecentSearches {
-                // Hide empty state and show recent searches
-                emptyStateView.isHidden = true
-                showRecentSearches(true)
-            } else {
-                // Show empty state and hide recent searches
-                updateEmptyStateContent(
-                    title: "Search Cryptocurrencies",
-                    message: "Enter a coin name or symbol to search",
-                    imageName: "magnifyingglass.circle"
-                )
-                emptyStateView.isHidden = false
-                showRecentSearches(false)
-            }
-        } else {
-            // Hide empty state when there are results
+            // Show popular coins as the default state (not recent searches)
             emptyStateView.isHidden = true
+            
+            // Always prioritize popular coins over recent searches
+            let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
+            showRecentSearches(hasRecentSearches)
+            showPopularCoins(true) // Always show popular coins when no search
+            collectionView.isHidden = true // Hide main collection view
+        } else {
+            // Hide empty state and sections when there are search results
+            emptyStateView.isHidden = true
+            showRecentSearches(false)
+            showPopularCoins(false)
+            collectionView.isHidden = false
         }
     }
     
@@ -511,6 +700,14 @@ import Combine
             self?.updateEmptyState(isEmpty: self?.currentSearchResults.isEmpty ?? true, 
                                   searchText: self?.searchBarComponent.text ?? "")
             
+            // Update popular coins positioning since recent searches are now empty
+            self?.updatePopularCoinsPosition(hasRecentSearches: false)
+            
+            // Animate the position change
+            UIView.animate(withDuration: 0.3) {
+                self?.view.layoutIfNeeded()
+            }
+            
             print("🗑️ User cleared all recent searches")
         })
         
@@ -527,11 +724,20 @@ extension SearchVC: SearchBarComponentDelegate {
         // Update the view model's search text which triggers the debounced search
         viewModel.updateSearchText(searchText)
         
-        // Show/hide recent searches based on search text
+        // Show/hide sections based on search text
         if searchText.isEmpty {
-            showRecentSearches(!recentSearchManager.getRecentSearchItems().isEmpty)
+            let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
+            showRecentSearches(hasRecentSearches)
+            showPopularCoins(true) // Always show popular coins when no search text
+            
+            // Hide main collection view when showing popular coins
+            collectionView.isHidden = true
         } else {
             showRecentSearches(false)
+            showPopularCoins(false) // Hide popular coins during search
+            
+            // Show main collection view for search results
+            collectionView.isHidden = false
         }
     }
     
@@ -548,8 +754,22 @@ extension SearchVC: SearchBarComponentDelegate {
     func searchBarComponentCancelButtonClicked(_ searchBar: SearchBarComponent) {
         viewModel.clearSearch()
         
-        // Show recent searches when canceling
-        showRecentSearches(!recentSearchManager.getRecentSearchItems().isEmpty)
+        // Show sections when canceling
+        let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
+        showRecentSearches(hasRecentSearches)
+        showPopularCoins(true) // Show popular coins when canceling search
+        
+        // Hide main collection view when showing popular coins
+        collectionView.isHidden = true
+    }
+}
+
+// MARK: - PopularCoinsHeaderViewDelegate
+
+extension SearchVC: PopularCoinsHeaderViewDelegate {
+    func popularCoinsHeaderView(_ headerView: PopularCoinsHeaderView, didSelectFilter filter: PopularCoinsFilter) {
+        print("🌟 Popular Coins: User selected \(filter.displayName)")
+        viewModel.updatePopularCoinsFilter(filter)
     }
 }
 
@@ -562,31 +782,45 @@ extension SearchVC: UICollectionViewDelegate {
         // Dismiss keyboard
         searchBarComponent.resignFirstResponder()
         
-        // Navigate to coin details with fresh data
-        let searchCoin = currentSearchResults[indexPath.item]
+        let selectedCoin: Coin
+        
+        if collectionView == self.collectionView {
+            // Main search results collection view
+            selectedCoin = currentSearchResults[indexPath.item]
+            print("🔍 Search: User tapped on search result: \(selectedCoin.symbol)")
+            
+            // Save this as a recent search since user selected it from search results
+            let logoUrl = viewModel.currentCoinLogos[selectedCoin.id]
+            recentSearchManager.addRecentSearch(
+                coinId: selectedCoin.id,
+                symbol: selectedCoin.symbol,
+                name: selectedCoin.name,
+                logoUrl: logoUrl,
+                slug: selectedCoin.slug
+            )
+        } else if collectionView == popularCoinsCollectionView {
+            // Popular coins collection view
+            selectedCoin = viewModel.currentPopularCoins[indexPath.item]
+            print("🌟 Popular Coins: User tapped on popular coin: \(selectedCoin.symbol)")
+            
+            // Don't add popular coins to recent searches - they're separate sections
+            // Popular coins stay persistent and don't get affected by user interactions
+        } else {
+            return
+        }
         
         // 🌐 TRY TO GET FRESH DATA: Check SharedCoinDataManager for most recent prices
         let sharedCoins = SharedCoinDataManager.shared.currentCoins
-        let selectedCoin: Coin
-        if let freshCoin = sharedCoins.first(where: { $0.id == searchCoin.id }) {
-            print("✅ Using FRESH coin data for \(searchCoin.symbol) from SharedCoinDataManager")
-            selectedCoin = freshCoin
+        let coinToNavigateTo: Coin
+        if let freshCoin = sharedCoins.first(where: { $0.id == selectedCoin.id }) {
+            print("✅ Using FRESH coin data for \(selectedCoin.symbol) from SharedCoinDataManager")
+            coinToNavigateTo = freshCoin
         } else {
-            print("⚠️ Using search result data for \(searchCoin.symbol) (not in SharedCoinDataManager)")
-            selectedCoin = searchCoin
+            print("⚠️ Using selected coin data for \(selectedCoin.symbol) (not in SharedCoinDataManager)")
+            coinToNavigateTo = selectedCoin
         }
         
-        // Save this as a recent search since user selected it
-        let logoUrl = viewModel.currentCoinLogos[selectedCoin.id]
-        recentSearchManager.addRecentSearch(
-            coinId: selectedCoin.id,
-            symbol: selectedCoin.symbol,
-            name: selectedCoin.name,
-            logoUrl: logoUrl,
-            slug: selectedCoin.slug
-        )
-        
-        let detailsVC = CoinDetailsVC(coin: selectedCoin)
+        let detailsVC = CoinDetailsVC(coin: coinToNavigateTo)
         navigationController?.pushViewController(detailsVC, animated: true)
     }
 }
@@ -602,7 +836,14 @@ extension SearchVC {
         let recentSearchItems = recentSearchManager.getRecentSearchItems()
         print("🔍 Recent Searches: Found \(recentSearchItems.count) searches: \(recentSearchItems.map { $0.symbol })")
         displayRecentSearches(recentSearchItems)
-        showRecentSearches(!recentSearchItems.isEmpty)
+        
+        let hasRecentSearches = !recentSearchItems.isEmpty
+        showRecentSearches(hasRecentSearches)
+        
+        // Update popular coins positioning based on recent searches availability
+        if !collectionView.isHidden { // Only update if popular coins are currently visible
+            updatePopularCoinsPosition(hasRecentSearches: hasRecentSearches)
+        }
     }
     
     /**
@@ -639,12 +880,73 @@ extension SearchVC {
             collectionViewTopWithoutRecentSearches.isActive = true
         }
         
+        // Update popular coins positioning based on recent searches visibility
+        updatePopularCoinsPosition(hasRecentSearches: show)
+        
         // Animate the layout change
         UIView.animate(withDuration: 0.3) {
             self.view.layoutIfNeeded()
         }
         
         print("🔍 Recent Searches: \(show ? "Showing" : "Hiding") container")
+    }
+    
+    /**
+     * Update popular coins position based on recent searches visibility
+     */
+    private func updatePopularCoinsPosition(hasRecentSearches: Bool) {
+        // Deactivate both popular coins header top constraints
+        popularCoinsTopWithRecentSearches.isActive = false
+        popularCoinsTopWithoutRecentSearches.isActive = false
+        
+        if hasRecentSearches && !recentSearchesContainer.isHidden {
+            // Recent searches are visible - position popular coins header below them
+            popularCoinsTopWithRecentSearches.isActive = true
+            print("🌟 Popular Coins: Header positioned below Recent Searches")
+        } else {
+            // No recent searches - move popular coins header up to just below search bar
+            popularCoinsTopWithoutRecentSearches.isActive = true
+            print("🌟 Popular Coins: Header moved up (no Recent Searches)")
+        }
+    }
+    
+    /**
+     * Show or hide popular coins container
+     */
+    private func showPopularCoins(_ show: Bool) {
+        // Update container visibility
+        popularCoinsContainer.isHidden = !show
+        
+        // Switch constraints based on recent searches and popular coins visibility
+        let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty && !recentSearchesContainer.isHidden
+        
+        // Deactivate all top constraints
+        collectionViewTopWithRecentSearches.isActive = false
+        collectionViewTopWithoutRecentSearches.isActive = false
+        collectionViewTopWithPopularCoins.isActive = false
+        
+        if show {
+            // Popular coins are showing - main collection view goes below popular coins container
+            collectionViewTopWithPopularCoins.isActive = true
+        } else if hasRecentSearches {
+            // No popular coins, but recent searches are showing
+            collectionViewTopWithRecentSearches.isActive = true
+        } else {
+            // Neither popular coins nor recent searches
+            collectionViewTopWithoutRecentSearches.isActive = true
+        }
+        
+        // Animate the layout change with completion to ensure proper sizing
+        UIView.animate(withDuration: 0.3, animations: {
+            self.view.layoutIfNeeded()
+        }) { [weak self] _ in
+            // After animation completes, reload collection view to ensure proper display
+            if show {
+                self?.popularCoinsCollectionView.reloadData()
+            }
+        }
+        
+        print("🌟 Popular Coins: \(show ? "Showing" : "Hiding") container")
     }
     
     /**
@@ -986,6 +1288,7 @@ extension SearchVC {
 
 extension SearchVC: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        // Both main search results and popular coins use full width
         return CGSize(width: view.bounds.width, height: 80)
     }
 } 
