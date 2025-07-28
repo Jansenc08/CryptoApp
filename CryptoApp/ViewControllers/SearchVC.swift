@@ -24,6 +24,11 @@ import Combine
     private var cancellables = Set<AnyCancellable>()
     private var dataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
     
+    // MARK: - Scroll View Properties
+    
+    private var mainScrollView: UIScrollView!
+    private var scrollContentView: UIView!
+    
     // MARK: - Recent Searches Properties
     
     private var recentSearchesContainer: UIView!
@@ -39,12 +44,9 @@ import Combine
     private var popularCoinsHeaderView: PopularCoinsHeaderView!
     private var popularCoinsCollectionView: UICollectionView!
     private var popularCoinsDataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
+    private var popularCoinsHeightConstraint: NSLayoutConstraint!
     
     // MARK: - Dynamic Constraints
-    
-    private var collectionViewTopWithRecentSearches: NSLayoutConstraint!
-    private var collectionViewTopWithoutRecentSearches: NSLayoutConstraint!
-    private var collectionViewTopWithPopularCoins: NSLayoutConstraint!
     
     // Popular coins positioning constraints
     private var popularCoinsTopWithRecentSearches: NSLayoutConstraint!
@@ -127,8 +129,8 @@ import Combine
                 self.view.layoutIfNeeded()
                 self.popularCoinsCollectionView.reloadData()
                 
-                // Trigger a refresh of popular coins data to ensure it's current
-                self.viewModel.updatePopularCoinsFilter(self.viewModel.currentPopularCoinsState.selectedFilter)
+                // Trigger a refresh of popular coins data with fresh data
+                self.viewModel.fetchFreshPopularCoins(for: self.viewModel.currentPopularCoinsState.selectedFilter)
             }
         }
     }
@@ -143,11 +145,9 @@ import Combine
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         
-        // Update border color when switching between light/dark mode
-        if #available(iOS 13.0, *) {
-            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-                popularCoinsContainer?.layer.borderColor = UIColor.systemGray5.cgColor
-            }
+        // Update popular coins container border color for dark mode
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            popularCoinsContainer?.layer.borderColor = UIColor.systemGray5.cgColor
         }
     }
     
@@ -184,6 +184,34 @@ import Combine
         
         // Use per-VC large title control (best practice)
         navigationItem.largeTitleDisplayMode = .always
+        
+        // Create main scroll view for entire page
+        mainScrollView = UIScrollView()
+        mainScrollView.translatesAutoresizingMaskIntoConstraints = false
+        mainScrollView.showsVerticalScrollIndicator = true
+        mainScrollView.showsHorizontalScrollIndicator = false
+        mainScrollView.keyboardDismissMode = .onDrag
+        view.addSubview(mainScrollView)
+        
+        // Content view that will hold all our content
+        scrollContentView = UIView()
+        scrollContentView.translatesAutoresizingMaskIntoConstraints = false
+        mainScrollView.addSubview(scrollContentView)
+        
+        // Setup scroll view constraints - IMPORTANT: respect safe area and tab bar
+        NSLayoutConstraint.activate([
+            mainScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            mainScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            mainScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mainScrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor), // Respects tab bar
+            
+            // Content view sizing
+            scrollContentView.topAnchor.constraint(equalTo: mainScrollView.topAnchor),
+            scrollContentView.leadingAnchor.constraint(equalTo: mainScrollView.leadingAnchor),
+            scrollContentView.trailingAnchor.constraint(equalTo: mainScrollView.trailingAnchor),
+            scrollContentView.bottomAnchor.constraint(equalTo: mainScrollView.bottomAnchor),
+            scrollContentView.widthAnchor.constraint(equalTo: view.widthAnchor)
+        ])
     }
     
     private func configureSearchBar() {
@@ -194,12 +222,12 @@ import Combine
         // Configure for full screen search usage
         searchBarComponent.configureForFullScreenSearch()
         
-        view.addSubview(searchBarComponent)
+        scrollContentView.addSubview(searchBarComponent)
         
         NSLayoutConstraint.activate([
-            searchBarComponent.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            searchBarComponent.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            searchBarComponent.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            searchBarComponent.topAnchor.constraint(equalTo: scrollContentView.topAnchor),
+            searchBarComponent.leadingAnchor.constraint(equalTo: scrollContentView.leadingAnchor, constant: 16),
+            searchBarComponent.trailingAnchor.constraint(equalTo: scrollContentView.trailingAnchor, constant: -16),
             searchBarComponent.heightAnchor.constraint(equalToConstant: 56)
         ])
     }
@@ -210,7 +238,7 @@ import Combine
         recentSearchesContainer.translatesAutoresizingMaskIntoConstraints = false
         recentSearchesContainer.backgroundColor = .systemBackground
         recentSearchesContainer.isHidden = true // Hidden by default - no space when empty
-        view.addSubview(recentSearchesContainer)
+        scrollContentView.addSubview(recentSearchesContainer)
         
         // Title label
         recentSearchesLabel = UILabel()
@@ -248,8 +276,8 @@ import Combine
         NSLayoutConstraint.activate([
             // Container constraints
             recentSearchesContainer.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 8),
-            recentSearchesContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            recentSearchesContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            recentSearchesContainer.leadingAnchor.constraint(equalTo: scrollContentView.leadingAnchor),
+            recentSearchesContainer.trailingAnchor.constraint(equalTo: scrollContentView.trailingAnchor),
             recentSearchesContainer.heightAnchor.constraint(equalToConstant: 80),
             
             // Label constraints
@@ -281,7 +309,7 @@ import Combine
         popularCoinsHeaderView = PopularCoinsHeaderView()
         popularCoinsHeaderView.delegate = self
         popularCoinsHeaderView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(popularCoinsHeaderView)
+        scrollContentView.addSubview(popularCoinsHeaderView)
         
         // Container for popular coins list only (with styled border)
         popularCoinsContainer = UIView()
@@ -303,19 +331,20 @@ import Combine
         popularCoinsContainer.layer.shadowRadius = 4
         popularCoinsContainer.layer.shadowOpacity = 0.05
         
-        view.addSubview(popularCoinsContainer)
+        scrollContentView.addSubview(popularCoinsContainer)
         
-        // Collection view for popular coins
+        // Collection view for popular coins (NON-SCROLLABLE, expands to fit content)
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
         layout.minimumLineSpacing = 0
-        layout.itemSize = CGSize(width: view.bounds.width, height: 80)
+        layout.itemSize = CGSize(width: view.bounds.width - 64, height: 80) // Account for container margins
         layout.sectionInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         
         popularCoinsCollectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         popularCoinsCollectionView.translatesAutoresizingMaskIntoConstraints = false
         popularCoinsCollectionView.backgroundColor = .clear
-        popularCoinsCollectionView.showsVerticalScrollIndicator = true
+        popularCoinsCollectionView.isScrollEnabled = false // DISABLE INTERNAL SCROLLING
+        popularCoinsCollectionView.showsVerticalScrollIndicator = false
         popularCoinsCollectionView.register(CoinCell.self, forCellWithReuseIdentifier: CoinCell.reuseID())
         popularCoinsContainer.addSubview(popularCoinsCollectionView)
         
@@ -332,9 +361,9 @@ import Combine
             
             let sparklineNumbers = coin.sparklineData.map { NSNumber(value: $0) }
             
-            // Configure the cell with full layout for vertical popular coins list
+            // Configure the cell with full layout for vertical popular coins list (no rank)
             cell.configure(
-                withRank: coin.cmcRank,
+                withRank: 0, // Remove rank column for popular coins
                 name: coin.symbol, // Keep using symbol for consistent display
                 price: coin.priceString,
                 market: coin.marketSupplyString,
@@ -360,18 +389,24 @@ import Combine
         popularCoinsTopWithRecentSearches = popularCoinsHeaderView.topAnchor.constraint(equalTo: recentSearchesContainer.bottomAnchor, constant: 8)
         popularCoinsTopWithoutRecentSearches = popularCoinsHeaderView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 24)
         
+        // Dynamic height constraint for expanding container
+        popularCoinsHeightConstraint = popularCoinsContainer.heightAnchor.constraint(equalToConstant: 100) // Will be updated dynamically
+        
         // Layout constraints with header outside the bordered container
         NSLayoutConstraint.activate([
             // Header view constraints (outside the border)
-            popularCoinsHeaderView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            popularCoinsHeaderView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            popularCoinsHeaderView.leadingAnchor.constraint(equalTo: scrollContentView.leadingAnchor),
+            popularCoinsHeaderView.trailingAnchor.constraint(equalTo: scrollContentView.trailingAnchor),
             popularCoinsHeaderView.heightAnchor.constraint(equalToConstant: 60),
             
             // Container constraints with margins for the border (positioned below header)
             popularCoinsContainer.topAnchor.constraint(equalTo: popularCoinsHeaderView.bottomAnchor, constant: 8),
-            popularCoinsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            popularCoinsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            popularCoinsContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            popularCoinsContainer.leadingAnchor.constraint(equalTo: scrollContentView.leadingAnchor, constant: 16),
+            popularCoinsContainer.trailingAnchor.constraint(equalTo: scrollContentView.trailingAnchor, constant: -16),
+            popularCoinsHeightConstraint, // Dynamic height
+            
+            // IMPORTANT: Bottom constraint to establish scroll content height
+            popularCoinsContainer.bottomAnchor.constraint(equalTo: scrollContentView.bottomAnchor, constant: -16),
             
             // Collection view constraints (fills the bordered container with proper padding)
             popularCoinsCollectionView.topAnchor.constraint(equalTo: popularCoinsContainer.topAnchor, constant: 12),
@@ -396,26 +431,20 @@ import Combine
         collectionView.delegate = self
         collectionView.backgroundColor = .systemBackground
         collectionView.keyboardDismissMode = .onDrag
+        collectionView.isHidden = true // Hidden initially - search results will show when needed
         
         // Register cell
         collectionView.register(CoinCell.self, forCellWithReuseIdentifier: CoinCell.reuseID())
         
-        view.addSubview(collectionView)
+        view.addSubview(collectionView) // Add to main view, not scroll view (search results overlay)
         
-        // Create three different top constraints for different states
-        collectionViewTopWithRecentSearches = collectionView.topAnchor.constraint(equalTo: recentSearchesContainer.bottomAnchor)
-        collectionViewTopWithoutRecentSearches = collectionView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 8)
-        collectionViewTopWithPopularCoins = collectionView.topAnchor.constraint(equalTo: popularCoinsContainer.bottomAnchor)
-        
-        // Activate common constraints
+        // Position search results to overlay the scroll view when active
         NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 64), // Below search bar
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            collectionView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
-        
-        // Initially show popular coins (no search active)
-        collectionViewTopWithPopularCoins.isActive = true
     }
     
     private func configureDataSource() {
@@ -468,7 +497,7 @@ import Combine
                 self?.updateDataSource(results)
                 // Get current search text from the search controller instead of ViewModel
                 let currentSearchText = self?.searchBarComponent.text ?? ""
-                self?.updateEmptyState(isEmpty: results.isEmpty, searchText: currentSearchText)
+                self?.updateEmptyState(results, searchText: currentSearchText)
             }
             .store(in: &cancellables)
         
@@ -534,7 +563,31 @@ import Combine
         var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
         snapshot.appendSections([.main])
         snapshot.appendItems(coins)
-        popularCoinsDataSource.apply(snapshot, animatingDifferences: true)
+        
+        popularCoinsDataSource.apply(snapshot, animatingDifferences: true) { [weak self] in
+            // Update container height to fit all items
+            self?.updatePopularCoinsHeight(for: coins.count)
+        }
+    }
+    
+    private func updatePopularCoinsHeight(for itemCount: Int) {
+        let itemHeight: CGFloat = 80
+        let topPadding: CGFloat = 12
+        let bottomPadding: CGFloat = 12
+        let minHeight: CGFloat = 100
+        
+        // Calculate height needed for all items
+        let calculatedHeight = max(CGFloat(itemCount) * itemHeight + topPadding + bottomPadding, minHeight)
+        
+        // Update the constraint
+        popularCoinsHeightConstraint.constant = calculatedHeight
+        
+        // Animate the change
+        UIView.animate(withDuration: 0.3) { [weak self] in
+            self?.view.layoutIfNeeded()
+        }
+        
+        print("📦 Popular Coins: Container height set to \(calculatedHeight)pt for \(itemCount) items")
     }
     
     // MARK: - Empty State
@@ -546,13 +599,13 @@ import Combine
             imageName: "magnifyingglass.circle"
         )
         emptyStateView?.isHidden = true
-        view.addSubview(emptyStateView!)
+        scrollContentView.addSubview(emptyStateView!)
         
         NSLayoutConstraint.activate([
-            emptyStateView!.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateView!.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyStateView!.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
-            emptyStateView!.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40)
+            emptyStateView!.centerXAnchor.constraint(equalTo: scrollContentView.centerXAnchor),
+            emptyStateView!.centerYAnchor.constraint(equalTo: scrollContentView.centerYAnchor),
+            emptyStateView!.leadingAnchor.constraint(greaterThanOrEqualTo: scrollContentView.leadingAnchor, constant: 40),
+            emptyStateView!.trailingAnchor.constraint(lessThanOrEqualTo: scrollContentView.trailingAnchor, constant: -40)
         ])
     }
     
@@ -607,37 +660,27 @@ import Combine
         return containerView
     }
     
-    private func updateEmptyState(isEmpty: Bool, searchText: String) {
-        guard let emptyStateView = emptyStateView else { return }
-        
-        if isEmpty && !searchText.isEmpty {
-            // Show "no results" state
-            updateEmptyStateContent(
-                title: "No Results Found",
-                message: "No cryptocurrencies match '\(searchText)'\nTry a different search term",
-                imageName: "exclamationmark.magnifyingglass"
-            )
-            emptyStateView.isHidden = false
-            
-            // Hide both recent searches and popular coins when showing no results
-            showRecentSearches(false)
+    private func updateEmptyState(_ searchResults: [Coin], searchText: String) {
+        if searchText.isEmpty {
+            // No search text - show popular coins instead of empty state
+            emptyStateView?.isHidden = true
+            showPopularCoins(true)
+            collectionView.isHidden = true
+        } else if searchResults.isEmpty {
+            // Search text but no results - show empty state
+            emptyStateView?.isHidden = false
             showPopularCoins(false)
-            collectionView.isHidden = false
-        } else if isEmpty && searchText.isEmpty {
-            // Show popular coins as the default state (not recent searches)
-            emptyStateView.isHidden = true
-            
-            // Always prioritize popular coins over recent searches
-            let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
-            showRecentSearches(hasRecentSearches)
-            showPopularCoins(true) // Always show popular coins when no search
-            collectionView.isHidden = true // Hide main collection view
+            collectionView.isHidden = true
         } else {
-            // Hide empty state and sections when there are search results
-            emptyStateView.isHidden = true
-            showRecentSearches(false)
+            // Search results available - hide empty state and popular coins
+            emptyStateView?.isHidden = true
             showPopularCoins(false)
             collectionView.isHidden = false
+        }
+        
+        // Update popular coins positioning when popular coins are visible
+        if !popularCoinsContainer.isHidden {
+            updatePopularCoinsPosition(hasRecentSearches: !recentSearchesContainer.isHidden)
         }
     }
     
@@ -697,7 +740,7 @@ import Combine
             self?.loadRecentSearches() // Refresh the UI
             
             // Update empty state since there are no recent searches now
-            self?.updateEmptyState(isEmpty: self?.currentSearchResults.isEmpty ?? true, 
+            self?.updateEmptyState(self?.currentSearchResults ?? [], 
                                   searchText: self?.searchBarComponent.text ?? "")
             
             // Update popular coins positioning since recent searches are now empty
@@ -871,15 +914,6 @@ extension SearchVC {
         // Update container visibility
         recentSearchesContainer.isHidden = !show
         
-        // Switch constraints to remove/add space
-        if show {
-            collectionViewTopWithoutRecentSearches.isActive = false
-            collectionViewTopWithRecentSearches.isActive = true
-        } else {
-            collectionViewTopWithRecentSearches.isActive = false
-            collectionViewTopWithoutRecentSearches.isActive = true
-        }
-        
         // Update popular coins positioning based on recent searches visibility
         updatePopularCoinsPosition(hasRecentSearches: show)
         
@@ -895,52 +929,43 @@ extension SearchVC {
      * Update popular coins position based on recent searches visibility
      */
     private func updatePopularCoinsPosition(hasRecentSearches: Bool) {
-        // Deactivate both popular coins header top constraints
-        popularCoinsTopWithRecentSearches.isActive = false
-        popularCoinsTopWithoutRecentSearches.isActive = false
-        
-        if hasRecentSearches && !recentSearchesContainer.isHidden {
-            // Recent searches are visible - position popular coins header below them
-            popularCoinsTopWithRecentSearches.isActive = true
-            print("🌟 Popular Coins: Header positioned below Recent Searches")
-        } else {
-            // No recent searches - move popular coins header up to just below search bar
-            popularCoinsTopWithoutRecentSearches.isActive = true
-            print("🌟 Popular Coins: Header moved up (no Recent Searches)")
+        // Guard against nil constraints (safety check)
+        guard let withRecentSearches = popularCoinsTopWithRecentSearches,
+              let withoutRecentSearches = popularCoinsTopWithoutRecentSearches else {
+            print("⚠️ Popular Coins: Position constraints not initialized yet")
+            return
         }
+        
+        // Deactivate both constraints
+        withRecentSearches.isActive = false
+        withoutRecentSearches.isActive = false
+        
+        // Activate the appropriate constraint based on recent searches visibility
+        if hasRecentSearches && !recentSearchesContainer.isHidden {
+            withRecentSearches.isActive = true
+        } else {
+            withoutRecentSearches.isActive = true
+        }
+        
+        print("🌟 Popular Coins: Position updated - Recent searches: \(hasRecentSearches)")
     }
     
     /**
      * Show or hide popular coins container
      */
     private func showPopularCoins(_ show: Bool) {
-        // Update container visibility
+        // Simple visibility toggle - no constraint switching needed with scroll view
         popularCoinsContainer.isHidden = !show
+        popularCoinsHeaderView.isHidden = !show
         
-        // Switch constraints based on recent searches and popular coins visibility
-        let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty && !recentSearchesContainer.isHidden
+        // Update popular coins position based on recent searches visibility
+        updatePopularCoinsPosition(hasRecentSearches: !recentSearchesContainer.isHidden)
         
-        // Deactivate all top constraints
-        collectionViewTopWithRecentSearches.isActive = false
-        collectionViewTopWithoutRecentSearches.isActive = false
-        collectionViewTopWithPopularCoins.isActive = false
-        
-        if show {
-            // Popular coins are showing - main collection view goes below popular coins container
-            collectionViewTopWithPopularCoins.isActive = true
-        } else if hasRecentSearches {
-            // No popular coins, but recent searches are showing
-            collectionViewTopWithRecentSearches.isActive = true
-        } else {
-            // Neither popular coins nor recent searches
-            collectionViewTopWithoutRecentSearches.isActive = true
-        }
-        
-        // Animate the layout change with completion to ensure proper sizing
+        // Animate the layout change
         UIView.animate(withDuration: 0.3, animations: {
             self.view.layoutIfNeeded()
         }) { [weak self] _ in
-            // After animation completes, reload collection view to ensure proper display
+            // Reload collection view after animation
             if show {
                 self?.popularCoinsCollectionView.reloadData()
             }

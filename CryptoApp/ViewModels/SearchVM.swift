@@ -207,8 +207,8 @@ final class SearchVM: ObservableObject {
                 // Re-perform current search to merge fresh prices
                 self.performSearch(for: self.currentSearchText)
                 
-                // Update popular coins with fresh data
-                self.updatePopularCoins()
+                // Fetch fresh data for popular coins instead of using shared data
+                self.fetchFreshPopularCoins(for: self.currentPopularCoinsState.selectedFilter)
             }
             .store(in: &cancellables)
     }
@@ -239,10 +239,10 @@ final class SearchVM: ObservableObject {
      * INITIAL DATA LOADING
      * 
      * Uses only cached data for search to avoid interfering with main coin list pagination.
-     * No background fetching to prevent API conflicts and state contamination.
+     * For popular coins, fetches fresh data separately.
      */
     private func loadInitialData() {
-        // Only use cached data - no background fetching to avoid pagination conflicts
+        // Only use cached data for search functionality - no background fetching to avoid pagination conflicts
         if let cachedCoins = persistenceService.loadCoinList() {
             print("🔍 Search: Loaded \(cachedCoins.count) coins from cache for search")
             self.allCoins = cachedCoins
@@ -251,15 +251,14 @@ final class SearchVM: ObservableObject {
             if let cachedLogos = persistenceService.loadCoinLogos() {
                 coinLogosSubject.send(cachedLogos)
             }
-            
-            // Load initial popular coins data
-            updatePopularCoins()
         } else {
             print("🔍 Search: No cached coins available - search will be empty until main list loads data")
             self.allCoins = []
         }
         
-        // Removed background fetch to prevent pagination interference
+        // Clear popular coins initially and load fresh data separately
+        popularCoinsSubject.send([])  // Ensure no cached data is shown
+        fetchFreshPopularCoins(for: currentPopularCoinsState.selectedFilter)
     }
     
         // MARK: - Removed Methods
@@ -357,93 +356,12 @@ final class SearchVM: ObservableObject {
     // MARK: - Popular Coins Implementation
     
     /**
-     * POPULAR COINS FILTERING LOGIC
+     * POPULAR COINS FILTERING LOGIC - REMOVED
      * 
-     * Filters coins based on the mobile app behavior rules:
-     * - Market Cap Rank: Top ~75 coins only
-     * - Excludes stablecoins from gainers/losers
-     * - Trading Volume Filter: Applied
-     * - Listing & Data Quality: Must be verified and trackable
-     * - Price Change Interval: 24-hour % change basis
+     * This method has been replaced by fetchFreshPopularCoins() and calculatePopularCoins()
+     * which use fresh API data instead of cached data for accurate gainers/losers.
      */
-    private func updatePopularCoins() {
-        let currentFilter = currentPopularCoinsState.selectedFilter
-        
-        print("🌟 Popular Coins: Updating for \(currentFilter.displayName) from \(allCoins.count) cached coins")
-        
-        // Perform filtering on background queue for better performance
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            
-            // 🌐 MERGE FRESH PRICES: Get latest data from SharedCoinDataManager
-            let sharedCoins = SharedCoinDataManager.shared.currentCoins
-            let coinsWithFreshPrices = self.allCoins.compactMap { cachedCoin in
-                // Try to find fresh data for this coin
-                if let freshCoin = sharedCoins.first(where: { $0.id == cachedCoin.id }) {
-                    return freshCoin  // Use fresh coin with updated prices
-                } else {
-                    return cachedCoin  // Fallback to cached coin
-                }
-            }
-            
-            // Apply filtering criteria
-            let eligibleCoins = coinsWithFreshPrices.filter { coin in
-                return coin.meetsPopularCoinsCriteria
-            }
-            
-            print("🌟 Popular Coins: Found \(eligibleCoins.count) eligible coins for filtering")
-            
-            // Sort and filter based on selected filter
-            let filteredCoins: [Coin]
-            switch currentFilter {
-            case .topGainers:
-                filteredCoins = eligibleCoins
-                    .filter { coin in
-                        let change = coin.percentChange24hValue
-                        return change > 0 // Only positive changes
-                    }
-                    .sorted { coin1, coin2 in
-                        // Sort by highest percentage gain first
-                        coin1.percentChange24hValue > coin2.percentChange24hValue
-                    }
-                    .prefix(10) // Top 10 gainers
-                    .map { $0 }
-                
-                print("🌟 Popular Coins: Found \(filteredCoins.count) gainers with positive changes")
-                
-            case .topLosers:
-                filteredCoins = eligibleCoins
-                    .filter { coin in
-                        let change = coin.percentChange24hValue
-                        return change < 0 // Only negative changes
-                    }
-                    .sorted { coin1, coin2 in
-                        // Sort by lowest percentage change first (most negative)
-                        coin1.percentChange24hValue < coin2.percentChange24hValue
-                    }
-                    .prefix(10) // Top 10 losers
-                    .map { $0 }
-                
-                print("🌟 Popular Coins: Found \(filteredCoins.count) losers with negative changes")
-            }
-            
-            // Update UI on main queue
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.popularCoinsSubject.send(filteredCoins)
-                
-                // Count how many got fresh prices
-                let freshCount = filteredCoins.filter { result in
-                    sharedCoins.contains { $0.id == result.id }
-                }.count
-                
-                print("🌟 Popular Coins: Found \(filteredCoins.count) \(currentFilter.displayName.lowercased()) (\(freshCount) with fresh prices)")
-                
-                // Fetch missing logos for popular coins
-                self.fetchLogosIfNeeded(for: filteredCoins)
-            }
-        }
-    }
+    // updatePopularCoins() method removed - now using fetchFreshPopularCoins() for fresh data
     
     // MARK: - Public Methods
     
@@ -459,12 +377,120 @@ final class SearchVM: ObservableObject {
     /**
      * UPDATE POPULAR COINS FILTER
      * 
-     * Updates the popular coins filter and triggers re-filtering
+     * Updates the popular coins filter and triggers re-filtering with fresh data
      */
     func updatePopularCoinsFilter(_ filter: PopularCoinsFilter) {
         let newState = PopularCoinsState(selectedFilter: filter)
         popularCoinsStateSubject.send(newState)
-        updatePopularCoins()
+        
+        // Fetch fresh data for popular coins instead of using cached data
+        fetchFreshPopularCoins(for: filter)
+    }
+    
+    /**
+     * FETCH FRESH POPULAR COINS DATA
+     * 
+     * Fetches fresh data specifically for gainers/losers calculations
+     */
+    func fetchFreshPopularCoins(for filter: PopularCoinsFilter) {
+        print("🌟 Popular Coins: Fetching fresh data for \(filter.displayName)")
+        
+        // Clear existing data immediately to prevent showing cached data
+        popularCoinsSubject.send([])
+        isLoadingSubject.send(true)
+        
+        // Fetch larger dataset to include smaller volatile coins
+        coinManager.getTopCoins(
+            limit: 2000,  // Much larger dataset to include small volatile coins
+            convert: "USD",
+            start: 1,
+            sortType: "market_cap",
+            sortDir: "desc",
+            priority: .normal
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                self?.isLoadingSubject.send(false)
+                if case .failure(let error) = completion {
+                    print("❌ Popular Coins: Failed to fetch fresh data: \(error)")
+                    // Don't fallback to cached data - keep empty to avoid showing stale data
+                    self?.popularCoinsSubject.send([])
+                }
+            },
+            receiveValue: { [weak self] freshCoins in
+                guard let self = self else { return }
+                print("🌟 Popular Coins: Received \(freshCoins.count) fresh coins")
+                
+                // Use fresh data for popular coins calculation
+                self.calculatePopularCoins(from: freshCoins, filter: filter)
+            }
+        )
+        .store(in: &apiRequestCancellables)
+    }
+    
+    /**
+     * CALCULATE POPULAR COINS FROM FRESH DATA
+     */
+    private func calculatePopularCoins(from freshCoins: [Coin], filter: PopularCoinsFilter) {
+        print("🌟 Popular Coins: Calculating \(filter.displayName) from \(freshCoins.count) fresh coins")
+        
+        // Perform filtering on background queue for better performance
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Apply filtering criteria to fresh data
+            let eligibleCoins = freshCoins.filter { coin in
+                return coin.meetsPopularCoinsCriteria
+            }
+            
+            print("🌟 Popular Coins: Found \(eligibleCoins.count) eligible coins from fresh data")
+            
+            // Sort and filter based on selected filter
+            let filteredCoins: [Coin]
+            switch filter {
+            case .topGainers:
+                let positiveCoins = eligibleCoins.filter { coin in
+                    let change = coin.percentChange24hValue
+                    return change > 0 // Only positive changes
+                }
+                print("🌟 Popular Coins: Found \(positiveCoins.count) coins with positive changes from fresh data")
+                
+                filteredCoins = positiveCoins
+                    .sorted { coin1, coin2 in
+                        // Sort by highest percentage gain first
+                        coin1.percentChange24hValue > coin2.percentChange24hValue
+                    }
+                    .prefix(10) // Top 10 gainers
+                    .map { $0 }
+                
+            case .topLosers:
+                let negativeCoins = eligibleCoins.filter { coin in
+                    let change = coin.percentChange24hValue
+                    return change < 0 // Only negative changes
+                }
+                print("🌟 Popular Coins: Found \(negativeCoins.count) coins with negative changes from fresh data")
+                
+                filteredCoins = negativeCoins
+                    .sorted { coin1, coin2 in
+                        // Sort by lowest percentage change first (most negative)
+                        coin1.percentChange24hValue < coin2.percentChange24hValue
+                    }
+                    .prefix(10) // Top 10 losers
+                    .map { $0 }
+            }
+            
+            // Update UI on main queue
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.popularCoinsSubject.send(filteredCoins)
+                
+                print("🌟 Popular Coins: Updated UI with \(filteredCoins.count) fresh \(filter.displayName.lowercased())")
+                
+                // Fetch missing logos for popular coins
+                self.fetchLogosIfNeeded(for: filteredCoins)
+            }
+        }
     }
     
     /**
@@ -506,8 +532,8 @@ final class SearchVM: ObservableObject {
             // Re-perform current search with refreshed data
             performSearch(for: currentSearchText)
             
-            // Update popular coins with refreshed data
-            updatePopularCoins()
+            // Use fresh data for popular coins instead of cached data
+            fetchFreshPopularCoins(for: currentPopularCoinsState.selectedFilter)
             
             // Also fetch logos for any existing search results
             let existingResults = currentSearchResults

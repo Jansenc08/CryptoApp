@@ -32,18 +32,39 @@ struct Coin: Codable {
 extension Coin {
     var priceString: String {
         if let price = quote?["USD"]?.price {
-            // Use NumberFormatter with explicit $ symbol to avoid locale-specific "US$"
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
-            formatter.maximumFractionDigits = 2
-            formatter.minimumFractionDigits = 2
             formatter.groupingSeparator = ","
             formatter.usesGroupingSeparator = true
+            
+            // Dynamic decimal places based on price value (like CoinMarketCap)
+            if price >= 1.0 {
+                // For prices $1.00 and above: 2 decimal places
+                formatter.maximumFractionDigits = 2
+                formatter.minimumFractionDigits = 2
+            } else if price >= 0.01 {
+                // For prices $0.01 to $0.99: 4 decimal places
+                formatter.maximumFractionDigits = 4
+                formatter.minimumFractionDigits = 4
+            } else if price >= 0.0001 {
+                // For prices $0.0001 to $0.0099: 6 decimal places
+                formatter.maximumFractionDigits = 6
+                formatter.minimumFractionDigits = 2 // Don't force trailing zeros for small values
+            } else {
+                // For very small prices: 8 decimal places
+                formatter.maximumFractionDigits = 8
+                formatter.minimumFractionDigits = 2
+            }
             
             if let formattedNumber = formatter.string(from: NSNumber(value: price)) {
                 return "$\(formattedNumber)"
             } else {
-                return "$\(String(format: "%.2f", price))"
+                // Fallback for very small numbers that formatter can't handle
+                if price < 0.00000001 {
+                    return String(format: "$%.10f", price)
+                } else {
+                    return String(format: "$%.8f", price)
+                }
             }
         } else {
             return "N/A"
@@ -97,55 +118,61 @@ extension Coin {
     
     // MARK: - Stablecoin Detection
     
-    /// Identifies if this coin is a stablecoin (should be excluded from gainers/losers)
+    /// Identifies if this coin is a USD-pegged stablecoin (should be excluded from gainers/losers)
+    /// Note: Asset-backed tokens like gold tokens (PAXG, XAUt) are NOT excluded per CoinMarketCap's approach
     var isStablecoin: Bool {
-        // Common stablecoin symbols and names
-        let stablecoinSymbols = [
+        // USD-pegged stablecoin symbols and names (excluding asset-backed tokens)
+        let usdStablecoinSymbols = [
             "USDT", "USDC", "BUSD", "DAI", "TUSD", "USDP", "USDN", "UST", "FRAX",
             "LUSD", "SUSD", "GUSD", "HUSD", "USDD", "USTC", "FDUSD", "PYUSD"
+            // Note: Removed PAXG, XAUt as they are gold-backed, not USD-pegged
         ]
         
-        let stablecoinNames = [
+        let usdStablecoinNames = [
             "tether", "usd-coin", "binance-usd", "dai", "trueusd", "paxos-standard",
             "neutrino-usd", "terraclassicusd", "frax", "liquity-usd", "nusd",
             "gemini-dollar", "husd", "usdd", "terra-luna", "first-digital-usd", "paypal-usd"
+            // Note: Removed gold-related names
         ]
         
         // Check symbol (case-insensitive)
-        if stablecoinSymbols.contains(where: { $0.lowercased() == symbol.lowercased() }) {
+        if usdStablecoinSymbols.contains(where: { $0.lowercased() == symbol.lowercased() }) {
             return true
         }
         
         // Check name (case-insensitive)
         let lowercaseName = name.lowercased()
-        if stablecoinNames.contains(where: { lowercaseName.contains($0) }) {
+        if usdStablecoinNames.contains(where: { lowercaseName.contains($0) }) {
             return true
         }
         
         // Check slug if available (case-insensitive)
         if let slug = slug?.lowercased() {
-            if stablecoinNames.contains(where: { slug.contains($0) }) {
+            if usdStablecoinNames.contains(where: { slug.contains($0) }) {
                 return true
             }
         }
         
-        // Additional heuristics for stablecoins
+        // Additional heuristics for USD stablecoins only
         if lowercaseName.contains("usd") && (lowercaseName.contains("stable") || lowercaseName.contains("dollar")) {
-            return true
+            // Exclude gold references
+            if !lowercaseName.contains("gold") && !lowercaseName.contains("xau") {
+                return true
+            }
         }
         
         return false
     }
     
-    // MARK: - Popular Coins Filtering Criteria
+    // MARK: - Popular Coins Filtering Criteria (Matching CoinMarketCap)
     
-    /// Check if coin meets criteria for popular coins lists (gainers/losers)
+    /// Check if coin meets CoinMarketCap's criteria for popular coins lists (gainers/losers)
     var meetsPopularCoinsCriteria: Bool {
-        // Must not be a stablecoin
+        // Must not be a USD-pegged stablecoin (asset-backed tokens like gold are allowed)
         guard !isStablecoin else { return false }
         
-        // Must be in top ~75 by market cap rank (mobile app behavior)
-        guard cmcRank <= 75 else { return false }
+        // CoinMarketCap includes ALL coins regardless of market cap rank (removed restriction)
+        // They only filter by volume, not by top 100 market cap
         
         // Must have valid quote data
         guard let usdQuote = quote?["USD"] else { return false }
@@ -156,8 +183,8 @@ extension Coin {
         // Must have valid 24h change data
         guard let _ = usdQuote.percentChange24h else { return false }
         
-        // Must have sufficient trading volume (basic quality filter)
-        if let volume24h = usdQuote.volume24h, volume24h < 1000000 { // $1M minimum volume
+        // CoinMarketCap's actual volume requirement: $50,000 minimum (not $1M)
+        if let volume24h = usdQuote.volume24h, volume24h < 50000 { // $50K minimum volume
             return false
         }
         
