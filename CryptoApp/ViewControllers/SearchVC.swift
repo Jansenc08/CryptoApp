@@ -46,6 +46,7 @@ import Combine
     private var popularCoinsDataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
     private var popularCoinsHeightConstraint: NSLayoutConstraint!
     private var popularCoinsLoadingView: UIActivityIndicatorView!
+    private var isPopularCoinsLoading = false // Track loading state to prevent height conflicts
     
     // MARK: - Dynamic Constraints
     
@@ -517,16 +518,25 @@ import Combine
         viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
+                guard let self = self else { return }
+                
+                self.isPopularCoinsLoading = isLoading // Track loading state
+                
                 if isLoading {
-                    self?.popularCoinsLoadingView.startAnimating()
-                    self?.popularCoinsCollectionView.isHidden = true
-                    self?.popularCoinsHeaderView.setLoading(true) // Disable buttons during loading
+                    self.popularCoinsLoadingView.startAnimating()
+                    self.popularCoinsCollectionView.isHidden = true
+                    self.popularCoinsHeaderView.setLoading(true) // Disable buttons during loading
                     print("🔄 Popular Coins: Loading started")
                 } else {
-                    self?.popularCoinsLoadingView.stopAnimating()
-                    self?.popularCoinsCollectionView.isHidden = false
-                    self?.popularCoinsHeaderView.setLoading(false) // Re-enable buttons
+                    self.popularCoinsLoadingView.stopAnimating()
+                    self.popularCoinsCollectionView.isHidden = false
+                    self.popularCoinsHeaderView.setLoading(false) // Re-enable buttons
                     print("✅ Popular Coins: Loading finished")
+                    
+                    // Force height update after loading completes to ensure proper sizing
+                    DispatchQueue.main.async {
+                        self.forcePopularCoinsHeightUpdate()
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -583,8 +593,17 @@ import Combine
         snapshot.appendItems(coins)
         
         popularCoinsDataSource.apply(snapshot, animatingDifferences: true) { [weak self] in
-            // Update container height to fit all items
-            self?.updatePopularCoinsHeight(for: coins.count)
+            guard let self = self else { return }
+            
+            // Only update height if not currently loading (prevents race condition)
+            if !self.isPopularCoinsLoading && !coins.isEmpty {
+                self.updatePopularCoinsHeight(for: coins.count)
+                print("📦 Popular Coins: Height updated for \(coins.count) items (not loading)")
+            } else if coins.isEmpty && self.isPopularCoinsLoading {
+                print("⏳ Popular Coins: Skipping height update for 0 items (loading in progress)")
+            } else {
+                print("📦 Popular Coins: Height update skipped - loading: \(self.isPopularCoinsLoading), items: \(coins.count)")
+            }
         }
     }
     
@@ -606,6 +625,15 @@ import Combine
         }
         
         print("📦 Popular Coins: Container height set to \(calculatedHeight)pt for \(itemCount) items")
+    }
+    
+    private func forcePopularCoinsHeightUpdate() {
+        // Force height update based on current data after loading completes
+        let currentItems = viewModel.currentPopularCoins
+        if !currentItems.isEmpty {
+            updatePopularCoinsHeight(for: currentItems.count)
+            print("🔧 Popular Coins: Forced height update for \(currentItems.count) items after loading")
+        }
     }
     
     // MARK: - Empty State
