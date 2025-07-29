@@ -20,7 +20,7 @@ import Combine
     
     private var collectionView: UICollectionView!
     private var searchBarComponent: SearchBarComponent!
-    private let viewModel = SearchVM()
+    private let viewModel: SearchVM
     private var cancellables = Set<AnyCancellable>()
     private var dataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
     
@@ -63,6 +63,43 @@ import Combine
     // MARK: - Search State
     
     private var currentSearchResults: [Coin] = [] // Track current search results for saving recent searches
+    
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts SearchVM for better testability and modularity.
+     * Uses dependency container for default instance.
+     */
+    init(viewModel: SearchVM = Dependencies.container.searchViewModel()) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    /**
+     * OBJECTIVE-C COMPATIBILITY INITIALIZER
+     * 
+     * Convenience initializer for Objective-C compatibility.
+     * Uses default dependency injection setup.
+     */
+    override convenience init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        self.init(viewModel: Dependencies.container.searchViewModel())
+    }
+    
+    /**
+     * PLAIN INIT FOR OBJECTIVE-C
+     * 
+     * Simple convenience initializer for [[ViewController alloc] init] pattern.
+     */
+    convenience init() {
+        self.init(viewModel: Dependencies.container.searchViewModel())
+    }
+    
+    required init?(coder: NSCoder) {
+        self.viewModel = Dependencies.container.searchViewModel()
+        super.init(coder: coder)
+    }
     
     // MARK: - Lifecycle
     

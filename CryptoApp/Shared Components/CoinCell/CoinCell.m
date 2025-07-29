@@ -196,6 +196,7 @@
 // Avoids image flickering / wrong images showing
 - (void)prepareForReuse {
     [super prepareForReuse];
+    [self.coinImageView cancelCurrentDownload];
     [self.coinImageView setPlaceholder];
 }
 

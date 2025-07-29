@@ -9,6 +9,8 @@
 
 @interface CoinImageView ()
 @property (nonatomic, strong) NSCache *imageCache;
+@property (nonatomic, strong) NSURLSessionDataTask *currentDownloadTask;
+@property (nonatomic, strong) NSString *currentDownloadURL;
 @end
 
 @implementation CoinImageView
@@ -30,7 +32,16 @@
 }
 
 - (void)setPlaceholder {
+    [self cancelCurrentDownload];
     self.image = [UIImage imageNamed:@"coin_placeholder"];
+}
+
+- (void)cancelCurrentDownload {
+    if (self.currentDownloadTask) {
+        [self.currentDownloadTask cancel];
+        self.currentDownloadTask = nil;
+    }
+    self.currentDownloadURL = nil;
 }
 
 - (void)downloadImageFromURL:(NSString *)urlString {
@@ -39,6 +50,12 @@
         [self setPlaceholder];
         return;
     }
+
+    // Cancel any existing download first
+    [self cancelCurrentDownload];
+    
+    // Store the current download URL for race condition prevention
+    self.currentDownloadURL = urlString;
 
     NSString *cacheKey = urlString;
     UIImage *cachedImage = [self.imageCache objectForKey:cacheKey];
@@ -59,13 +76,26 @@
     // Only log download start for debugging if needed
     // NSLog(@"🌐 CoinImageView | Downloading image from: %@", urlString);
 
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+    __weak typeof(self) weakSelf = self;
+    self.currentDownloadTask = [[NSURLSession sharedSession]
         dataTaskWithURL:url
-      completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+          __strong typeof(weakSelf) strongSelf = weakSelf;
+          if (!strongSelf) return;
+          
+          // RACE CONDITION FIX: Only apply image if this is still the current download
+          if (![strongSelf.currentDownloadURL isEqualToString:urlString]) {
+              NSLog(@"🛑 CoinImageView | Ignoring download result for %@ (no longer current)", urlString);
+              return;
+          }
+          
           if (error) {
               NSLog(@"❌ CoinImageView | Download error for %@: %@", urlString, error.localizedDescription);
               dispatch_async(dispatch_get_main_queue(), ^{
-                  [self setPlaceholder];
+                  // Only set placeholder if this is still the current download
+                  if ([strongSelf.currentDownloadURL isEqualToString:urlString]) {
+                      [strongSelf setPlaceholder];
+                  }
               });
               return;
           }
@@ -73,7 +103,10 @@
           if (!data) {
               NSLog(@"❌ CoinImageView | No data received for: %@", urlString);
               dispatch_async(dispatch_get_main_queue(), ^{
-                  [self setPlaceholder];
+                  // Only set placeholder if this is still the current download
+                  if ([strongSelf.currentDownloadURL isEqualToString:urlString]) {
+                      [strongSelf setPlaceholder];
+                  }
               });
               return;
           }
@@ -82,18 +115,26 @@
           if (downloadedImage) {
               // Only log success for debugging if needed
               // NSLog(@"✅ CoinImageView | Successfully downloaded image for: %@", urlString);
-              [self.imageCache setObject:downloadedImage forKey:cacheKey];
+              [strongSelf.imageCache setObject:downloadedImage forKey:cacheKey];
               dispatch_async(dispatch_get_main_queue(), ^{
-                  self.image = downloadedImage;
+                  // RACE CONDITION FIX: Only apply image if this is still the current download
+                  if ([strongSelf.currentDownloadURL isEqualToString:urlString]) {
+                      strongSelf.image = downloadedImage;
+                      strongSelf.currentDownloadTask = nil;
+                      strongSelf.currentDownloadURL = nil;
+                  }
               });
           } else {
               NSLog(@"❌ CoinImageView | Failed to create image from data for: %@", urlString);
               dispatch_async(dispatch_get_main_queue(), ^{
-                  [self setPlaceholder];
+                  // Only set placeholder if this is still the current download
+                  if ([strongSelf.currentDownloadURL isEqualToString:urlString]) {
+                      [strongSelf setPlaceholder];
+                  }
               });
           }
       }];
 
-    [task resume];
+    [self.currentDownloadTask resume];
 }
 @end

@@ -1,10 +1,18 @@
 import Foundation
 import CoreData
 
-final class CoreDataManager {
+final class CoreDataManager: CoreDataManagerProtocol {
     static let shared = CoreDataManager()
     
-    private init() {}
+    /**
+     * DEPENDENCY INJECTION INITIALIZER
+     * 
+     * Internal access allows for:
+     * - Testing with fresh instances (in-memory store)
+     * - Dependency injection in tests
+     * - Production singleton pattern
+     */
+    init() {}
     
     // MARK: - Core Data Stack
     

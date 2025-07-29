@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreData
 
 // MARK: - Mock Cache Service
 
@@ -73,6 +74,407 @@ final class MockCacheService: CacheServiceProtocol {
     
     func clearExpiredEntries() {
         // No-op for mock
+    }
+}
+
+// MARK: - Mock Persistence Service
+
+/**
+ * MOCK PERSISTENCE SERVICE
+ * 
+ * A mock implementation of PersistenceServiceProtocol for testing:
+ * - In-memory storage (no actual UserDefaults)
+ * - Predictable behavior
+ * - Easily configurable for different test scenarios
+ */
+final class MockPersistenceService: PersistenceServiceProtocol {
+    
+    // In-memory storage
+    private var storedCoins: [Coin] = []
+    private var storedLogos: [Int: String] = [:]
+    private var lastCacheTime: Date?
+    
+    // Test configuration
+    var shouldSimulateExpiredCache: Bool = false
+    var customCacheAge: TimeInterval = 300 // 5 minutes default
+    
+    // MARK: - PersistenceServiceProtocol Implementation
+    
+    func saveCoinList(_ coins: [Coin]) {
+        storedCoins = coins
+        lastCacheTime = Date()
+    }
+    
+    func loadCoinList() -> [Coin]? {
+        return storedCoins.isEmpty ? nil : storedCoins
+    }
+    
+    func saveCoinLogos(_ logos: [Int: String]) {
+        storedLogos = logos
+    }
+    
+    func loadCoinLogos() -> [Int: String]? {
+        return storedLogos.isEmpty ? nil : storedLogos
+    }
+    
+    func getLastCacheTime() -> Date? {
+        return lastCacheTime
+    }
+    
+    func isCacheExpired(maxAge: TimeInterval = 300) -> Bool {
+        if shouldSimulateExpiredCache { return true }
+        
+        guard let lastTime = lastCacheTime else { return true }
+        return Date().timeIntervalSince(lastTime) > maxAge
+    }
+    
+    func clearCache() {
+        storedCoins = []
+        storedLogos = [:]
+        lastCacheTime = nil
+    }
+    
+    func getOfflineData() -> (coins: [Coin], logos: [Int: String])? {
+        guard !storedCoins.isEmpty else { return nil }
+        return (coins: storedCoins, logos: storedLogos)
+    }
+    
+    func saveOfflineData(coins: [Coin], logos: [Int: String]) {
+        saveCoinList(coins)
+        saveCoinLogos(logos)
+    }
+}
+
+// MARK: - Mock Core Data Manager
+
+/**
+ * MOCK CORE DATA MANAGER
+ * 
+ * A mock implementation of CoreDataManagerProtocol for testing:
+ * - In-memory storage (no actual Core Data)
+ * - Predictable behavior for watchlist operations
+ * - Thread-safe operations
+ */
+final class MockCoreDataManager: CoreDataManagerProtocol {
+    
+    // Mock in-memory storage
+    private var mockObjects: [NSManagedObject] = []
+    private let queue = DispatchQueue(label: "mock.coredata.queue", attributes: .concurrent)
+    
+    // Test configuration
+    var shouldFailSave: Bool = false
+    var shouldFailFetch: Bool = false
+    
+    // Mock context (not used in mock implementation)
+    var context: NSManagedObjectContext {
+        return NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+    }
+    
+    // MARK: - CoreDataManagerProtocol Implementation
+    
+    func save() {
+        guard !shouldFailSave else {
+            print("❌ Mock Core Data save failed (configured to fail)")
+            return
+        }
+        // Mock save - no actual operation needed
+        print("✅ Mock Core Data save succeeded")
+    }
+    
+    func delete<T: NSManagedObject>(_ object: T) {
+        queue.async(flags: .barrier) {
+            self.mockObjects.removeAll { $0 === object }
+        }
+        print("🗑️ Mock Core Data deleted object")
+    }
+    
+    func fetch<T: NSManagedObject>(_ objectType: T.Type) -> [T] {
+        guard !shouldFailFetch else {
+            print("❌ Mock Core Data fetch failed (configured to fail)")
+            return []
+        }
+        
+        return queue.sync {
+            return mockObjects.compactMap { $0 as? T }
+        }
+    }
+    
+    func fetch<T: NSManagedObject>(_ objectType: T.Type, where predicate: NSPredicate) -> [T] {
+        guard !shouldFailFetch else {
+            print("❌ Mock Core Data fetch with predicate failed (configured to fail)")
+            return []
+        }
+        
+        return queue.sync {
+            return mockObjects.compactMap { $0 as? T }
+                .filter { object in
+                    // Simple predicate evaluation for testing
+                    // In a real implementation, this would be more sophisticated
+                    return true
+                }
+        }
+    }
+    
+    // Specific methods for WatchlistItem to avoid ambiguity
+    func fetchWatchlistItems() -> [WatchlistItem] {
+        guard !shouldFailFetch else {
+            print("❌ Mock Core Data fetch watchlist items failed (configured to fail)")
+            return []
+        }
+        
+        return queue.sync {
+            return mockObjects.compactMap { $0 as? WatchlistItem }
+        }
+    }
+    
+    func fetchWatchlistItems(where predicate: NSPredicate) -> [WatchlistItem] {
+        guard !shouldFailFetch else {
+            print("❌ Mock Core Data fetch watchlist items with predicate failed (configured to fail)")
+            return []
+        }
+        
+        return queue.sync {
+            return mockObjects.compactMap { $0 as? WatchlistItem }
+                .filter { item in
+                    // Simple predicate evaluation for testing
+                    // In a real implementation, this would be more sophisticated
+                    return true
+                }
+        }
+    }
+    
+    // MARK: - Test Helper Methods
+    
+    func addMockObject<T: NSManagedObject>(_ object: T) {
+        queue.async(flags: .barrier) {
+            self.mockObjects.append(object)
+        }
+    }
+    
+    func clearAllMockObjects() {
+        queue.async(flags: .barrier) {
+            self.mockObjects.removeAll()
+        }
+    }
+    
+    func getMockObjectCount() -> Int {
+        return queue.sync { mockObjects.count }
+    }
+}
+
+// MARK: - Mock Watchlist Manager
+
+/**
+ * MOCK WATCHLIST MANAGER
+ * 
+ * A mock implementation of WatchlistManagerProtocol for testing:
+ * - In-memory watchlist storage
+ * - Predictable behavior
+ * - Publisher support for reactive testing
+ */
+final class MockWatchlistManager: WatchlistManagerProtocol {
+    
+    // Mock storage
+    private var watchlistCoins: [Coin] = []
+    private var mockWatchlistItems: [WatchlistItem] = []
+    private let watchlistSubject = CurrentValueSubject<[Coin], Never>([])
+    
+    // Use @Published to provide actual Published.Publisher type
+    @Published private var _watchlistItems: [WatchlistItem] = []
+    
+    // Test configuration
+    var shouldFailOperations: Bool = false
+    var operationDelay: TimeInterval = 0.0
+    
+    // MARK: - Protocol Properties
+    
+    var watchlistItems: [WatchlistItem] {
+        return _watchlistItems
+    }
+    
+    var watchlistItemsPublisher: Published<[WatchlistItem]>.Publisher {
+        return $_watchlistItems
+    }
+    
+    // MARK: - WatchlistManagerProtocol Implementation
+    
+    func getWatchlistCoins() -> [Coin] {
+        return watchlistCoins
+    }
+    
+    func addCoinToWatchlist(_ coin: Coin) {
+        guard !shouldFailOperations else {
+            print("❌ Mock watchlist add failed (configured to fail)")
+            return
+        }
+        
+        if !watchlistCoins.contains(where: { $0.id == coin.id }) {
+            watchlistCoins.append(coin)
+            watchlistSubject.send(watchlistCoins)
+            print("✅ Mock added \(coin.symbol) to watchlist")
+        }
+    }
+    
+    func removeCoinFromWatchlist(_ coin: Coin) {
+        guard !shouldFailOperations else {
+            print("❌ Mock watchlist remove failed (configured to fail)")
+            return
+        }
+        
+        watchlistCoins.removeAll { $0.id == coin.id }
+        watchlistSubject.send(watchlistCoins)
+        print("✅ Mock removed \(coin.symbol) from watchlist")
+    }
+    
+    func isInWatchlist(_ coin: Coin) -> Bool {
+        return watchlistCoins.contains { $0.id == coin.id }
+    }
+    
+    func clearWatchlist() {
+        guard !shouldFailOperations else {
+            print("❌ Mock watchlist clear failed (configured to fail)")
+            return
+        }
+        
+        watchlistCoins.removeAll()
+        watchlistSubject.send(watchlistCoins)
+        print("✅ Mock cleared watchlist")
+    }
+    
+    // MARK: - Core Protocol Methods
+    
+    func addToWatchlist(_ coin: Coin, logoURL: String?) {
+        addCoinToWatchlist(coin)
+    }
+    
+    func removeFromWatchlist(coinId: Int) {
+        if let coin = watchlistCoins.first(where: { $0.id == coinId }) {
+            removeCoinFromWatchlist(coin)
+        }
+    }
+    
+    func isInWatchlist(coinId: Int) -> Bool {
+        return watchlistCoins.contains { $0.id == coinId }
+    }
+    
+    func getWatchlistCount() -> Int {
+        return watchlistCoins.count
+    }
+    
+    func getPerformanceMetrics() -> [String: Any] {
+        return [
+            "mockWatchlistCount": watchlistCoins.count,
+            "operationsEnabled": !shouldFailOperations,
+            "operationDelay": operationDelay
+        ]
+    }
+    
+    // MARK: - Test Helper Methods
+    
+    func setMockWatchlist(_ coins: [Coin]) {
+        watchlistCoins = coins
+        watchlistSubject.send(watchlistCoins)
+    }
+    
+    func getMockWatchlistCount() -> Int {
+        return watchlistCoins.count
+    }
+}
+
+// MARK: - Mock Shared Coin Data Manager
+
+/**
+ * MOCK SHARED COIN DATA MANAGER
+ * 
+ * A mock implementation of SharedCoinDataManagerProtocol for testing:
+ * - Controllable data updates
+ * - Publisher support for reactive testing
+ * - No automatic updates (manual control)
+ */
+final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
+    
+    // Mock storage
+    private let coinsSubject = CurrentValueSubject<[Coin], Never>([])
+    
+    // Test configuration
+    var shouldFailUpdates: Bool = false
+    var autoUpdateEnabled: Bool = false
+    
+    // MARK: - SharedCoinDataManagerProtocol Implementation
+    
+    var allCoins: AnyPublisher<[Coin], Never> {
+        coinsSubject.eraseToAnyPublisher()
+    }
+    
+    var currentCoins: [Coin] {
+        coinsSubject.value
+    }
+    
+    func forceUpdate() {
+        guard !shouldFailUpdates else {
+            print("❌ Mock shared data force update failed (configured to fail)")
+            return
+        }
+        
+        // Simulate update with test data
+        let mockCoins = TestDataFactory.createMockCoins(count: 10)
+        coinsSubject.send(mockCoins)
+        print("✅ Mock shared data force update completed with \(mockCoins.count) coins")
+    }
+    
+    func startAutoUpdate() {
+        autoUpdateEnabled = true
+        print("✅ Mock shared data auto-update started")
+        
+        // Send initial data
+        if currentCoins.isEmpty {
+            forceUpdate()
+        }
+    }
+    
+    func stopAutoUpdate() {
+        autoUpdateEnabled = false
+        print("✅ Mock shared data auto-update stopped")
+    }
+    
+    // MARK: - Test Helper Methods
+    
+    func setMockCoins(_ coins: [Coin]) {
+        coinsSubject.send(coins)
+    }
+    
+    func simulatePriceUpdate(for coinId: Int, newPrice: Double) {
+        var updatedCoins = currentCoins
+        if let index = updatedCoins.firstIndex(where: { $0.id == coinId }) {
+            // Create updated quote
+            var updatedCoin = updatedCoins[index]
+            if let quote = updatedCoin.quote?["USD"] {
+                // Create new Quote instance with updated price (Quote properties are immutable)
+                let updatedQuote = Quote(
+                    price: newPrice,
+                    volume24h: quote.volume24h,
+                    volumeChange24h: quote.volumeChange24h,
+                    percentChange1h: quote.percentChange1h,
+                    percentChange24h: quote.percentChange24h,
+                    percentChange7d: quote.percentChange7d,
+                    percentChange30d: quote.percentChange30d,
+                    percentChange60d: quote.percentChange60d,
+                    percentChange90d: quote.percentChange90d,
+                    marketCap: quote.marketCap,
+                    marketCapDominance: quote.marketCapDominance,
+                    fullyDilutedMarketCap: quote.fullyDilutedMarketCap,
+                    lastUpdated: quote.lastUpdated
+                )
+                updatedCoin.quote?["USD"] = updatedQuote
+                updatedCoins[index] = updatedCoin
+                coinsSubject.send(updatedCoins)
+                print("💰 Mock price update: Coin \(coinId) → $\(newPrice)")
+            }
+        }
+    }
+    
+    func getMockCoinCount() -> Int {
+        return currentCoins.count
     }
 }
 
@@ -520,5 +922,113 @@ struct TestDataFactory {
         return Dictionary(uniqueKeysWithValues: coinIds.map { id in
             (id, "https://example.com/logo\(id).png")
         })
+    }
+    
+    static func createMockChartData(points: Int = 100) -> [Double] {
+        return (0..<points).map { index in
+            // Generate realistic-looking price data with some variation
+            let basePrice = 50000.0
+            let variation = sin(Double(index) * 0.1) * 5000 + Double.random(in: -1000...1000)
+            return basePrice + variation
+        }
+    }
+    
+    static func createMockOHLCData(candles: Int = 24) -> [OHLCData] {
+        return (0..<candles).map { index in
+            let basePrice = 50000.0 + Double(index) * 100
+            let open = basePrice + Double.random(in: -500...500)
+            let close = basePrice + Double.random(in: -500...500)
+            let high = max(open, close) + Double.random(in: 0...1000)
+            let low = min(open, close) - Double.random(in: 0...1000)
+            let timestamp = Date().addingTimeInterval(TimeInterval(index * 3600))
+            
+            return OHLCData(
+                timestamp: timestamp,
+                open: open,
+                high: high,
+                low: low,
+                close: close
+            )
+        }
+    }
+}
+
+// MARK: - Test Container Factory
+
+/**
+ * TEST CONTAINER FACTORY
+ * 
+ * Creates pre-configured dependency containers for different test scenarios
+ */
+struct TestContainerFactory {
+    
+    /**
+     * Creates a container with all mock services
+     */
+    static func createMockContainer() -> DependencyContainer {
+        let mockCache = MockCacheService()
+        let mockRequest = MockRequestManager()
+        let mockPersistence = MockPersistenceService()
+        let mockCoreData = MockCoreDataManager()
+        
+        // Configure with test data
+        let mockCoins = TestDataFactory.createMockCoins(count: 10)
+        mockCache.mockCoins = mockCoins
+        mockRequest.mockCoins = mockCoins
+        mockPersistence.saveCoinList(mockCoins)
+        
+        return DependencyContainer.testContainer(
+            cacheService: mockCache,
+            requestManager: mockRequest,
+            persistenceService: mockPersistence,
+            coreDataManager: mockCoreData
+        )
+    }
+    
+    /**
+     * Creates a container configured for failure scenarios
+     */
+    static func createFailureTestContainer() -> DependencyContainer {
+        let mockCache = MockCacheService()
+        let mockRequest = MockRequestManager()
+        let mockPersistence = MockPersistenceService()
+        let mockCoreData = MockCoreDataManager()
+        
+        // Configure for failures
+        mockCache.shouldReturnCachedData = false
+        mockRequest.shouldSucceed = false
+        mockPersistence.shouldSimulateExpiredCache = true
+        mockCoreData.shouldFailSave = true
+        
+        return DependencyContainer.testContainer(
+            cacheService: mockCache,
+            requestManager: mockRequest,
+            persistenceService: mockPersistence,
+            coreDataManager: mockCoreData
+        )
+    }
+    
+    /**
+     * Creates a container with delayed responses for testing loading states
+     */
+    static func createDelayedTestContainer(delay: TimeInterval = 1.0) -> DependencyContainer {
+        let mockCache = MockCacheService()
+        let mockRequest = MockRequestManager()
+        let mockPersistence = MockPersistenceService()
+        let mockCoreData = MockCoreDataManager()
+        
+        // Configure delays
+        mockRequest.mockDelay = delay
+        
+        // Configure with test data
+        let mockCoins = TestDataFactory.createMockCoins(count: 10)
+        mockRequest.mockCoins = mockCoins
+        
+        return DependencyContainer.testContainer(
+            cacheService: mockCache,
+            requestManager: mockRequest,
+            persistenceService: mockPersistence,
+            coreDataManager: mockCoreData
+        )
     }
 } 

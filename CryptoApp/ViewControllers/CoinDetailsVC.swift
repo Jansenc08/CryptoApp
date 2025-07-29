@@ -35,11 +35,17 @@ final class CoinDetailsVC: UIViewController {
     // MARK: - Price Animation Support
     private var lastKnownPrice: String?
     
-    // MARK: - Init
+    // MARK: - Dependency Injection Initializer
     
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts a Coin and uses dependency container for ViewModel creation.
+     * Provides better testability and modularity.
+     */
     init(coin: Coin) {
         self.coin = coin
-        self.viewModel = CoinDetailsVM(coin: coin)
+        self.viewModel = Dependencies.container.coinDetailsViewModel(coin: coin)
         super.init(nibName: nil, bundle: nil)
     }
 

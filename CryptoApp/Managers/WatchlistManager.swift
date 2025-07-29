@@ -21,10 +21,14 @@ protocol WatchlistManagerDelegate: AnyObject {
     func watchlistDidUpdate()
 }
 
-final class WatchlistManager: ObservableObject {
+final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
     static let shared = WatchlistManager()
     
-    private let coreDataManager = CoreDataManager.shared
+    // MARK: - Injected Dependencies
+    private let coreDataManager: CoreDataManagerProtocol
+    private let coinManager: CoinManagerProtocol
+    private let persistenceService: PersistenceServiceProtocol
+    
     weak var delegate: WatchlistManagerDelegate?
     
     // MARK: - Published Properties
@@ -68,7 +72,26 @@ final class WatchlistManager: ObservableObject {
     private var operationCount = 0
     private var lastPerformanceLog: Date = Date()
     
-    private init() {
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts dependencies for:
+     * - Better testability with mock implementations
+     * - Flexibility to swap implementations
+     * - Cleaner separation of concerns
+     * 
+     * Falls back to shared instances for backward compatibility
+     */
+    init(
+        coreDataManager: CoreDataManagerProtocol = CoreDataManager.shared,
+        coinManager: CoinManagerProtocol = CoinManager(),
+        persistenceService: PersistenceServiceProtocol = PersistenceService.shared
+    ) {
+        self.coreDataManager = coreDataManager
+        self.coinManager = coinManager
+        self.persistenceService = persistenceService
         initializeLocalCache()
     }
     
@@ -131,7 +154,7 @@ final class WatchlistManager: ObservableObject {
         }
         
         operationCount += 1
-        let operationId = operationCount
+        let _ = operationCount
         
         #if DEBUG
         print("➕ Adding \(coin.symbol) to watchlist")
@@ -154,7 +177,7 @@ final class WatchlistManager: ObservableObject {
         backgroundQueue.async { [weak self] in
             guard let self = self else { return }
             
-            let startTime = CFAbsoluteTimeGetCurrent()
+            let _ = CFAbsoluteTimeGetCurrent()
             let context = self.coreDataManager.context
             let _ = WatchlistItem(context: context, coin: coin, logoURL: logoURL)
             
@@ -206,14 +229,14 @@ final class WatchlistManager: ObservableObject {
         }
         
         operationCount += 1
-        let operationId = operationCount
+        let _ = operationCount
         
         #if DEBUG
         let coinToRemove = localWatchlistItems.first { $0.coinId == coinId }
         print("\n🗑️ ===== REMOVING COIN FROM WATCHLIST =====")
         print("🎯 Coin: \(coinToRemove?.symbol ?? "Unknown") (ID: \(coinId))")
         print("📊 Current watchlist: \(localWatchlistCoinIds.count) coins")
-        print("🚀 Using optimized operation #\(operationId)")
+        print("🚀 Using optimized operation #\(operationCount)")
         self.printCurrentWatchlistCoins()
         #endif
         
@@ -435,6 +458,24 @@ final class WatchlistManager: ObservableObject {
         return syncQueue.sync { localWatchlistItems.map { $0.toCoin() } }
     }
     
+    // MARK: - WatchlistManagerProtocol Conformance
+    
+    var watchlistItemsPublisher: Published<[WatchlistItem]>.Publisher {
+        return $watchlistItems
+    }
+    
+    func addCoinToWatchlist(_ coin: Coin) {
+        addToWatchlist(coin, logoURL: nil)
+    }
+    
+    func removeCoinFromWatchlist(_ coin: Coin) {
+        removeFromWatchlist(coinId: coin.id)
+    }
+    
+    func isInWatchlist(_ coin: Coin) -> Bool {
+        return isInWatchlist(coinId: coin.id)
+    }
+    
     // MARK: - Private Optimization Methods
     
 
@@ -462,6 +503,7 @@ final class WatchlistManager: ObservableObject {
         // Debounce rapid notifications
         updateWorkItem?.cancel()
         updateWorkItem = DispatchWorkItem { [weak self] in
+            _ = self // Capture but don't use
             var userInfo: [String: Any] = ["action": action]
             if let coinId = coinId {
                 userInfo["coinId"] = coinId

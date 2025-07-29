@@ -12,7 +12,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     // MARK: - Properties
     
     var collectionView: UICollectionView!                                   // The collection view displaying coin data
-    let viewModel = CoinListVM()                                            // The view model powering this screen
+    let viewModel: CoinListVM                                               // The view model powering this screen
     var cancellables = Set<AnyCancellable>()                                // Stores Combine subscriptions
     var dataSource: UICollectionViewDiffableDataSource<CoinSection, Coin>!  // Data source for applying snapshots
     
@@ -37,6 +37,43 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     
     private var currentPageIndex: Int = 0
     private var isTransitioning: Bool = false
+    
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts CoinListVM for better testability and modularity.
+     * Uses dependency container for default instance.
+     */
+    init(viewModel: CoinListVM = Dependencies.container.coinListViewModel()) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    /**
+     * OBJECTIVE-C COMPATIBILITY INITIALIZER
+     * 
+     * Convenience initializer for Objective-C compatibility.
+     * Uses default dependency injection setup.
+     */
+    override convenience init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        self.init(viewModel: Dependencies.container.coinListViewModel())
+    }
+    
+    /**
+     * PLAIN INIT FOR OBJECTIVE-C
+     * 
+     * Simple convenience initializer for [[ViewController alloc] init] pattern.
+     */
+    convenience init() {
+        self.init(viewModel: Dependencies.container.coinListViewModel())
+    }
+    
+    required init?(coder: NSCoder) {
+        self.viewModel = Dependencies.container.coinListViewModel()
+        super.init(coder: coder)
+    }
     
     // MARK: - Lifecycle
     
@@ -872,7 +909,7 @@ extension CoinListVC: UICollectionViewDelegate {
     
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
         let coin = viewModel.currentCoins[indexPath.item]
-        let watchlistManager = WatchlistManager.shared
+        let watchlistManager = Dependencies.container.watchlistManager()
         
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
             var actions: [UIAction] = []

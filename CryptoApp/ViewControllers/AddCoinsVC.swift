@@ -23,7 +23,7 @@ final class AddCoinsVC: UIViewController {
     private var searchBarComponent: SearchBarComponent!
     private var addButton: UIButton!
     
-    private let viewModel = CoinListVM() // Reuse existing view model for coin data
+    private let viewModel: CoinListVM // Reuse existing view model for coin data
     private var cancellables = Set<AnyCancellable>()
     private var dataSource: UICollectionViewDiffableDataSource<AddCoinsSection, Coin>!
     
@@ -34,6 +34,24 @@ final class AddCoinsVC: UIViewController {
     
     // Search debouncing
     private var searchWorkItem: DispatchWorkItem?
+    
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Uses dependency container for ViewModel creation.
+     * Provides better testability and modularity.
+     */
+    init(viewModel: CoinListVM = Dependencies.container.coinListViewModel()) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        self.viewModel = Dependencies.container.coinListViewModel()
+        super.init(coder: coder)
+    }
     
     // MARK: - Lifecycle
     
@@ -222,7 +240,7 @@ final class AddCoinsVC: UIViewController {
     
     private func updateDataSource() {
         // Filter out coins already in watchlist
-        let watchlistManager = WatchlistManager.shared
+        let watchlistManager = Dependencies.container.watchlistManager()
         let availableCoins = filteredCoins.filter { !watchlistManager.isInWatchlist(coinId: $0.id) }
         
         var snapshot = NSDiffableDataSourceSnapshot<AddCoinsSection, Coin>()
@@ -253,7 +271,7 @@ final class AddCoinsVC: UIViewController {
     @objc private func addButtonTapped() {
         guard !selectedCoinIds.isEmpty else { return }
         
-        let watchlistManager = WatchlistManager.shared
+        let watchlistManager = Dependencies.container.watchlistManager()
         var addedCount = 0
         
         for coinId in selectedCoinIds {

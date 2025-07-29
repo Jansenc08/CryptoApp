@@ -9,7 +9,7 @@ import Foundation
 import Combine
 
 /// Shared data manager that ensures price consistency across all ViewModels
-final class SharedCoinDataManager {
+final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
     
     static let shared = SharedCoinDataManager()
     
@@ -25,7 +25,7 @@ final class SharedCoinDataManager {
     private var lastUpdateTime: Date?
     private var isUpdating = false
     
-    // MARK: - Public Publishers
+    // MARK: - SharedCoinDataManagerProtocol Conformance
     
     /// Publisher that emits the current list of all coins
     var allCoins: AnyPublisher<[Coin], Never> {
@@ -37,22 +37,32 @@ final class SharedCoinDataManager {
         coinDataSubject.value
     }
     
-    // MARK: - Initialization
+    // MARK: - Dependency Injection Initializer
     
-    private init(coinManager: CoinManagerProtocol = CoinManager()) {
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts CoinManagerProtocol for:
+     * - Better testability with mock implementations
+     * - Flexibility to swap implementations
+     * - Cleaner separation of concerns
+     * 
+     * Falls back to default CoinManager for backward compatibility
+     */
+    init(coinManager: CoinManagerProtocol = CoinManager()) {
         self.coinManager = coinManager
-        startSharedUpdates()
+        startAutoUpdate()
     }
     
     deinit {
-        stopSharedUpdates()
+        stopAutoUpdate()
     }
     
-    // MARK: - Public Methods
+    // MARK: - SharedCoinDataManagerProtocol Methods
     
     /// Start the shared data updates
-    func startSharedUpdates() {
-        stopSharedUpdates() // Ensure no duplicate timers
+    func startAutoUpdate() {
+        stopAutoUpdate() // Ensure no duplicate timers
         
         // Initial fetch
         fetchSharedData()
@@ -72,7 +82,7 @@ final class SharedCoinDataManager {
     }
     
     /// Stop the shared data updates
-    func stopSharedUpdates() {
+    func stopAutoUpdate() {
         updateTimer?.invalidate()
         updateTimer = nil
         cancellables.removeAll()

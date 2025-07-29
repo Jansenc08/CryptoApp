@@ -11,6 +11,7 @@
 
 - (void)setPlaceholder;
 - (void)downloadImageFromURL:(NSString *)urlString;
+- (void)cancelCurrentDownload;
 
 @end
 

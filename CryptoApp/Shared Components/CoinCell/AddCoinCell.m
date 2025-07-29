@@ -135,6 +135,7 @@
 
 - (void)prepareForReuse {
     [super prepareForReuse];
+    [self.coinImageView cancelCurrentDownload];
     [self.coinImageView setPlaceholder];
     [self setSelectedForWatchlist:NO animated:NO];
 }

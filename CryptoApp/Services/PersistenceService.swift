@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - Persistence Service
-final class PersistenceService {
+final class PersistenceService: PersistenceServiceProtocol {
     static let shared = PersistenceService()
     
     private let userDefaults = UserDefaults.standard
@@ -13,7 +13,15 @@ final class PersistenceService {
         static let lastCacheTime = "last_cache_time"
     }
     
-    private init() {}
+    /**
+     * DEPENDENCY INJECTION INITIALIZER
+     * 
+     * Internal access allows for:
+     * - Testing with fresh instances
+     * - Dependency injection in tests
+     * - Production singleton pattern
+     */
+    init() {}
     
     // MARK: - Coin List Persistence
     

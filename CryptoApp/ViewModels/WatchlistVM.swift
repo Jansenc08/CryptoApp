@@ -103,7 +103,7 @@ final class WatchlistVM: ObservableObject {
     
     // MARK: - Dependencies
     
-    private let watchlistManager = WatchlistManager.shared
+    private let watchlistManager: WatchlistManagerProtocol
     private let coinManager: CoinManagerProtocol
     private var cancellables = Set<AnyCancellable>()
     private var requestCancellables = Set<AnyCancellable>()  // Separate for API requests
@@ -142,10 +142,18 @@ final class WatchlistVM: ObservableObject {
     /**
      * DEPENDENCY INJECTION CONSTRUCTOR
      * 
-     * Accepts CoinManagerProtocol for better testability and modularity.
-     * Falls back to default CoinManager for backward compatibility.
+     * Accepts WatchlistManagerProtocol and CoinManagerProtocol for:
+     * - Better testability with mock implementations
+     * - Flexibility to swap implementations
+     * - Cleaner separation of concerns
+     * 
+     * Falls back to shared instances for backward compatibility
      */
-    init(coinManager: CoinManagerProtocol = CoinManager()) {
+    init(
+        watchlistManager: WatchlistManagerProtocol = WatchlistManager.shared,
+        coinManager: CoinManagerProtocol = CoinManager()
+    ) {
+        self.watchlistManager = watchlistManager
         self.coinManager = coinManager
         setupOptimizedBindings()
         
@@ -284,7 +292,7 @@ final class WatchlistVM: ObservableObject {
      */
     private func setupOptimizedBindings() {
         // Direct binding to optimized manager's watchlist items
-        watchlistManager.$watchlistItems
+        watchlistManager.watchlistItemsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] items in
                 let coins = items.map { $0.toCoin() }

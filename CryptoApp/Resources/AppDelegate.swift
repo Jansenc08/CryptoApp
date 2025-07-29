@@ -15,6 +15,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
         
+        // 🏗️ INITIALIZE DEPENDENCY CONTAINER: Set up dependency injection first
+        Dependencies.initialize()
+        print("🏗️ AppDelegate: Dependency container initialized")
+        
         // Initialize Core Data
         _ = CoreDataManager.shared
         
@@ -23,7 +27,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         print("🌐 AppDelegate: SharedCoinDataManager started at app launch")
         
         #if DEBUG
-        AppLogger.ui("CryptoApp launched in DEBUG mode")
+        AppLogger.ui("CryptoApp launched in DEBUG mode with Dependency Injection")
         #endif
         
         return true

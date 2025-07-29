@@ -12,7 +12,7 @@ final class WatchlistVC: UIViewController {
     // MARK: - Properties
     
     private var collectionView: UICollectionView!
-    private let viewModel = WatchlistVM()
+    private let viewModel: WatchlistVM
     private var cancellables = Set<AnyCancellable>()
     private var dataSource: UICollectionViewDiffableDataSource<WatchlistSection, Coin>!
     
@@ -20,6 +20,24 @@ final class WatchlistVC: UIViewController {
     private var emptyStateView: UIView?
     private var filterHeaderView: FilterHeaderView!                             // Added filter header
     private var sortHeaderView: SortHeaderView!
+    
+    // MARK: - Dependency Injection Initializer
+    
+    /**
+     * DEPENDENCY INJECTION CONSTRUCTOR
+     * 
+     * Accepts WatchlistVM for better testability and modularity.
+     * Uses dependency container for default instance.
+     */
+    init(viewModel: WatchlistVM = Dependencies.container.watchlistViewModel()) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        self.viewModel = Dependencies.container.watchlistViewModel()
+        super.init(coder: coder)
+    }
     
     // MARK: - Lifecycle
     

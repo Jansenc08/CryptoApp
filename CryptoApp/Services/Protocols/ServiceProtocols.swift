@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreData
 
 // MARK: - Cache Service Protocol
 
@@ -134,6 +135,79 @@ protocol CoinServiceProtocol {
     ) -> AnyPublisher<[OHLCData], NetworkError>
 }
 
+// MARK: - Persistence Service Protocol
+
+/**
+ * PERSISTENCE SERVICE PROTOCOL
+ * 
+ * Defines the interface for data persistence operations, enabling:
+ * - Mock implementations for testing
+ * - Different storage strategies (UserDefaults, CoreData, etc.)
+ * - Clear separation of concerns
+ */
+protocol PersistenceServiceProtocol {
+    func saveCoinList(_ coins: [Coin])
+    func loadCoinList() -> [Coin]?
+    func saveCoinLogos(_ logos: [Int: String])
+    func loadCoinLogos() -> [Int: String]?
+    func getLastCacheTime() -> Date?
+    func isCacheExpired(maxAge: TimeInterval) -> Bool
+    func clearCache()
+    func getOfflineData() -> (coins: [Coin], logos: [Int: String])?
+    func saveOfflineData(coins: [Coin], logos: [Int: String])
+}
+
+// MARK: - Core Data Manager Protocol
+
+/**
+ * CORE DATA MANAGER PROTOCOL
+ * 
+ * Defines the interface for Core Data operations, enabling:
+ * - Mock implementations for testing
+ * - Different storage backends
+ * - Better testability and modularity
+ */
+protocol CoreDataManagerProtocol {
+    var context: NSManagedObjectContext { get }
+    func save()
+    func delete<T: NSManagedObject>(_ object: T)
+    func fetch<T: NSManagedObject>(_ objectType: T.Type) -> [T]
+    func fetch<T: NSManagedObject>(_ objectType: T.Type, where predicate: NSPredicate) -> [T]
+    
+    // Specific methods for WatchlistItem to avoid ambiguity
+    func fetchWatchlistItems() -> [WatchlistItem]
+    func fetchWatchlistItems(where predicate: NSPredicate) -> [WatchlistItem]
+}
+
+// MARK: - Watchlist Manager Protocol
+
+/**
+ * WATCHLIST MANAGER PROTOCOL
+ * 
+ * Defines the interface for watchlist operations, enabling:
+ * - Mock implementations for testing
+ * - Different storage strategies
+ * - Clear separation of concerns
+ */
+protocol WatchlistManagerProtocol {
+    // MARK: - Published Properties
+    var watchlistItems: [WatchlistItem] { get }
+    var watchlistItemsPublisher: Published<[WatchlistItem]>.Publisher { get }
+    
+    // MARK: - Core Methods
+    func addToWatchlist(_ coin: Coin, logoURL: String?)
+    func removeFromWatchlist(coinId: Int)
+    func isInWatchlist(coinId: Int) -> Bool
+    func isInWatchlist(_ coin: Coin) -> Bool
+    func getWatchlistCount() -> Int
+    func getWatchlistCoins() -> [Coin]
+    func getPerformanceMetrics() -> [String: Any]
+    
+    // MARK: - Convenience Methods for Protocol Compatibility
+    func addCoinToWatchlist(_ coin: Coin)
+    func removeCoinFromWatchlist(_ coin: Coin)
+}
+
 // MARK: - Coin Manager Protocol
 
 /**
@@ -178,4 +252,22 @@ protocol CoinManagerProtocol {
         currency: String,
         priority: RequestPriority
     ) -> AnyPublisher<[OHLCData], NetworkError>
+}
+
+// MARK: - Shared Coin Data Manager Protocol
+
+/**
+ * SHARED COIN DATA MANAGER PROTOCOL
+ * 
+ * Defines the interface for shared coin data management, enabling:
+ * - Mock implementations for testing
+ * - Different data sharing strategies
+ * - Clear separation of concerns
+ */
+protocol SharedCoinDataManagerProtocol {
+    var allCoins: AnyPublisher<[Coin], Never> { get }
+    var currentCoins: [Coin] { get }
+    func forceUpdate()
+    func startAutoUpdate()
+    func stopAutoUpdate()
 } 
