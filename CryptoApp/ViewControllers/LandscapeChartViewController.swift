@@ -53,7 +53,8 @@ final class LandscapeChartViewController: UIViewController {
     
     deinit {
         cancellables.removeAll()
-        print("📱 LandscapeChartViewController deinit")
+        onStateChanged = nil // Clean up closure to prevent memory leaks
+        print("📱 LandscapeChartViewController deinit - cleaned up state callback")
     }
     
     // MARK: - Lifecycle

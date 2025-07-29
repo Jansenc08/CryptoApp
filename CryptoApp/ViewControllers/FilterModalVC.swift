@@ -222,8 +222,8 @@ class FilterModalVC: UIViewController {
             if shouldDismiss {
                 dismiss(cancelled: true)
             } else {
-                UIView.animate(withDuration: 0.3) {
-                    self.containerView.transform = .identity
+                UIView.animate(withDuration: 0.3) { [weak self] in
+                    self?.containerView.transform = .identity
                 }
             }
         default:

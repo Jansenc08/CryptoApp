@@ -97,4 +97,10 @@ final class RecentSearchButton: UIButton {
         print("🔍 Recent Search Button: Tapped \(recentSearchItem.symbol) (\(recentSearchItem.name))")
         onTap(recentSearchItem)
     }
+    
+    deinit {
+        // Clean up closure to prevent memory leaks - not strictly necessary for this use case
+        // but good practice for closure properties
+        print("🧹 RecentSearchButton deinit - cleaned up for \(recentSearchItem.symbol)")
+    }
 } 

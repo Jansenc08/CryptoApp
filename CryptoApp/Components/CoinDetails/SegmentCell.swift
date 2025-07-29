@@ -205,4 +205,11 @@ final class SegmentCell: UITableViewCell {
     }
   
     required init?(coder: NSCoder) { fatalError() }
+    
+    deinit {
+        // Clean up closure properties to prevent memory leaks
+        onChartTypeToggle = nil
+        onLandscapeToggle = nil
+        print("🧹 SegmentCell deinit - cleaned up closures")
+    }
 }

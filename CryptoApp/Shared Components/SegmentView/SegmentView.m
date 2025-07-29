@@ -50,19 +50,20 @@
 }
 
 - (void)setSelectedIndexSilently:(NSInteger)index {
-    if (index >= 0 && index < self.segmentedControl.numberOfSegments) {
-        // Temporarily disable the callback to prevent recursive updates
-        id originalCallback = self.onSelectionChanged;
-        self.onSelectionChanged = nil;
-        
-        // Update selection without animation
-        [UIView performWithoutAnimation:^{
-            self.segmentedControl.selectedSegmentIndex = index;
-        }];
-        
-        // Restore the callback
-        self.onSelectionChanged = originalCallback;
-    }
+    // Store the original callback temporarily
+    id originalCallback = self.onSelectionChanged;
+    self.onSelectionChanged = nil;
+    
+    // Set the selected index without triggering callback
+    self.segmentedControl.selectedSegmentIndex = index;
+    
+    // Restore the original callback
+    self.onSelectionChanged = originalCallback;
+}
+
+- (void)dealloc {
+    // Clean up block property to prevent memory leaks
+    self.onSelectionChanged = nil;
 }
 
 - (void)valueChanged:(UISegmentedControl *)sender {

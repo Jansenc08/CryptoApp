@@ -390,15 +390,16 @@ final class RequestManager: RequestManagerProtocol {
                 print("📊 \(priority.description) CoinGecko OHLC request attempt \(self.coinGeckoRequestCount + 1)/\(self.coinGeckoMaxRequests) in current window")
                 
                 // Add request to appropriate priority queue
-                let requestAction = {
+                let requestAction = { [weak self] in
+                    guard let self = self else { return }
                     self.executeWithRetry(key: key, priority: priority) {
                         self.executeRequest(key: key, priority: priority) {
                             apiCall()
-                                .handleEvents(receiveOutput: { _ in
+                                .handleEvents(receiveOutput: { [weak self] _ in
                                     // Only increment counter on successful requests
-                                    self.queue.async {
-                                        self.coinGeckoRequestCount += 1
-                                        print("✅ CoinGecko OHLC request successful - counter now: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests)")
+                                    self?.queue.async {
+                                        self?.coinGeckoRequestCount += 1
+                                        print("✅ CoinGecko OHLC request successful - counter now: \(self?.coinGeckoRequestCount ?? 0)/\(self?.coinGeckoMaxRequests ?? 0)")
                                     }
                                 })
                                 .map { $0 as [OHLCData] }
@@ -483,15 +484,16 @@ final class RequestManager: RequestManagerProtocol {
                 
                 // Add request to appropriate priority queue
                 // High priority requests (filter changes) go to the front of the line
-                let requestAction = {
+                let requestAction = { [weak self] in
+                    guard let self = self else { return }
                     self.executeWithRetry(key: key, priority: priority) {
                         self.executeRequest(key: key, priority: priority) {
                             apiCall()
-                                .handleEvents(receiveOutput: { _ in
+                                .handleEvents(receiveOutput: { [weak self] _ in
                                     // Only increment counter on successful requests
-                                    self.queue.async {
-                                        self.coinGeckoRequestCount += 1
-                                        print("✅ CoinGecko request successful - counter now: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests)")
+                                    self?.queue.async {
+                                        self?.coinGeckoRequestCount += 1
+                                        print("✅ CoinGecko request successful - counter now: \(self?.coinGeckoRequestCount ?? 0)/\(self?.coinGeckoMaxRequests ?? 0)")
                                     }
                                 })
                                 .map { $0 as [Double] }
