@@ -15,6 +15,7 @@ final class CoinDetailsVC: UIViewController {
     private let coin: Coin
     private let viewModel: CoinDetailsVM
     private let tableView = UITableView(frame: .zero, style: .plain)
+    private let watchlistManager: WatchlistManagerProtocol
     
     // FIXED: Prevent recursive updates during landscape synchronization
     private var isUpdatingFromLandscape = false
@@ -46,6 +47,7 @@ final class CoinDetailsVC: UIViewController {
     init(coin: Coin) {
         self.coin = coin
         self.viewModel = Dependencies.container.coinDetailsViewModel(coin: coin)
+        self.watchlistManager = Dependencies.container.watchlistManager()
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -490,8 +492,18 @@ final class CoinDetailsVC: UIViewController {
         let currentPrice = coin.quote?["USD"]?.price ?? 0.0
         let priceChange24h = (percentChange24h / 100.0) * currentPrice / (1 + (percentChange24h / 100.0))
         
-        // Update cell with fresh data including permanent price change indicator
-        infoCell.configure(name: coin.name, rank: coin.cmcRank, price: coin.priceString, priceChange: priceChange24h, percentageChange: percentChange24h)
+        // Update cell with fresh data including permanent price change indicator and watchlist state
+        let isInWatchlist = watchlistManager.isInWatchlist(coinId: coin.id)
+        infoCell.configure(
+            name: coin.name,
+            rank: coin.cmcRank,
+            price: coin.priceString,
+            priceChange: priceChange24h,
+            percentageChange: percentChange24h,
+            isInWatchlist: isInWatchlist
+        ) { [weak self] isNowInWatchlist in
+            self?.handleWatchlistToggle(isNowInWatchlist: isNowInWatchlist)
+        }
         lastKnownPrice = coin.priceString
         
         print("💰 CoinDetails: Updated InfoCell with fresh data for \(coin.symbol)")
@@ -520,6 +532,71 @@ final class CoinDetailsVC: UIViewController {
         print("🎨 CoinDetails: Animated price change - \(priceChange.direction) by $\(String(format: "%.2f", signedPriceChange))")
     }
     
+    // MARK: - Watchlist Management
+    
+    private func handleWatchlistToggle(isNowInWatchlist: Bool) {
+        if isNowInWatchlist {
+            // Add to watchlist
+            watchlistManager.addToWatchlist(coin, logoURL: nil)
+            print("⭐ Added \(coin.symbol) to watchlist")
+            
+            // Show success feedback
+            showWatchlistFeedback(message: "Added to Watchlist", isPositive: true)
+        } else {
+            // Remove from watchlist
+            watchlistManager.removeFromWatchlist(coinId: coin.id)
+            print("⭐ Removed \(coin.symbol) from watchlist")
+            
+            // Show feedback
+            showWatchlistFeedback(message: "Removed from Watchlist", isPositive: false)
+        }
+    }
+    
+    private func showWatchlistFeedback(message: String, isPositive: Bool) {
+        // Create a simple feedback view
+        let feedbackView = UIView()
+        feedbackView.backgroundColor = isPositive ? UIColor.systemGreen.withAlphaComponent(0.9) : UIColor.systemRed.withAlphaComponent(0.9)
+        feedbackView.layer.cornerRadius = 8
+        feedbackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let feedbackLabel = UILabel()
+        feedbackLabel.text = message
+        feedbackLabel.textColor = .white
+        feedbackLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        feedbackLabel.textAlignment = .center
+        feedbackLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        feedbackView.addSubview(feedbackLabel)
+        view.addSubview(feedbackView)
+        
+        NSLayoutConstraint.activate([
+            feedbackLabel.centerXAnchor.constraint(equalTo: feedbackView.centerXAnchor),
+            feedbackLabel.centerYAnchor.constraint(equalTo: feedbackView.centerYAnchor),
+            feedbackLabel.leadingAnchor.constraint(greaterThanOrEqualTo: feedbackView.leadingAnchor, constant: 12),
+            feedbackLabel.trailingAnchor.constraint(lessThanOrEqualTo: feedbackView.trailingAnchor, constant: -12),
+            
+            feedbackView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            feedbackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            feedbackView.heightAnchor.constraint(equalToConstant: 36)
+        ])
+        
+        // Animate in
+        feedbackView.alpha = 0
+        feedbackView.transform = CGAffineTransform(translationX: 0, y: -20)
+        
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
+            feedbackView.alpha = 1
+            feedbackView.transform = .identity
+        } completion: { _ in
+            // Animate out after 2 seconds
+            UIView.animate(withDuration: 0.3, delay: 1.5, options: .curveEaseIn) {
+                feedbackView.alpha = 0
+                feedbackView.transform = CGAffineTransform(translationX: 0, y: -20)
+            } completion: { _ in
+                feedbackView.removeFromSuperview()
+            }
+        }
+    }
 
     
     private func updateStatsCell() {
@@ -657,8 +734,18 @@ extension CoinDetailsVC: UITableViewDataSource {
             let currentPrice = currentCoin.quote?["USD"]?.price ?? 0.0
             let priceChange24h = (percentChange24h / 100.0) * currentPrice / (1 + (percentChange24h / 100.0))
             
-            // Configure with permanent price change indicator
-            cell.configure(name: currentCoin.name, rank: currentCoin.cmcRank, price: currentCoin.priceString, priceChange: priceChange24h, percentageChange: percentChange24h)
+            // Configure with permanent price change indicator and watchlist functionality
+            let isInWatchlist = watchlistManager.isInWatchlist(coinId: currentCoin.id)
+            cell.configure(
+                name: currentCoin.name,
+                rank: currentCoin.cmcRank,
+                price: currentCoin.priceString,
+                priceChange: priceChange24h,
+                percentageChange: percentChange24h,
+                isInWatchlist: isInWatchlist
+            ) { [weak self] isNowInWatchlist in
+                self?.handleWatchlistToggle(isNowInWatchlist: isNowInWatchlist)
+            }
             
             // Initialize price tracking for animations
             if lastKnownPrice == nil {

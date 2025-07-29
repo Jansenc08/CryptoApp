@@ -13,6 +13,11 @@ final class InfoCell: UITableViewCell {
     private let priceChangeContainer = UIView() // Container for the price change label with background
     private let rankContainer = UIView() // Container for the rank label with grey background
     private let stack = UIStackView()
+    
+    // MARK: - Watchlist Star Button
+    private let starButton = UIButton(type: .custom)
+    private var onStarTapped: ((Bool) -> Void)? // Callback for star tap with current state
+    private var isInWatchlist = false
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -30,6 +35,9 @@ final class InfoCell: UITableViewCell {
         rankLabel.textColor = .secondaryLabel
         rankLabel.textAlignment = .center
         priceLabel.font = .systemFont(ofSize: 20)
+        
+        // Configure star button for watchlist
+        setupStarButton()
         
         // Configure rank container with grey background
         rankContainer.backgroundColor = .tertiarySystemFill
@@ -105,8 +113,8 @@ final class InfoCell: UITableViewCell {
         let priceSpacer = UIView()
         priceSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         
-        // Bottom row: price + spacer + badge (ensures badge stays compact)
-        let priceRow = UIStackView(arrangedSubviews: [priceLabel, priceSpacer, priceChangeContainer])
+        // Bottom row: price + spacer + star + badge (ensures components stay compact)
+        let priceRow = UIStackView(arrangedSubviews: [priceLabel, priceSpacer, starButton, priceChangeContainer])
         priceRow.axis = .horizontal
         priceRow.spacing = 12
         priceRow.alignment = .center
@@ -127,6 +135,60 @@ final class InfoCell: UITableViewCell {
             stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
         ])
     }
+    
+    // MARK: - Star Button Setup
+    
+    private func setupStarButton() {
+        starButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Remove any background styling
+        starButton.backgroundColor = .clear
+        starButton.tintColor = .clear
+        
+        // Configure star images with different colors
+        let normalStarImage = UIImage(systemName: "star")?.withTintColor(.systemGray, renderingMode: .alwaysOriginal)
+        let selectedStarImage = UIImage(systemName: "star.fill")?.withTintColor(.systemOrange, renderingMode: .alwaysOriginal)
+        
+        starButton.setImage(normalStarImage, for: .normal)
+        starButton.setImage(selectedStarImage, for: .selected)
+        starButton.addTarget(self, action: #selector(starButtonTapped), for: .touchUpInside)
+        
+        // Set button size constraints
+        NSLayoutConstraint.activate([
+            starButton.widthAnchor.constraint(equalToConstant: 30),
+            starButton.heightAnchor.constraint(equalToConstant: 30)
+        ])
+        
+        // Set content priorities to keep star button compact
+        starButton.setContentHuggingPriority(.required, for: .horizontal)
+        starButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+    
+    @objc private func starButtonTapped() {
+        // Toggle the watchlist state
+        isInWatchlist.toggle()
+        updateStarAppearance()
+        
+        // Call the callback with the new state
+        onStarTapped?(isInWatchlist)
+        
+        // Add haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+    }
+    
+    private func updateStarAppearance() {
+        starButton.isSelected = isInWatchlist
+        
+        // Add a subtle animation when state changes
+        UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5) {
+            self.starButton.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
+        } completion: { _ in
+            UIView.animate(withDuration: 0.1) {
+                self.starButton.transform = .identity
+            }
+        }
+    }
 
     func configure(name: String, rank: Int, price: String) {
         nameLabel.text = name
@@ -145,6 +207,26 @@ final class InfoCell: UITableViewCell {
         } else {
             hidePriceChangeIndicator()
         }
+    }
+    
+    /// Configure with price change indicator and watchlist functionality
+    func configure(name: String, rank: Int, price: String, priceChange: Double?, percentageChange: Double?, isInWatchlist: Bool, onStarTapped: @escaping (Bool) -> Void) {
+        // Configure basic info
+        nameLabel.text = name
+        rankLabel.text = "#\(rank)"
+        priceLabel.text = price
+        
+        // Configure price change indicator
+        if let change = priceChange, let percentage = percentageChange {
+            showPermanentPriceChangeIndicator(priceChange: change, percentageChange: percentage)
+        } else {
+            hidePriceChangeIndicator()
+        }
+        
+        // Configure watchlist star
+        self.isInWatchlist = isInWatchlist
+        self.onStarTapped = onStarTapped
+        updateStarAppearance()
     }
     
     /// Show permanent price change indicator (24h change)
@@ -215,5 +297,11 @@ final class InfoCell: UITableViewCell {
             self?.priceChangeContainer.alpha = 1
             print("💡 Price change indicator settled - keeping new color visible")
         }
+    }
+    
+    deinit {
+        // Clean up closure to prevent memory leaks
+        onStarTapped = nil
+        print("🧹 InfoCell deinit - cleaned up star callback")
     }
 }
