@@ -25,7 +25,7 @@ final class CoinManager: CoinManagerProtocol {
      * 
      * Falls back to default CoinService for backward compatibility
      */
-    init(coinService: CoinServiceProtocol = CoinService()) {
+    init(coinService: CoinServiceProtocol) {
         self.coinService = coinService
     }
 

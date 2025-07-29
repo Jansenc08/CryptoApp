@@ -25,26 +25,36 @@ final class DependencyContainer {
     private lazy var _requestManager: RequestManagerProtocol = RequestManager()
     private lazy var _persistenceService: PersistenceServiceProtocol = PersistenceService()
     private lazy var _coreDataManager: CoreDataManagerProtocol = CoreDataManager()
+    private lazy var _coinService: CoinServiceProtocol = CoinService(
+        cacheService: cacheService(),
+        requestManager: requestManager()
+    )
+    private lazy var _coinManager: CoinManagerProtocol = CoinManager(
+        coinService: coinService()
+    )
+    private lazy var _watchlistManager: WatchlistManagerProtocol = WatchlistManager(
+        coreDataManager: coreDataManager(),
+        coinManager: coinManager(),
+        persistenceService: persistenceService()
+    )
+    private lazy var _sharedCoinDataManager: SharedCoinDataManagerProtocol = SharedCoinDataManager(
+        coinManager: coinManager()
+    )
     
-    // MARK: - Factory Services (New Instance Each Time)
+    // MARK: - Singleton Service Access
     
     /**
-     * Creates a new CoinService instance with injected dependencies
+     * Returns the shared CoinService singleton instance
      */
     func coinService() -> CoinServiceProtocol {
-        return CoinService(
-            cacheService: cacheService(),
-            requestManager: requestManager()
-        )
+        return _coinService
     }
     
     /**
-     * Creates a new CoinManager instance with injected dependencies
+     * Returns the shared CoinManager singleton instance
      */
     func coinManager() -> CoinManagerProtocol {
-        return CoinManager(
-            coinService: coinService()
-        )
+        return _coinManager
     }
     
     /**
@@ -54,7 +64,7 @@ final class DependencyContainer {
      * and ViewModels see the same watchlist state in real-time
      */
     func watchlistManager() -> WatchlistManagerProtocol {
-        return WatchlistManager.shared
+        return _watchlistManager
     }
     
     /**
@@ -64,7 +74,7 @@ final class DependencyContainer {
      * and ViewModels see the same shared coin data
      */
     func sharedCoinDataManager() -> SharedCoinDataManagerProtocol {
-        return SharedCoinDataManager.shared
+        return _sharedCoinDataManager
     }
     
     // MARK: - View Models
@@ -74,7 +84,9 @@ final class DependencyContainer {
      */
     func coinListViewModel() -> CoinListVM {
         return CoinListVM(
-            coinManager: coinManager()
+            coinManager: coinManager(),
+            sharedCoinDataManager: sharedCoinDataManager(),
+            persistenceService: persistenceService()
         )
     }
     
@@ -83,7 +95,9 @@ final class DependencyContainer {
      */
     func searchViewModel() -> SearchVM {
         return SearchVM(
-            coinManager: coinManager()
+            coinManager: coinManager(),
+            sharedCoinDataManager: sharedCoinDataManager(),
+            persistenceService: persistenceService()
         )
     }
     
@@ -93,7 +107,9 @@ final class DependencyContainer {
     func coinDetailsViewModel(coin: Coin) -> CoinDetailsVM {
         return CoinDetailsVM(
             coin: coin,
-            coinManager: coinManager()
+            coinManager: coinManager(),
+            sharedCoinDataManager: sharedCoinDataManager(),
+            requestManager: requestManager()
         )
     }
     
@@ -103,7 +119,8 @@ final class DependencyContainer {
     func watchlistViewModel() -> WatchlistVM {
         return WatchlistVM(
             watchlistManager: watchlistManager(),
-            coinManager: coinManager()
+            coinManager: coinManager(),
+            sharedCoinDataManager: sharedCoinDataManager()
         )
     }
     

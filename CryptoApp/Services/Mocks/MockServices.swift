@@ -337,6 +337,7 @@ final class MockWatchlistManager: WatchlistManagerProtocol {
         }
         
         watchlistCoins.removeAll()
+        _watchlistItems.removeAll()
         watchlistSubject.send(watchlistCoins)
         print("✅ Mock cleared watchlist")
     }
@@ -378,6 +379,28 @@ final class MockWatchlistManager: WatchlistManagerProtocol {
     
     func getMockWatchlistCount() -> Int {
         return watchlistCoins.count
+    }
+    
+    // MARK: - Batch Operations
+    
+    func addMultipleToWatchlist(_ coins: [Coin], logoURLs: [Int: String]) {
+        for coin in coins {
+            addToWatchlist(coin, logoURL: logoURLs[coin.id])
+        }
+    }
+    
+    func removeMultipleFromWatchlist(coinIds: [Int]) {
+        for coinId in coinIds {
+            removeFromWatchlist(coinId: coinId)
+        }
+    }
+    
+    func printDatabaseContents() {
+        print("📋 Mock Watchlist Database Contents:")
+        print("   Watchlist coins: \(watchlistCoins.count)")
+        for coin in watchlistCoins {
+            print("   - \(coin.name) (\(coin.symbol))")
+        }
     }
 }
 
@@ -475,6 +498,10 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
     
     func getMockCoinCount() -> Int {
         return currentCoins.count
+    }
+    
+    func getCoinsForIds(_ ids: [Int]) -> [Coin] {
+        return currentCoins.filter { ids.contains($0.id) }
     }
 }
 

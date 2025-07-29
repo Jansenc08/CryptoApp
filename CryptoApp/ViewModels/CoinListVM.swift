@@ -137,8 +137,9 @@ final class CoinListVM: ObservableObject {
      */
 
     private let coinManager: CoinManagerProtocol               //  API layer - handles all network requests
+    private let sharedCoinDataManager: SharedCoinDataManagerProtocol
     private var cancellables = Set<AnyCancellable>()           //  Combine subscription storage (prevents memory leaks)
-    private let persistenceService = PersistenceService.shared //  Offline data storage and caching
+    private let persistenceService: PersistenceServiceProtocol //  Offline data storage and caching
 
     // MARK: - Pagination Properties
     
@@ -190,8 +191,10 @@ final class CoinListVM: ObservableObject {
      * 
      * Falls back to default CoinManager for backward compatibility
      */
-    init(coinManager: CoinManagerProtocol = CoinManager()) {
+    init(coinManager: CoinManagerProtocol, sharedCoinDataManager: SharedCoinDataManagerProtocol, persistenceService: PersistenceServiceProtocol) {
         self.coinManager = coinManager
+        self.sharedCoinDataManager = sharedCoinDataManager
+        self.persistenceService = persistenceService
         
         // 🔧 SMART CACHE MANAGEMENT: Clear cache if it has insufficient data
         if let cachedCoins = persistenceService.loadCoinList(), 
@@ -201,7 +204,7 @@ final class CoinListVM: ObservableObject {
         }
         
         // 🌐 SUBSCRIBE TO SHARED DATA: Listen to shared coin data for consistency
-        SharedCoinDataManager.shared.allCoins
+        sharedCoinDataManager.allCoins
             .receive(on: DispatchQueue.main)
             .sink { [weak self] allCoins in
                 self?.handleSharedDataUpdate(allCoins)
@@ -333,12 +336,12 @@ final class CoinListVM: ObservableObject {
         resetOptimizationState()
         
         // Apply filter to current shared data instead of fetching new data
-        let allCoins = SharedCoinDataManager.shared.currentCoins
+        let allCoins = sharedCoinDataManager.currentCoins
         if !allCoins.isEmpty {
             handleSharedDataUpdate(allCoins)
         } else {
             // Force SharedCoinDataManager to fetch if no data available
-            SharedCoinDataManager.shared.forceUpdate()
+            sharedCoinDataManager.forceUpdate()
         }
     }
     
@@ -516,7 +519,7 @@ final class CoinListVM: ObservableObject {
         //  CACHE USAGE: Only use cache for default filters AND default sort to prevent stale data
         let isDefaultSort = (currentSortColumn == .price && currentSortOrder == .descending)
         
-        if !persistenceService.isCacheExpired(), 
+        if !persistenceService.isCacheExpired(maxAge: 300), 
             let offlineData = persistenceService.getOfflineData(), // Offline support with cached data
            currentFilterState == .defaultState,
            isDefaultSort { // Only use cache with default sort to preserve custom sort views

@@ -105,6 +105,7 @@ final class WatchlistVM: ObservableObject {
     
     private let watchlistManager: WatchlistManagerProtocol
     private let coinManager: CoinManagerProtocol
+    private let sharedCoinDataManager: SharedCoinDataManagerProtocol
     private var cancellables = Set<AnyCancellable>()
     private var requestCancellables = Set<AnyCancellable>()  // Separate for API requests
     private var updateTimer: Timer?
@@ -150,15 +151,17 @@ final class WatchlistVM: ObservableObject {
      * Falls back to shared instances for backward compatibility
      */
     init(
-        watchlistManager: WatchlistManagerProtocol = WatchlistManager.shared,
-        coinManager: CoinManagerProtocol = CoinManager()
+        watchlistManager: WatchlistManagerProtocol,
+        coinManager: CoinManagerProtocol,
+        sharedCoinDataManager: SharedCoinDataManagerProtocol
     ) {
         self.watchlistManager = watchlistManager
         self.coinManager = coinManager
+        self.sharedCoinDataManager = sharedCoinDataManager
         setupOptimizedBindings()
         
         // 🌐 SUBSCRIBE TO SHARED DATA: Use same data as CoinListVM for consistency
-        SharedCoinDataManager.shared.allCoins
+        sharedCoinDataManager.allCoins
             .receive(on: DispatchQueue.main)
             .sink { [weak self] allCoins in
                 self?.handleSharedDataUpdate(allCoins)
@@ -204,12 +207,12 @@ final class WatchlistVM: ObservableObject {
         }
         
         // Check if SharedCoinDataManager already has data
-        let sharedCoins = SharedCoinDataManager.shared.currentCoins
+        let sharedCoins = sharedCoinDataManager.currentCoins
         if !sharedCoins.isEmpty {
             handleSharedDataUpdate(sharedCoins)
         } else {
             // Force SharedCoinDataManager to fetch data
-            SharedCoinDataManager.shared.forceUpdate()
+            sharedCoinDataManager.forceUpdate()
             isLoadingSubject.send(true)
         }
     }
@@ -228,12 +231,12 @@ final class WatchlistVM: ObservableObject {
             isLoadingSubject.send(false)
         } else {
             // Use SharedCoinDataManager data instead of making separate API calls
-            let sharedCoins = SharedCoinDataManager.shared.currentCoins
+            let sharedCoins = sharedCoinDataManager.currentCoins
             if !sharedCoins.isEmpty {
                 handleSharedDataUpdate(sharedCoins)
             } else {
                 // Force SharedCoinDataManager to fetch data
-                SharedCoinDataManager.shared.forceUpdate()
+                sharedCoinDataManager.forceUpdate()
                 isLoadingSubject.send(true)
             }
         }
@@ -249,7 +252,7 @@ final class WatchlistVM: ObservableObject {
             watchlistCoinsSubject.send([])
         } else {
             // Use SharedCoinDataManager data - no separate API calls
-            let sharedCoins = SharedCoinDataManager.shared.currentCoins
+            let sharedCoins = sharedCoinDataManager.currentCoins
             if !sharedCoins.isEmpty {
                 handleSharedDataUpdate(sharedCoins)
             }
@@ -322,12 +325,13 @@ final class WatchlistVM: ObservableObject {
         if oldCoinIds != newCoinIds {
             // Use SharedCoinDataManager data instead of separate API calls
             if !newCoins.isEmpty {
-                let sharedCoins = SharedCoinDataManager.shared.currentCoins
+                let sharedCoins = sharedCoinDataManager.currentCoins
                 if !sharedCoins.isEmpty {
                     handleSharedDataUpdate(sharedCoins)
                 } else {
-                    // If no shared data yet, just show the coins without prices and wait for shared data
-                    watchlistCoinsSubject.send(newCoins)
+                    print("🔄 WatchlistVM: No shared data available, forcing SharedCoinDataManager update")
+                    sharedCoinDataManager.forceUpdate()
+                    // DO NOT send incomplete coins to UI - wait for shared data with quotes
                 }
             } else {
                 // If empty, update immediately
@@ -340,11 +344,14 @@ final class WatchlistVM: ObservableObject {
             removedCoinIds.forEach { updatedLogos.removeValue(forKey: $0) }
             coinLogosSubject.send(updatedLogos)
         } else if !newCoins.isEmpty {
-            // Same coins but maybe need sorting applied
-            let currentCoins = currentWatchlistCoins
-            watchlistCoinsSubject.send(newCoins)
-            if currentCoins != newCoins {
-                applySortingToWatchlist()
+            // Same coins but maybe need sorting applied - use SharedCoinDataManager data
+            let sharedCoins = sharedCoinDataManager.currentCoins
+            if !sharedCoins.isEmpty {
+                handleSharedDataUpdate(sharedCoins)
+            } else {
+                print("🔄 WatchlistVM: Same coins, but no shared data available, forcing update")
+                sharedCoinDataManager.forceUpdate()
+                // DO NOT send incomplete coins to UI - wait for shared data with quotes
             }
         }
     }
@@ -436,10 +443,11 @@ final class WatchlistVM: ObservableObject {
         // 🖼️ FETCH LOGOS: Fetch missing logos efficiently
         fetchMissingLogos(for: watchlistCoins)
         
-        // Log price data for verification
+        // Log verification that market cap data is present
         if let btc = watchlistCoins.first(where: { $0.symbol == "BTC" }),
-           let price = btc.quote?["USD"]?.price {
-            print("📊 WatchlistVM: BTC price from shared data = $\(String(format: "%.2f", price))")
+           let quote = btc.quote?["USD"],
+           let marketCap = quote.marketCap {
+            print("📊 WatchlistVM: BTC received with market cap: $\(String(format: "%.0f", marketCap))")
         }
         
 
@@ -447,7 +455,7 @@ final class WatchlistVM: ObservableObject {
     
     private func fetchPriceUpdates(for coinIds: [Int], completion: @escaping ([Coin]) -> Void) {
         // 🌐 NOW USING SHARED DATA: Just get from shared manager instead of API call
-        let watchlistCoins = SharedCoinDataManager.shared.getCoinsForIds(coinIds)
+        let watchlistCoins = sharedCoinDataManager.getCoinsForIds(coinIds)
         
         print("🌐 WatchlistVM: Using shared data for \(watchlistCoins.count) coins")
         

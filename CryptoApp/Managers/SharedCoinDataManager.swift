@@ -11,8 +11,6 @@ import Combine
 /// Shared data manager that ensures price consistency across all ViewModels
 final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
     
-    static let shared = SharedCoinDataManager()
-    
     // MARK: - Properties
     
     private let coinManager: CoinManagerProtocol
@@ -49,7 +47,7 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
      * 
      * Falls back to default CoinManager for backward compatibility
      */
-    init(coinManager: CoinManagerProtocol = CoinManager()) {
+    init(coinManager: CoinManagerProtocol) {
         self.coinManager = coinManager
         startAutoUpdate()
     }
@@ -145,10 +143,11 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                         
                         print("✅ SharedCoinDataManager: Updated prices for \(updatedQuotes.count) coins with FRESH quotes")
                         
-                        // Log some price data for verification
+                        // Log verification that market cap data is present
                         if let btc = updatedCoins.first(where: { $0.symbol == "BTC" }),
-                           let price = btc.quote?["USD"]?.price {
-                            print("📊 SharedCoinDataManager: BTC price = $\(String(format: "%.2f", price)) [FRESH]")
+                           let quote = btc.quote?["USD"],
+                           let marketCap = quote.marketCap {
+                            print("📊 SharedCoinDataManager: BTC updated with market cap: $\(String(format: "%.0f", marketCap))")
                         }
                     }
                 )

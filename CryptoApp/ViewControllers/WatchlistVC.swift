@@ -166,7 +166,7 @@ final class WatchlistVC: UIViewController {
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Clear All", style: .destructive) { [weak self] _ in
-            WatchlistManager.shared.clearWatchlist()
+            Dependencies.container.watchlistManager().clearWatchlist()
         })
         
         present(alert, animated: true)
@@ -176,7 +176,7 @@ final class WatchlistVC: UIViewController {
     @objc private func debugDatabaseTapped() {
         AppLogger.database("Debug button tapped - showing database info")
         
-        let items = WatchlistManager.shared.watchlistItems
+        let items = Dependencies.container.watchlistManager().watchlistItems
         let tableData = items.map { 
             ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
         }
@@ -197,7 +197,7 @@ final class WatchlistVC: UIViewController {
     }
     
     private func showDatabaseContents() {
-        let items = WatchlistManager.shared.watchlistItems
+        let items = Dependencies.container.watchlistManager().watchlistItems
         let tableData = items.map { item in
             let details = "ID: \(item.id) | Rank: \(item.cmcRank) | Added: \(item.dateAdded?.description.prefix(10) ?? "Unknown")"
             return ("\(item.symbol ?? "?") (\(item.name ?? "Unknown"))", details)
@@ -241,7 +241,7 @@ final class WatchlistVC: UIViewController {
         print("\n🧪 ===== BATCH ADD PERFORMANCE TEST =====")
         let startTime = CFAbsoluteTimeGetCurrent()
         
-        WatchlistManager.shared.addMultipleToWatchlist(testCoins)
+        Dependencies.container.watchlistManager().addMultipleToWatchlist(testCoins, logoURLs: [:])
         
         let endTime = CFAbsoluteTimeGetCurrent()
         let duration = (endTime - startTime) * 1000
@@ -261,7 +261,7 @@ final class WatchlistVC: UIViewController {
     
     private func testBatchRemove() {
         let testCoinIds = [999991, 999992, 999993, 999994, 999995]
-        let existingIds = testCoinIds.filter { WatchlistManager.shared.isInWatchlist(coinId: $0) }
+        let existingIds = testCoinIds.filter { Dependencies.container.watchlistManager().isInWatchlist(coinId: $0) }
         
         guard !existingIds.isEmpty else {
             let alert = UIAlertController(
@@ -277,7 +277,7 @@ final class WatchlistVC: UIViewController {
         print("\n🧪 ===== BATCH REMOVE PERFORMANCE TEST =====")
         let startTime = CFAbsoluteTimeGetCurrent()
         
-        WatchlistManager.shared.removeMultipleFromWatchlist(coinIds: existingIds)
+        Dependencies.container.watchlistManager().removeMultipleFromWatchlist(coinIds: existingIds)
         
         let endTime = CFAbsoluteTimeGetCurrent()
         let duration = (endTime - startTime) * 1000
@@ -297,7 +297,7 @@ final class WatchlistVC: UIViewController {
     
     private func showPerformanceComparison() {
         let _ = viewModel.getPerformanceMetrics()
-        let managerMetrics = WatchlistManager.shared.getPerformanceMetrics()
+        let managerMetrics = Dependencies.container.watchlistManager().getPerformanceMetrics()
         
         let message = """
         🚀 OPTIMIZATION RESULTS
@@ -325,7 +325,7 @@ final class WatchlistVC: UIViewController {
         )
         
         alert.addAction(UIAlertAction(title: "View Console Logs", style: .default) { _ in
-            WatchlistManager.shared.printDatabaseContents()
+            Dependencies.container.watchlistManager().printDatabaseContents()
         })
         
         alert.addAction(UIAlertAction(title: "Impressive!", style: .cancel))

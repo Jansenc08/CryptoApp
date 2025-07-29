@@ -97,6 +97,8 @@ final class CoinDetailsVM: ObservableObject {
     
     private let coin: Coin
     private let coinManager: CoinManagerProtocol
+    private let sharedCoinDataManager: SharedCoinDataManagerProtocol
+    private let requestManager: RequestManagerProtocol
     var geckoID: String? // FIXED: Made public for cache checking
     
     // MARK: - FIXED: Proper Combine Subscription Management
@@ -117,9 +119,11 @@ final class CoinDetailsVM: ObservableObject {
     
     // MARK: - Initialization
     
-    init(coin: Coin, coinManager: CoinManagerProtocol = CoinManager()) {
+    init(coin: Coin, coinManager: CoinManagerProtocol, sharedCoinDataManager: SharedCoinDataManagerProtocol, requestManager: RequestManagerProtocol) {
         self.coin = coin
         self.coinManager = coinManager
+        self.sharedCoinDataManager = sharedCoinDataManager
+        self.requestManager = requestManager
         self.coinDataSubject = CurrentValueSubject<Coin, Never>(coin)
 
         // ID MAPPING: Convert CMC slug to CoinGecko ID for chart API
@@ -144,7 +148,7 @@ final class CoinDetailsVM: ObservableObject {
      * and triggers price change animations when prices change
      */
     private func setupSharedCoinDataListener() {
-        SharedCoinDataManager.shared.allCoins
+        sharedCoinDataManager.allCoins
             .receive(on: DispatchQueue.main)
             .sink { [weak self] allCoins in
                 guard let self = self else { return }
@@ -221,7 +225,7 @@ final class CoinDetailsVM: ObservableObject {
             }
             
             // Only show loading if we really need to fetch
-            let cooldownStatus = RequestManager.shared.getCooldownStatus()
+            let cooldownStatus = requestManager.getCooldownStatus()
             if cooldownStatus.isInCooldown {
                 let remainingTime = cooldownStatus.remainingSeconds
                 errorMessageSubject.send("API cooldown active (\(remainingTime)s). Candlestick data temporarily unavailable.")
@@ -287,7 +291,7 @@ final class CoinDetailsVM: ObservableObject {
         }
         
         // Check rate limiting
-        if RequestManager.shared.shouldPreferCache() {
+        if requestManager.shouldPreferCache() {
             errorMessageSubject.send("API rate limiting active. Please try again in a moment.")
             return
         }
@@ -361,7 +365,7 @@ final class CoinDetailsVM: ObservableObject {
         }
         
         // Check rate limiting
-        let cooldownStatus = RequestManager.shared.getCooldownStatus()
+        let cooldownStatus = requestManager.getCooldownStatus()
         if cooldownStatus.isInCooldown {
             let remainingTime = cooldownStatus.remainingSeconds
             errorMessageSubject.send("API cooldown active (\(remainingTime)s). Candlestick data temporarily unavailable.")
@@ -399,7 +403,7 @@ final class CoinDetailsVM: ObservableObject {
     // MARK: - FIXED: Smart Auto-Refresh (Pure Combine)
     
     func smartAutoRefresh(for range: String) {
-        let cooldownStatus = RequestManager.shared.getCooldownStatus()
+        let cooldownStatus = requestManager.getCooldownStatus()
         
         if cooldownStatus.isInCooldown {
             // FIXED: Use Combine Timer with proper subscription storage
@@ -428,7 +432,7 @@ final class CoinDetailsVM: ObservableObject {
     // MARK: - Error Handling (Pure Combine)
     
     private func handleError(_ error: Error) {
-        let cooldownStatus = RequestManager.shared.getCooldownStatus()
+        let cooldownStatus = requestManager.getCooldownStatus()
         if cooldownStatus.isInCooldown {
             errorMessageSubject.send("API rate limit reached. Cooling down for \(cooldownStatus.remainingSeconds)s...")
         } else {

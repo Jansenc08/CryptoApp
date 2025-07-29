@@ -2,7 +2,6 @@ import Foundation
 import CoreData
 
 final class CoreDataManager: CoreDataManagerProtocol {
-    static let shared = CoreDataManager()
     
     /**
      * DEPENDENCY INJECTION INITIALIZER

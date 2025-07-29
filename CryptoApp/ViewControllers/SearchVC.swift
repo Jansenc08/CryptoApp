@@ -936,7 +936,7 @@ extension SearchVC: UICollectionViewDelegate {
         }
         
         // 🌐 TRY TO GET FRESH DATA: Check SharedCoinDataManager for most recent prices
-        let sharedCoins = SharedCoinDataManager.shared.currentCoins
+        let sharedCoins = Dependencies.container.sharedCoinDataManager().currentCoins
         let coinToNavigateTo: Coin
         if let freshCoin = sharedCoins.first(where: { $0.id == selectedCoin.id }) {
             print("✅ Using FRESH coin data for \(selectedCoin.symbol) from SharedCoinDataManager")
@@ -1064,7 +1064,7 @@ extension SearchVC {
         print("🔍 Recent Search: Tapped \(searchItem.symbol) - finding fresh coin data")
         
         // 🌐 FIRST: Try to get fresh data from SharedCoinDataManager
-        let sharedCoins = SharedCoinDataManager.shared.currentCoins
+        let sharedCoins = Dependencies.container.sharedCoinDataManager().currentCoins
         if let freshCoin = sharedCoins.first(where: { $0.id == searchItem.coinId }) {
             print("✅ Found FRESH coin data for \(searchItem.symbol) from SharedCoinDataManager")
             let detailsVC = CoinDetailsVC(coin: freshCoin)

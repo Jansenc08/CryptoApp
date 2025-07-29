@@ -451,7 +451,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 #if DEBUG
                 // Show database contents when switching to watchlist
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    let items = WatchlistManager.shared.watchlistItems
+                    let items = Dependencies.container.watchlistManager().watchlistItems
                     let tableData = items.map { 
                         ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
                     }
@@ -520,7 +520,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         print("  VM: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
         
         // Use SharedCoinDataManager for pull-to-refresh instead of individual ViewModel calls
-        SharedCoinDataManager.shared.forceUpdate()
+        Dependencies.container.sharedCoinDataManager().forceUpdate()
         
         print("🏁 Pull-to-Refresh | Data fetch completed")
         
@@ -1064,7 +1064,7 @@ extension CoinListVC: SegmentControlDelegate {
     
     #if DEBUG
     private func showWatchlistDatabaseContents() {
-        let items = WatchlistManager.shared.watchlistItems
+        let items = Dependencies.container.watchlistManager().watchlistItems
         print("\n🗄️ === WATCHLIST DATABASE VIEW ===")
         print("📊 Total watchlist items: \(items.count)")
         

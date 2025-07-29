@@ -56,8 +56,8 @@ final class CoinService: CoinServiceProtocol {
      * Falls back to shared instances for backward compatibility
      */
     init(
-        cacheService: CacheServiceProtocol = CacheService.shared,
-        requestManager: RequestManagerProtocol = RequestManager.shared
+        cacheService: CacheServiceProtocol,
+        requestManager: RequestManagerProtocol
     ) {
         self.cacheService = cacheService
         self.requestManager = requestManager

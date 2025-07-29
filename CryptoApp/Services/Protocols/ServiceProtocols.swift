@@ -206,6 +206,12 @@ protocol WatchlistManagerProtocol {
     // MARK: - Convenience Methods for Protocol Compatibility
     func addCoinToWatchlist(_ coin: Coin)
     func removeCoinFromWatchlist(_ coin: Coin)
+    
+    // MARK: - Batch Operations
+    func addMultipleToWatchlist(_ coins: [Coin], logoURLs: [Int: String])
+    func removeMultipleFromWatchlist(coinIds: [Int])
+    func clearWatchlist()
+    func printDatabaseContents()
 }
 
 // MARK: - Coin Manager Protocol
@@ -270,4 +276,5 @@ protocol SharedCoinDataManagerProtocol {
     func forceUpdate()
     func startAutoUpdate()
     func stopAutoUpdate()
+    func getCoinsForIds(_ ids: [Int]) -> [Coin]
 } 

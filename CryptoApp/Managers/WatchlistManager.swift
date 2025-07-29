@@ -22,7 +22,7 @@ protocol WatchlistManagerDelegate: AnyObject {
 }
 
 final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
-    static let shared = WatchlistManager()
+
     
     // MARK: - Injected Dependencies
     private let coreDataManager: CoreDataManagerProtocol
@@ -85,9 +85,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
      * Falls back to shared instances for backward compatibility
      */
     init(
-        coreDataManager: CoreDataManagerProtocol = CoreDataManager.shared,
-        coinManager: CoinManagerProtocol = CoinManager(),
-        persistenceService: PersistenceServiceProtocol = PersistenceService.shared
+        coreDataManager: CoreDataManagerProtocol,
+        coinManager: CoinManagerProtocol,
+        persistenceService: PersistenceServiceProtocol
     ) {
         self.coreDataManager = coreDataManager
         self.coinManager = coinManager

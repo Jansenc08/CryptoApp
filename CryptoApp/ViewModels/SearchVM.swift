@@ -131,7 +131,8 @@ final class SearchVM: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var apiRequestCancellables = Set<AnyCancellable>() // Separate cancellables for API requests
     private let coinManager: CoinManagerProtocol
-    private let persistenceService = PersistenceService.shared
+    private let sharedCoinDataManager: SharedCoinDataManagerProtocol
+    private let persistenceService: PersistenceServiceProtocol
     private var allCoins: [Coin] = []
     private let debounceInterval: TimeInterval = 0.3 // 300ms debounce
     
@@ -168,8 +169,10 @@ final class SearchVM: ObservableObject {
      * Accepts CoinManagerProtocol for better testability and modularity.
      * Falls back to default CoinManager for backward compatibility.
      */
-    init(coinManager: CoinManagerProtocol = CoinManager()) {
+    init(coinManager: CoinManagerProtocol, sharedCoinDataManager: SharedCoinDataManagerProtocol, persistenceService: PersistenceServiceProtocol) {
         self.coinManager = coinManager
+        self.sharedCoinDataManager = sharedCoinDataManager
+        self.persistenceService = persistenceService
         setupSearchDebounce()
         loadInitialData()
         setupCacheUpdateListener()
@@ -201,7 +204,7 @@ final class SearchVM: ObservableObject {
      * Does NOT invalidate popular coins cache if it's still valid.
      */
     private func setupSharedCoinDataListener() {
-        SharedCoinDataManager.shared.allCoins
+        sharedCoinDataManager.allCoins
             .receive(on: DispatchQueue.main)
             .sink { [weak self] freshCoins in
                 guard let self = self else { return }
@@ -317,7 +320,7 @@ final class SearchVM: ObservableObject {
             }
             
             // 🌐 MERGE FRESH PRICES: Update search results with latest prices from SharedCoinDataManager
-            let sharedCoins = SharedCoinDataManager.shared.currentCoins
+            let sharedCoins = sharedCoinDataManager.currentCoins
             let coinsWithFreshPrices = filteredCoins.map { searchCoin in
                 // Try to find fresh data for this coin
                 if let freshCoin = sharedCoins.first(where: { $0.id == searchCoin.id }) {

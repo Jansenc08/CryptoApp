@@ -19,11 +19,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         Dependencies.initialize()
         print("🏗️ AppDelegate: Dependency container initialized")
         
-        // Initialize Core Data
-        _ = CoreDataManager.shared
+        // Initialize Core Data through DI container
+        _ = Dependencies.container.coreDataManager()
         
         // 🌐 START SHARED DATA MANAGER: Ensure background price updates start immediately
-        _ = SharedCoinDataManager.shared
+        _ = Dependencies.container.sharedCoinDataManager()
         print("🌐 AppDelegate: SharedCoinDataManager started at app launch")
         
         #if DEBUG
