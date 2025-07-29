@@ -5,7 +5,7 @@ final class StatsCell: UITableViewCell {
     private let segmentView = SegmentView()
     private let cardView = UIView()
     private let stackView = UIStackView()
-
+    
     private var leftColumn = UIStackView()
     private var rightColumn = UIStackView()
 
@@ -33,7 +33,12 @@ final class StatsCell: UITableViewCell {
         selectionStyle = .none
         contentView.backgroundColor = .clear
 
-        cardView.backgroundColor = .secondarySystemBackground
+        // Adaptive background - white in light mode, gray in dark mode
+        cardView.backgroundColor = UIColor { traitCollection in
+            return traitCollection.userInterfaceStyle == .dark 
+                ? .secondarySystemBackground 
+                : .systemBackground
+        }
         cardView.layer.cornerRadius = 16
         cardView.layer.shadowColor = UIColor.black.cgColor
         cardView.layer.shadowOpacity = 0.05
@@ -70,7 +75,7 @@ final class StatsCell: UITableViewCell {
         headerStack.axis = .horizontal
         headerStack.distribution = .equalSpacing
         headerStack.alignment = .center
-
+        
         let verticalStack = UIStackView(arrangedSubviews: [headerStack, stackView])
         verticalStack.axis = .vertical
         verticalStack.spacing = 20

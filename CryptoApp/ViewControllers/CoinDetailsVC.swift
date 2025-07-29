@@ -144,6 +144,7 @@ final class CoinDetailsVC: UIViewController {
         tableView.register(InfoCell.self, forCellReuseIdentifier: "InfoCell")
         tableView.register(SegmentCell.self, forCellReuseIdentifier: "SegmentCell")
         tableView.register(ChartCell.self, forCellReuseIdentifier: "ChartCell")
+        tableView.register(PriceChangeOverviewCell.self, forCellReuseIdentifier: "PriceChangeOverviewCell")
         tableView.register(StatsCell.self, forCellReuseIdentifier: "StatsCell")
 
         view.addSubview(tableView)
@@ -253,12 +254,21 @@ final class CoinDetailsVC: UIViewController {
             }
             .store(in: &cancellables)
         
-        // OHLC data updates for candlestick charts
+        // OHLC data updates for candlestick charts and Low/High section
         viewModel.ohlcData
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newOHLCData in
                 guard let self = self else { return }
                 self.updateChartCellWithOHLC(newOHLCData)
+                // Update StatsCell when OHLC data becomes available for Low/High section
+                if !newOHLCData.isEmpty {
+                    print("🔄 [Low/High] OHLC data loaded: \(newOHLCData.count) candles - refreshing StatsCell")
+                    DispatchQueue.main.async {
+                        self.updateStatsCell()
+                    }
+                } else {
+                    print("⚠️ [Low/High] OHLC data is empty - Low/High section won't show")
+                }
             }
             .store(in: &cancellables)
         
@@ -268,6 +278,7 @@ final class CoinDetailsVC: UIViewController {
             .sink { [weak self] updatedCoin in
                 guard let self = self else { return }
                 self.updateInfoCellWithRealTimeData(updatedCoin)
+                self.updatePriceChangeOverviewCell(updatedCoin) // Update price change overview
                 self.updateStatsCell() // Also update stats with fresh data
             }
             .store(in: &cancellables)
@@ -509,6 +520,23 @@ final class CoinDetailsVC: UIViewController {
         print("💰 CoinDetails: Updated InfoCell with fresh data for \(coin.symbol)")
     }
     
+    // MARK: - Price Change Overview Updates
+    
+    private func updatePriceChangeOverviewCell(_ coin: Coin) {
+        let priceChangeIndexPath = IndexPath(row: 0, section: 3)
+        
+        guard priceChangeIndexPath.section < tableView.numberOfSections,
+              let priceChangeCell = tableView.cellForRow(at: priceChangeIndexPath) as? PriceChangeOverviewCell else {
+            // If cell is not visible, it will be updated when it becomes visible
+            return
+        }
+        
+        // Update cell with fresh data
+        priceChangeCell.configure(with: coin)
+        
+        print("📊 CoinDetails: Updated PriceChangeOverviewCell with fresh data for \(coin.symbol)")
+    }
+
     private func animatePriceChange(_ priceChange: PriceChangeIndicator) {
         let infoIndexPath = IndexPath(row: 0, section: 0)
         
@@ -600,7 +628,7 @@ final class CoinDetailsVC: UIViewController {
 
     
     private func updateStatsCell() {
-        let statsIndexPath = IndexPath(row: 0, section: 3)
+        let statsIndexPath = IndexPath(row: 0, section: 4)
         
         guard statsIndexPath.section < tableView.numberOfSections else {
             print("⚠️ Stats section doesn't exist yet")
@@ -609,7 +637,7 @@ final class CoinDetailsVC: UIViewController {
         
         guard let statsCell = tableView.cellForRow(at: statsIndexPath) as? StatsCell else {
             if statsIndexPath.section < tableView.numberOfSections {
-                tableView.reloadSections(IndexSet(integer: 3), with: .none)
+                tableView.reloadSections(IndexSet(integer: 4), with: .none)
             }
             return
         }
@@ -715,7 +743,7 @@ final class CoinDetailsVC: UIViewController {
 extension CoinDetailsVC: UITableViewDataSource {
     
     func numberOfSections(in tableView: UITableView) -> Int {
-        return 4 // Info, Segment, Chart, Stats
+        return 5 // Info, Segment, Chart, PriceChangeOverview, Stats
     }
     
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -799,7 +827,14 @@ extension CoinDetailsVC: UITableViewDataSource {
             cell.selectionStyle = .none
             return cell
             
-        case 3: // Stats section
+        case 3: // Price Change Overview section
+            let cell = tableView.dequeueReusableCell(withIdentifier: "PriceChangeOverviewCell", for: indexPath) as! PriceChangeOverviewCell
+            let currentCoin = viewModel.currentCoin
+            cell.configure(with: currentCoin)
+            cell.selectionStyle = .none
+            return cell
+            
+        case 4: // Stats section
             let cell = tableView.dequeueReusableCell(withIdentifier: "StatsCell", for: indexPath) as! StatsCell
             cell.configure(viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
                 print("📊 Selected stats filter: \(selectedRange)")
@@ -820,20 +855,22 @@ extension CoinDetailsVC: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         switch indexPath.section {
-        case 0: return UITableView.automaticDimension
-        case 1: return 40
-        case 2: return 300
-        case 3: return UITableView.automaticDimension
+        case 0: return UITableView.automaticDimension // Info
+        case 1: return 40 // Segment
+        case 2: return 300 // Chart
+        case 3: return UITableView.automaticDimension // Price Change Overview
+        case 4: return UITableView.automaticDimension // Stats
         default: return 44
         }
     }
     
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         switch indexPath.section {
-        case 0: return 100
-        case 1: return 40
-        case 2: return 300
-        case 3: return 200
+        case 0: return 100 // Info
+        case 1: return 40 // Segment
+        case 2: return 300 // Chart
+        case 3: return 90 // Price Change Overview
+        case 4: return 200 // Stats
         default: return 44
         }
     }

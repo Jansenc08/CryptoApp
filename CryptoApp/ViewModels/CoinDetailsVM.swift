@@ -31,16 +31,28 @@ struct PriceChangeIndicator {
 
 final class CoinDetailsVM: ObservableObject {
 
-    // MARK: - Private Subjects (Internal State Management)
+    // MARK: - Properties
     
+    private let coin: Coin
+    private let coinManager: CoinManagerProtocol
+    private let sharedCoinDataManager: SharedCoinDataManagerProtocol
+    private let requestManager: RequestManagerProtocol
+    private let geckoID: String?
+    
+    // FIXED: Combine state management
+    private let coinDataSubject: CurrentValueSubject<Coin, Never>
     private let chartPointsSubject = CurrentValueSubject<[Double], Never>([])
     private let ohlcDataSubject = CurrentValueSubject<[OHLCData], Never>([])
-    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
-    private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
     private let selectedStatsRangeSubject = CurrentValueSubject<String, Never>("24h")
-    private let coinDataSubject: CurrentValueSubject<Coin, Never>
+    private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
+    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
     private let priceChangeSubject = CurrentValueSubject<PriceChangeIndicator?, Never>(nil)
-
+    
+    // FIXED: Request cancellation management
+    private var chartDataCancellable: AnyCancellable?
+    private var ohlcDataCancellable: AnyCancellable?
+    private var cancellables = Set<AnyCancellable>()
+    
     // MARK: - Published AnyPublisher Properties (Reactive UI Binding)
     
     var chartPoints: AnyPublisher<[Double], Never> {
@@ -95,20 +107,9 @@ final class CoinDetailsVM: ObservableObject {
 
     // MARK: - Core Dependencies
     
-    private let coin: Coin
-    private let coinManager: CoinManagerProtocol
-    private let sharedCoinDataManager: SharedCoinDataManagerProtocol
-    private let requestManager: RequestManagerProtocol
-    var geckoID: String? // FIXED: Made public for cache checking
-    
     // Chart configuration
     private var isSmoothingEnabled: Bool = true // Toggle for chart smoothing
     private var smoothingType: ChartSmoothingHelper.SmoothingType = .adaptive // Current smoothing algorithm
-    
-    // MARK: - FIXED: Proper Combine Subscription Management
-    private var cancellables = Set<AnyCancellable>()
-    private var chartDataCancellable: AnyCancellable? // FIXED: Dedicated cancellable for chart data
-    private var ohlcDataCancellable: AnyCancellable? // FIXED: Dedicated cancellable for OHLC data
     
     // MARK: - State Management
     
@@ -238,18 +239,8 @@ final class CoinDetailsVM: ObservableObject {
             
             // Only fetch if we don't have cached data
             fetchOHLCDataCombine(for: targetRange)
-        } else {
-            // FIXED: Cancel any pending OHLC requests when switching to line chart
-            ohlcDataCancellable?.cancel()
-            ohlcDataCancellable = nil
-            
-            // Only clear OHLC data if switching from candlestick to line chart
-            if currentChartType == .candlestick {
-                ohlcDataSubject.send([])
-                errorMessageSubject.send(nil)
-                print("📊 Switched to line chart - cleared OHLC data")
-            }
         }
+        // NOTE: Keep OHLC data available even in line chart mode for Low/High section
     }
     
     // MARK: - FIXED: Pure Combine Chart Data Fetching
@@ -280,16 +271,14 @@ final class CoinDetailsVM: ObservableObject {
             errorMessageSubject.send(nil)
             print("📦 ✅ Using cached chart data: \(processedData.count) points for \(range)")
             
-            // FIXED: Only fetch OHLC if we're in candlestick mode AND don't have cached OHLC data
-            if currentChartType == .candlestick {
-                if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
-                   !cachedOHLCData.isEmpty {
-                    ohlcDataSubject.send(cachedOHLCData)
-                    print("📦 ✅ Using cached OHLC data: \(cachedOHLCData.count) candles for \(range)")
-                } else {
-                    print("📊 Fetching missing OHLC data for \(range)")
-                    fetchOHLCDataCombine(for: range)
-                }
+            // FIXED: Always fetch OHLC data for Low/High section, regardless of chart type
+            if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
+               !cachedOHLCData.isEmpty {
+                ohlcDataSubject.send(cachedOHLCData)
+                print("📦 ✅ Using cached OHLC data: \(cachedOHLCData.count) candles for \(range)")
+            } else {
+                print("📊 Fetching OHLC data for Low/High section: \(range)")
+                fetchOHLCDataCombine(for: range)
             }
             return
         }
@@ -338,10 +327,8 @@ final class CoinDetailsVM: ObservableObject {
                     
                     self.chartPointsSubject.send(processedData)
                     
-                    // Fetch OHLC if needed using Combine
-                    if self.currentChartType == .candlestick {
-                        self.fetchOHLCDataCombine(for: range)
-                    }
+                    // Always fetch OHLC data for Low/High section
+                    self.fetchOHLCDataCombine(for: range)
                 }
             )
     }
@@ -523,6 +510,7 @@ final class CoinDetailsVM: ObservableObject {
         selectedStatsRangeSubject.send(range)
         print("📊 Stats range updated to: \(range)")
     }
+
     
     private func getStats(for range: String) -> [StatItem] {
         var items: [StatItem] = []
