@@ -529,7 +529,7 @@ final class CoinListVM: ObservableObject {
             // Apply current sorting to cached data BEFORE setting coins (prevents UI flash)
             let sortedCachedCoins = sortCoins(offlineData.coins)
             
-            // 🛡️ VALIDATION: Check cached data for duplicates
+            // VALIDATION: Check cached data for duplicates
             let cachedIds = sortedCachedCoins.map { $0.id }
             let uniqueCachedIds = Set(cachedIds)
             if cachedIds.count != uniqueCachedIds.count {
@@ -548,7 +548,7 @@ final class CoinListVM: ObservableObject {
                     }
                 }
                 
-                // 🔧 PAGINATION FIX: Set fullFilteredCoins for proper pagination
+                // PAGINATION: Set fullFilteredCoins for proper pagination
                 fullFilteredCoins = deduplicatedCachedCoins
                 
                 // Show first page only
@@ -561,7 +561,7 @@ final class CoinListVM: ObservableObject {
                 
                 print("📱 UI: Displaying \(initialCoins.count) coins (page 1 of \(deduplicatedCachedCoins.count) total from cache)")
             } else {
-                // 🔧 PAGINATION FIX: Set fullFilteredCoins for proper pagination
+                // PAGINATION: Set fullFilteredCoins for proper pagination
                 fullFilteredCoins = sortedCachedCoins
                 
                 // Show first page only  
@@ -601,7 +601,7 @@ final class CoinListVM: ObservableObject {
         lastFetchTime = Date()
 
         // BACKEND FILTERING STRATEGY:
-        // We use a hybrid approach for optimal performance:
+        // Use a hybrid approach for optimal performance:
         // 1. Backend: Get top N coins by market cap (leverages CMC's ranking)
         // 2. Local: Sort by user's selected metric (instant response)
         // This ensures we get the top coins while providing instant sort feedback
@@ -770,8 +770,8 @@ final class CoinListVM: ObservableObject {
     // MARK: - Sorting Algorithms
     
     /**
-     * COMPREHENSIVE SORTING
-     * 
+     * SORTING
+     *
      * This method handles sorting for all coin attributes with special logic for ranks.
      * The rank sorting is intentionally inverted to be user-friendly:
      * - "Descending" shows best ranks first (1, 2, 3...)

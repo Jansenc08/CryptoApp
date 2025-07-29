@@ -48,6 +48,7 @@ struct OHLCData {
 }
 
 // MARK: - CoinGecko OHLC Response Extension
+// DATA CONVERSION: CoinGecko response → OHLCData objects
 extension Array where Element == [Double] {
     func toOHLCData() -> [OHLCData] {
         return self.compactMap { item in

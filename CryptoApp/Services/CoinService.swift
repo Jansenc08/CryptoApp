@@ -332,7 +332,7 @@ final class CoinService: CoinServiceProtocol {
             .eraseToAnyPublisher()
     }
     
-    // MARK: Gets historical chart price points from CoinGecko.
+    // MARK: Gets historical chart price points from CoinGecko for CandleStick Chart
     // 1. Checks Chart Data cache with key (coinId, currency, days)
     // 2. Uses RequestManager to prioritize
     // 3. Calls performChartRequest to hit -> /coins/{id}/market_chart?vs_currency=...&days=...
@@ -340,7 +340,7 @@ final class CoinService: CoinServiceProtocol {
     // MARK: Gets real OHLC candlestick data from CoinGecko
     func fetchCoinGeckoOHLCData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[OHLCData], NetworkError> {
         // Check cache first
-        let cacheKey = "ohlc_\(coinId)_\(currency)_\(days)"
+        let _ = "ohlc_\(coinId)_\(currency)_\(days)"
         if let cachedData = cacheService.getOHLCData(for: coinId, currency: currency, days: days) {
             print("💾 ⚡ Instant cache hit for OHLC data: \(coinId) - \(days) (\(cachedData.count) candles)")
             return Just(cachedData)
@@ -414,6 +414,11 @@ final class CoinService: CoinServiceProtocol {
         .eraseToAnyPublisher()
     }
     
+    
+      // 1. Map CMC slug to CoinGecko ID
+      // 2. Build endpoint: /coins/{geckoId}/ohlc?vs_currency=usd&days=7
+      // 3. Make HTTP request with demo API key
+      // 4. Parse response into OHLCData objects
     private func performOHLCDataRequest(for coinId: String, currency: String, days: String) -> AnyPublisher<[OHLCData], NetworkError> {
         let geckoId = mapCMCSlugToGeckoId(coinId)
         let endpoint = "\(coinGeckoBaseURL)/coins/\(geckoId)/ohlc?vs_currency=\(currency)&days=\(days)"

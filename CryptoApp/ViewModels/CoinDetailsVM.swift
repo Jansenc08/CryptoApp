@@ -101,6 +101,10 @@ final class CoinDetailsVM: ObservableObject {
     private let requestManager: RequestManagerProtocol
     var geckoID: String? // FIXED: Made public for cache checking
     
+    // Chart configuration
+    private var isSmoothingEnabled: Bool = true // Toggle for chart smoothing
+    private var smoothingType: ChartSmoothingHelper.SmoothingType = .adaptive // Current smoothing algorithm
+    
     // MARK: - FIXED: Proper Combine Subscription Management
     private var cancellables = Set<AnyCancellable>()
     private var chartDataCancellable: AnyCancellable? // FIXED: Dedicated cancellable for chart data
@@ -444,22 +448,36 @@ final class CoinDetailsVM: ObservableObject {
     // MARK: - Data Processing (Pure Functions)
     
     private func processChartData(_ rawData: [Double], for days: String) -> [Double] {
-        // Validate data
+        // Step 1: Validate data
         let validData = rawData.compactMap { value -> Double? in
             guard value.isFinite, value >= 0 else { return nil }
             return value
         }
         
-        // Optimize for performance
+        guard !validData.isEmpty else { return [] }
+        
+        // Step 2: Remove outliers (API errors, data spikes)
+        let cleanedData = ChartSmoothingHelper.removeOutliers(validData)
+        
+        // Step 3: Apply smoothing before downsampling for better results (if enabled)
+        let smoothedData = isSmoothingEnabled ? 
+            ChartSmoothingHelper.applySmoothingToChartData(cleanedData, type: smoothingType, timeRange: days) : 
+            cleanedData
+        
+        // Step 4: Optimize for performance (downsample if needed)
         let maxPoints = getMaxDataPointsForRange(days)
-        if validData.count > maxPoints {
-            let step = max(1, validData.count / maxPoints)
-            return stride(from: 0, to: validData.count, by: step).compactMap { index in
-                index < validData.count ? validData[index] : nil
+        if smoothedData.count > maxPoints {
+            let step = max(1, smoothedData.count / maxPoints)
+            let downsampledData = stride(from: 0, to: smoothedData.count, by: step).compactMap { index in
+                index < smoothedData.count ? smoothedData[index] : nil
             }
+            
+            print("📊 Chart processing: \(rawData.count) → \(validData.count) → \(smoothedData.count) → \(downsampledData.count) points for \(days)")
+            return downsampledData
         }
         
-        return validData
+        print("📊 Chart processing: \(rawData.count) → \(validData.count) → \(smoothedData.count) points for \(days)")
+        return smoothedData
     }
     
     private func getMaxDataPointsForRange(_ days: String) -> Int {
@@ -470,6 +488,33 @@ final class CoinDetailsVM: ObservableObject {
         case "365": return 500
         default: return 300
         }
+    }
+
+    
+    // MARK: - Chart Configuration
+    
+    // Toggle chart data smoothing on/off
+    func setSmoothingEnabled(_ enabled: Bool) {
+        isSmoothingEnabled = enabled
+        // Refresh current chart data with new smoothing setting
+        fetchChartData(for: currentRange)
+        print("📊 Chart smoothing \(enabled ? "enabled" : "disabled")")
+    }
+    
+    // Change smoothing algorithm
+    func setSmoothingType(_ type: ChartSmoothingHelper.SmoothingType) {
+        smoothingType = type
+        // Refresh current chart data with new smoothing algorithm
+        fetchChartData(for: currentRange)
+        print("📊 Chart smoothing type changed to: \(type)")
+    }
+    
+    var smoothingEnabled: Bool {
+        return isSmoothingEnabled
+    }
+    
+    var currentSmoothingType: ChartSmoothingHelper.SmoothingType {
+        return smoothingType
     }
     
     // MARK: - Statistics (Pure Combine)

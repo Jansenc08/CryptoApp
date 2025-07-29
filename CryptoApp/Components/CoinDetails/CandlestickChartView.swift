@@ -55,15 +55,15 @@ final class CandlestickChartView: CandleStickChartView {
         
         // Enhanced Interaction Settings - X-axis zoom only for consistent candle proportions
         setScaleEnabled(true)
-        scaleYEnabled = false  // Disable Y-axis zoom to maintain consistent candle proportions
-        doubleTapToZoomEnabled = true  // Double-tap to zoom in/out
+        scaleYEnabled = false               // Disable Y-axis zoom to maintain consistent candle proportions
+        doubleTapToZoomEnabled = true       // Double-tap to zoom in/out
         dragEnabled = true
-        pinchZoomEnabled = true  // Pinch to zoom for candle visibility (X-axis only)
+        pinchZoomEnabled = true             // Pinch to zoom for candle visibility (X-axis only)
         legend.enabled = false
         
         // Set zoom limits optimized for candlestick analysis
-        setVisibleXRangeMaximum(100)  // Max zoom out (show 100 candles)
-        setVisibleXRangeMinimum(3)    // Max zoom in (show 3 candles for detail)
+        setVisibleXRangeMaximum(100)        // Max zoom out (show 100 candles)
+        setVisibleXRangeMinimum(3)          // Max zoom in (show 3 candles for detail)
         
         // Enable highlighting for tooltips
         highlightPerTapEnabled = true
@@ -371,17 +371,17 @@ final class CandlestickChartView: CandleStickChartView {
     }
     
     // MARK: - Chart Rendering
-    
+    // Visual CandleStick entries
     private func updateChart() {
         guard !allOHLCData.isEmpty, !allDates.isEmpty else { return }
         
         // Create candlestick entries using INTEGER indices instead of timestamps
         let entries = allOHLCData.enumerated().map { index, ohlc in
-            CandleChartDataEntry(x: Double(index),  // Using simple index, not timestamp
-                               shadowH: ohlc.high,
-                               shadowL: ohlc.low,
-                               open: ohlc.open,
-                               close: ohlc.close,
+            CandleChartDataEntry(x: Double(index),  // X-axis position
+                               shadowH: ohlc.high,  // Top wick
+                               shadowL: ohlc.low,   // Bottom wick
+                               open: ohlc.open,     // Open Price
+                               close: ohlc.close,   // Close Price
                                icon: nil)
         }
         
@@ -402,7 +402,7 @@ final class CandlestickChartView: CandleStickChartView {
         dataSet.drawIconsEnabled = false
         
         // Set Candlestick colors - darker green, vibrant red, gray for doji
-        dataSet.increasingColor = UIColor(red: 0.0, green: 0.7, blue: 0.0, alpha: 1.0)  // Darker green
+        dataSet.increasingColor = UIColor(red: 0.0, green: 0.7, blue: 0.0, alpha: 1.0)  // Dark green
         dataSet.decreasingColor = UIColor(red: 0.9, green: 0.2, blue: 0.2, alpha: 1.0)  // Vibrant red
         dataSet.neutralColor = UIColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1.0)     // Gray for doji (open == close)
         dataSet.increasingFilled = true
