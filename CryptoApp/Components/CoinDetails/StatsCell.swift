@@ -109,11 +109,6 @@ final class StatsCell: UITableViewCell {
             self?.onSegmentChange?(options[index])
         }
 
-        // Clear previous content
-        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        leftColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        rightColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        
         // Separate high/low item from regular stats
         var highLowItem: StatItem?
         var regularStats: [StatItem] = []
@@ -126,16 +121,119 @@ final class StatsCell: UITableViewCell {
             }
         }
         
-        // Add high/low bar at the top if available
-        if let highLowItem = highLowItem {
-            let highLowBar = makeHighLowBarRow(for: highLowItem)
-            stackView.addArrangedSubview(highLowBar)
+        // Check if we already have a high/low bar and if the new item is loading
+        var existingHighLowContainer: HighLowBarContainer?
+        if let firstArrangedSubview = stackView.arrangedSubviews.first as? HighLowBarContainer {
+            existingHighLowContainer = firstArrangedSubview
         }
         
-        // Create 2-column layout for regular stats
+        // FIXED: If we have a high/low item and it's loading, preserve current state
+        if let existingContainer = existingHighLowContainer,
+           let highLowItem = highLowItem {
+            
+            // Check if the new item is in loading state
+            let values = highLowItem.value.components(separatedBy: "|")
+            let isLoading = values.count > 3 ? (values[3] == "true") : false
+            
+            if isLoading && values[0] == "LOADING" {
+                // Special loading marker - preserve everything, just show loading overlay
+                existingContainer.startLoadingAnimation()
+            } else if isLoading {
+                // Regular loading with data - preserve position but update overlay
+                existingContainer.startLoadingAnimation()
+            } else {
+                // Real data arrived - update with animation
+                updateHighLowBarAnimated(container: existingContainer, with: highLowItem)
+            }
+        } else {
+            // Clear previous content and rebuild
+            stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            leftColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            rightColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            
+            // Add high/low bar at the top if available (but not for loading markers)
+            if let highLowItem = highLowItem {
+                let values = highLowItem.value.components(separatedBy: "|")
+                let isLoadingMarker = values.count > 1 && values[0] == "LOADING"
+                
+                if !isLoadingMarker {
+                    let highLowBar = makeHighLowBarRow(for: highLowItem)
+                    stackView.addArrangedSubview(highLowBar)
+                }
+            }
+        }
+        
+        // Always rebuild regular stats section
         if !regularStats.isEmpty {
+            // Remove only the regular stats section (keep high/low bar)
+            if stackView.arrangedSubviews.count > 1 {
+                for i in (1..<stackView.arrangedSubviews.count).reversed() {
+                    stackView.arrangedSubviews[i].removeFromSuperview()
+                }
+            }
             setupTwoColumnLayout(with: regularStats)
         }
+    }
+    
+    // ADDED: Method to smoothly update existing high/low bar
+    private func updateHighLowBarAnimated(container: HighLowBarContainer, with item: StatItem) {
+        let values = item.value.components(separatedBy: "|")
+        guard values.count >= 2 else { 
+            return 
+        }
+        
+        let lowValue = values[0]
+        let highValue = values[1]
+        let currentPrice = values.count > 2 ? Double(values[2]) ?? 0.0 : 0.0
+        let isLoading = values.count > 3 ? (values[3] == "true") : false
+        
+        // FIXED: Better price parsing for formatted currency strings
+        func parsePrice(from string: String) -> Double {
+            // Remove currency symbols, commas, and whitespace
+            // IMPORTANT: Remove US$ BEFORE $ to avoid leaving "US" in the string
+            let cleanString = string
+                .replacingOccurrences(of: "US$", with: "")
+                .replacingOccurrences(of: "$", with: "")
+                .replacingOccurrences(of: "USD", with: "")
+                .replacingOccurrences(of: ",", with: "")
+                .replacingOccurrences(of: " ", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            return Double(cleanString) ?? 0.0
+        }
+        
+        let lowPrice = parsePrice(from: lowValue)
+        let highPrice = parsePrice(from: highValue)
+        
+        // Calculate new position
+        let priceRange = highPrice - lowPrice
+        let clampedPosition: Double
+        
+        if priceRange > 0 {
+            let rawPosition = (currentPrice - lowPrice) / priceRange
+            clampedPosition = min(max(rawPosition, 0.0), 1.0)
+        } else {
+            clampedPosition = 0.5
+        }
+        
+        // Update the low and high labels
+        for subview in container.subviews {
+            if let label = subview as? UILabel {
+                if label.textColor == .systemRed {
+                    // This is the low label
+                    label.text = lowValue
+                } else if label.textColor == .systemGreen {
+                    // This is the high label
+                    label.text = highValue
+                }
+            }
+        }
+        
+        // Use the new animation method
+        container.animateToPosition(clampedPosition, currentPrice: currentPrice, lowValue: lowValue, highValue: highValue, isLoading: isLoading)
+        
+        // Update loading state
+        container.stopLoadingAnimation() // Real data arrived, stop loading
     }
     
     private func setupTwoColumnLayout(with stats: [StatItem]) {
@@ -277,14 +375,25 @@ final class StatsCell: UITableViewCell {
         
         // Calculate current price position as percentage  
         // Parse price strings - handle different formats like "US$105,402.00", "$105,402.00", etc.
-        let cleanLowValue = lowValue.replacingOccurrences(of: "US$", with: "").replacingOccurrences(of: "$", with: "").replacingOccurrences(of: ",", with: "")
-        let cleanHighValue = highValue.replacingOccurrences(of: "US$", with: "").replacingOccurrences(of: "$", with: "").replacingOccurrences(of: ",", with: "")
         
-        let lowPrice = Double(cleanLowValue) ?? 0.0
-        let highPrice = Double(cleanHighValue) ?? 0.0
+        func parsePrice(from string: String) -> Double {
+            // Remove currency symbols, commas, and whitespace
+            let cleanString = string
+                .replacingOccurrences(of: "US$", with: "")
+                .replacingOccurrences(of: "$", with: "")
+                .replacingOccurrences(of: "USD", with: "")
+                .replacingOccurrences(of: ",", with: "")
+                .replacingOccurrences(of: " ", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            return Double(cleanString) ?? 0.0
+        }
+        
+        let lowPrice = parsePrice(from: lowValue)
+        let highPrice = parsePrice(from: highValue)
         let priceRange = highPrice - lowPrice
         let pricePosition = priceRange > 0 ? (currentPrice - lowPrice) / priceRange : 0.5
-                let clampedPosition = max(0.0, min(1.0, pricePosition)) // Ensure it's between 0 and 1
+        let clampedPosition = max(0.0, min(1.0, pricePosition)) // Ensure it's between 0 and 1
         
         container.pricePosition = clampedPosition
         
@@ -394,6 +503,10 @@ class HighLowBarContainer: UIView {
     var highValue: String = ""
     var isLoading: Bool = false
     
+    // ADDED: Animation properties for smooth transitions
+    private var targetPosition: Double = 0.5
+    private var isAnimating: Bool = false
+    
     override func layoutSubviews() {
         super.layoutSubviews()
         
@@ -422,6 +535,53 @@ class HighLowBarContainer: UIView {
             let newWidth = barWidth * CGFloat(safePosition)
             progressWidthConstraint.constant = newWidth
         }
+    }
+    
+    // ADDED: Smooth animation method for position changes
+    func animateToPosition(_ newPosition: Double, currentPrice: Double, lowValue: String, highValue: String, isLoading: Bool) {
+        // Update the data properties
+        self.currentPrice = currentPrice
+        self.lowValue = lowValue
+        self.highValue = highValue
+        self.isLoading = isLoading
+        
+        // Calculate the new target position
+        targetPosition = max(0.0, min(1.0, newPosition))
+        
+        // Only animate if the position actually changed significantly
+        let positionDifference = abs(targetPosition - pricePosition)
+        if positionDifference < 0.01 {
+            // Small change, just update directly
+            pricePosition = targetPosition
+            setNeedsLayout()
+            return
+        }
+        
+        // Perform smooth animation
+        isAnimating = true
+        UIView.animate(
+            withDuration: 0.6, // Smooth duration
+            delay: 0,
+            usingSpringWithDamping: 0.8, // Spring animation for natural feel
+            initialSpringVelocity: 0.5,
+            options: [.curveEaseInOut, .allowUserInteraction],
+            animations: { [weak self] in
+                guard let self = self else { return }
+                self.pricePosition = self.targetPosition
+                
+                // Update progress width constraint
+                if let progressWidthConstraint = self.progressWidthConstraint,
+                   let barView = self.barView,
+                   barView.frame.width > 0 {
+                    let newWidth = barView.frame.width * CGFloat(self.targetPosition)
+                    progressWidthConstraint.constant = newWidth
+                    self.layoutIfNeeded()
+                }
+            },
+            completion: { [weak self] _ in
+                self?.isAnimating = false
+            }
+        )
     }
     
     func startLoadingAnimation() {

@@ -653,12 +653,10 @@ final class CoinDetailsVM: ObservableObject {
             return (highPrice, lowPrice)
         }
         
-        // If currently loading this range, return placeholder values to maintain layout
+        // FIXED: If currently loading this range, return nil to avoid position jumps
+        // Don't use fallback data as it causes the progress bar to jump to old positions
         if loadingStates.contains(range) {
-            // Use current coin price as both high and low for loading state
-            let currentCoinData = coinDataSubject.value
-            let currentPrice = currentCoinData.quote?["USD"]?.price ?? 0.0
-            return (currentPrice, currentPrice) // This will show indicator in middle
+            return (nil, nil)
         }
         
         // No data available and not loading
@@ -667,31 +665,42 @@ final class CoinDetailsVM: ObservableObject {
     
     private func addHighLowStats(to items: inout [StatItem], for range: String) {
         let (high, low) = getHighLowPrices(for: range)
+        let loadingStates = statsLoadingSubject.value
         
-        guard let highPrice = high, let lowPrice = low else { return }
+        // Determine if we're in a loading state for this range
+        let isLoading = loadingStates.contains(range)
         
-        // Format prices
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.maximumFractionDigits = 2
-        
-        let lowString = formatter.string(from: NSNumber(value: lowPrice)) ?? "$0"
-        let highString = formatter.string(from: NSNumber(value: highPrice)) ?? "$0"
-        
-        let currentCoinData = coinDataSubject.value
-        let currentPrice = currentCoinData.quote?["USD"]?.price ?? 0.0
-        
-        // Check if this is a loading state (high == low means placeholder values)
-        let isLoading = abs(highPrice - lowPrice) < 0.01 // Loading state when high ≈ low
-        
-        // Create a special StatItem that contains both high, low, current price, and loading state
-        let highLowItem = StatItem(
-            title: "Low / High", 
-            value: "\(lowString)|\(highString)|\(currentPrice)|\(isLoading)", // Include loading state
-            valueColor: nil
-        )
-        items.append(highLowItem)
+        // Only add high/low item when we have real data
+        if let highPrice = high, let lowPrice = low, !isLoading {
+            // We have real data and not loading
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencyCode = "USD"
+            formatter.maximumFractionDigits = 2
+            
+            let lowString = formatter.string(from: NSNumber(value: lowPrice)) ?? "$0"
+            let highString = formatter.string(from: NSNumber(value: highPrice)) ?? "$0"
+            
+            let currentCoinData = coinDataSubject.value
+            let currentPrice = currentCoinData.quote?["USD"]?.price ?? 0.0
+            
+            // Create StatItem with actual high/low data
+            let highLowItem = StatItem(
+                title: "Low / High", 
+                value: "\(lowString)|\(highString)|\(currentPrice)|false",
+                valueColor: nil
+            )
+            items.append(highLowItem)
+        } else if isLoading {
+            // Add a special loading indicator item that tells StatsCell to preserve current state
+            let highLowItem = StatItem(
+                title: "Low / High", 
+                value: "LOADING|LOADING|0|true", // Special loading marker
+                valueColor: nil
+            )
+            items.append(highLowItem)
+        }
+        // If not loading and no data, don't add any item
     }
     
     // MARK: - Utility
