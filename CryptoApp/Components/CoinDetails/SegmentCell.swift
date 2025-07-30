@@ -30,8 +30,9 @@ final class SegmentCell: UITableViewCell {
         NSLayoutConstraint.activate([
             container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             container.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            container.topAnchor.constraint(equalTo: contentView.topAnchor),
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 52) // Ensure minimum height for buttons
         ])
 
         // Setup toggle buttons
@@ -48,19 +49,19 @@ final class SegmentCell: UITableViewCell {
         chartTypeToggle.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
-            // Segment view takes most of the space
+            // Segment view - independent height, centered vertically
             segmentView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            segmentView.topAnchor.constraint(equalTo: container.topAnchor),
-            segmentView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            segmentView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            segmentView.heightAnchor.constraint(equalToConstant: 36), // Smaller height for segment control
             segmentView.trailingAnchor.constraint(equalTo: landscapeToggle.leadingAnchor, constant: -12),
             
-            // Landscape toggle button 
+            // Landscape toggle button - maintains 40x40 size
             landscapeToggle.trailingAnchor.constraint(equalTo: chartTypeToggle.leadingAnchor, constant: -8),
             landscapeToggle.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             landscapeToggle.widthAnchor.constraint(equalToConstant: 40),
             landscapeToggle.heightAnchor.constraint(equalToConstant: 40),
             
-            // Chart type toggle button on the far right
+            // Chart type toggle button - maintains 40x40 size
             chartTypeToggle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             chartTypeToggle.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             chartTypeToggle.widthAnchor.constraint(equalToConstant: 40),

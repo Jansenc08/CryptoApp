@@ -854,10 +854,14 @@ extension CoinDetailsVC: UITableViewDataSource {
 extension CoinDetailsVC: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        if indexPath.section == 2 { // Chart section only
+        switch indexPath.section {
+        case 1: // Segment control section - ensure minimum height for buttons
+            return 76
+        case 2: // Chart section
             return 300
+        default:
+            return UITableView.automaticDimension
         }
-        return UITableView.automaticDimension
     }
 }
 
