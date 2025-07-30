@@ -670,7 +670,7 @@ final class CoinDetailsVC: UIViewController {
         let currentRange = selectedRange.value
         let currentChartType = selectedChartType.value
         
-        let landscapeVC = LandscapeChartViewController(
+        let landscapeVC = LandscapeChartVC(
             coin: coin,
             selectedRange: currentRange,
             selectedChartType: currentChartType,

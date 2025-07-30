@@ -8,7 +8,7 @@
 import UIKit
 import Combine
 
-final class LandscapeChartViewController: UIViewController {
+final class LandscapeChartVC: UIViewController {
     
     // MARK: - Properties
     

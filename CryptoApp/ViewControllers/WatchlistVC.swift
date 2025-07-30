@@ -18,7 +18,7 @@ final class WatchlistVC: UIViewController {
     
     private let refreshControl = UIRefreshControl()
     private var emptyStateView: UIView?
-    private var filterHeaderView: FilterHeaderView!                             // Added filter header
+    private var filterHeaderView: FilterHeaderView!
     private var sortHeaderView: SortHeaderView!
     
     // MARK: - Dependency Injection Initializer
@@ -48,13 +48,6 @@ final class WatchlistVC: UIViewController {
         configureDataSource()
         bindViewModel()
         setupEmptyState()
-        
-        #if DEBUG
-        // Show database contents on load
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.showDatabaseContents()
-        }
-        #endif
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -69,11 +62,6 @@ final class WatchlistVC: UIViewController {
         }
         
         AppLogger.ui("Entering Watchlist Tab")
-        
-        #if DEBUG
-        // Auto-show database contents immediately
-        showDatabaseContents()
-        #endif
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -85,9 +73,7 @@ final class WatchlistVC: UIViewController {
         // Cancel any in-flight API requests to save resources
         viewModel.cancelAllRequests()
         
-        #if DEBUG
-        print("📱 Leaving Watchlist Tab")
-        #endif
+        AppLogger.ui("Leaving Watchlist Tab")
     }
     
     deinit {
@@ -100,20 +86,20 @@ final class WatchlistVC: UIViewController {
     
     func preloadDataSilently() {
         // Preload data without showing loading state for seamless tab switching
-        AppLogger.performance("📱 WatchlistVC: Preloading data silently")
+        AppLogger.performance("WatchlistVC: Preloading data silently")
         viewModel.refreshWatchlistSilently()
     }
     
     func pausePeriodicUpdates() {
         // Pause periodic updates without calling full lifecycle (for seamless tab switching)
         viewModel.stopPeriodicUpdates()
-        AppLogger.performance("⏸️ WatchlistVC: Paused periodic updates for seamless tab switch")
+        AppLogger.performance("WatchlistVC: Paused periodic updates for seamless tab switch")
     }
     
     func resumePeriodicUpdates() {
         // Resume periodic updates without calling full lifecycle (for seamless tab switching)
         viewModel.startPeriodicUpdates()
-        AppLogger.performance("▶️ WatchlistVC: Resumed periodic updates for seamless tab switch")
+        AppLogger.performance("WatchlistVC: Resumed periodic updates for seamless tab switch")
     }
     
     // MARK: - UI Setup
@@ -140,21 +126,7 @@ final class WatchlistVC: UIViewController {
             action: #selector(clearAllTapped)
         )
         clearAllButton.tintColor = .systemRed
-        
-        // Add debug button in development
-        #if DEBUG
-        let debugButton = UIBarButtonItem(
-            title: "Debug DB",
-            style: .plain,
-            target: self,
-            action: #selector(debugDatabaseTapped)
-        )
-        debugButton.tintColor = .systemBlue
-        
-        navigationItem.rightBarButtonItems = [clearAllButton, debugButton]
-        #else
         navigationItem.rightBarButtonItem = clearAllButton
-        #endif
     }
     
     @objc private func clearAllTapped() {
@@ -171,167 +143,6 @@ final class WatchlistVC: UIViewController {
         
         present(alert, animated: true)
     }
-    
-    #if DEBUG
-    @objc private func debugDatabaseTapped() {
-        AppLogger.database("Debug button tapped - showing database info")
-        
-        let items = Dependencies.container.watchlistManager().watchlistItems
-        let tableData = items.map { 
-            ("\($0.symbol ?? "?") (\($0.name ?? "Unknown"))", "ID: \($0.id) | Rank: \($0.cmcRank)")
-        }
-        AppLogger.databaseTable("Manual Database Debug - \(items.count) items", items: tableData)
-        
-        let alert = UIAlertController(
-            title: "🗄️ Database Debug",
-            message: "Found \(items.count) watchlist items\n\nCheck console for detailed output",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Performance Test", style: .default) { [weak self] _ in
-            self?.performanceTestTapped()
-        })
-        
-        alert.addAction(UIAlertAction(title: "OK", style: .cancel))
-        present(alert, animated: true)
-    }
-    
-    private func showDatabaseContents() {
-        let items = Dependencies.container.watchlistManager().watchlistItems
-        let tableData = items.map { item in
-            let details = "ID: \(item.id) | Rank: \(item.cmcRank) | Added: \(item.dateAdded?.description.prefix(10) ?? "Unknown")"
-            return ("\(item.symbol ?? "?") (\(item.name ?? "Unknown"))", details)
-        }
-        AppLogger.databaseTable("Auto Database View - \(items.count) items", items: tableData)
-    }
-    
-    @objc private func performanceTestTapped() {
-        let alert = UIAlertController(
-            title: "🧪 Performance Testing",
-            message: "Test the optimized batch operations",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Batch Add Test (5 coins)", style: .default) { [weak self] _ in
-            self?.testBatchAdd()
-        })
-        
-        alert.addAction(UIAlertAction(title: "Batch Remove Test", style: .destructive) { [weak self] _ in
-            self?.testBatchRemove()
-        })
-        
-        alert.addAction(UIAlertAction(title: "Performance Comparison", style: .default) { [weak self] _ in
-            self?.showPerformanceComparison()
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
-    }
-    
-    private func testBatchAdd() {
-        // Create test coins for batch operation
-        let testCoins = [
-            Coin(id: 999991, name: "Test Coin 1", symbol: "TEST1", slug: nil, numMarketPairs: nil, dateAdded: nil, tags: nil, maxSupply: nil, circulatingSupply: nil, totalSupply: nil, infiniteSupply: nil, cmcRank: 1000, lastUpdated: nil, quote: nil),
-            Coin(id: 999992, name: "Test Coin 2", symbol: "TEST2", slug: nil, numMarketPairs: nil, dateAdded: nil, tags: nil, maxSupply: nil, circulatingSupply: nil, totalSupply: nil, infiniteSupply: nil, cmcRank: 1001, lastUpdated: nil, quote: nil),
-            Coin(id: 999993, name: "Test Coin 3", symbol: "TEST3", slug: nil, numMarketPairs: nil, dateAdded: nil, tags: nil, maxSupply: nil, circulatingSupply: nil, totalSupply: nil, infiniteSupply: nil, cmcRank: 1002, lastUpdated: nil, quote: nil),
-            Coin(id: 999994, name: "Test Coin 4", symbol: "TEST4", slug: nil, numMarketPairs: nil, dateAdded: nil, tags: nil, maxSupply: nil, circulatingSupply: nil, totalSupply: nil, infiniteSupply: nil, cmcRank: 1003, lastUpdated: nil, quote: nil),
-            Coin(id: 999995, name: "Test Coin 5", symbol: "TEST5", slug: nil, numMarketPairs: nil, dateAdded: nil, tags: nil, maxSupply: nil, circulatingSupply: nil, totalSupply: nil, infiniteSupply: nil, cmcRank: 1004, lastUpdated: nil, quote: nil)
-        ]
-        
-        print("\n🧪 ===== BATCH ADD PERFORMANCE TEST =====")
-        let startTime = CFAbsoluteTimeGetCurrent()
-        
-        Dependencies.container.watchlistManager().addMultipleToWatchlist(testCoins, logoURLs: [:])
-        
-        let endTime = CFAbsoluteTimeGetCurrent()
-        let duration = (endTime - startTime) * 1000
-        
-        print("⚡ Batch add completed in \(String(format: "%.2f", duration))ms")
-        print("📊 Performance: \(String(format: "%.2f", duration / Double(testCoins.count)))ms per coin")
-        print("🧪 =========================================\n")
-        
-        let alert = UIAlertController(
-            title: "🚀 Batch Add Complete",
-            message: "Added \(testCoins.count) coins in \(String(format: "%.2f", duration))ms\n\nThat's \(String(format: "%.2f", duration / Double(testCoins.count)))ms per coin!\n\nOptimization: 10-50x faster than individual operations",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Amazing!", style: .default))
-        present(alert, animated: true)
-    }
-    
-    private func testBatchRemove() {
-        let testCoinIds = [999991, 999992, 999993, 999994, 999995]
-        let existingIds = testCoinIds.filter { Dependencies.container.watchlistManager().isInWatchlist(coinId: $0) }
-        
-        guard !existingIds.isEmpty else {
-            let alert = UIAlertController(
-                title: "No Test Coins",
-                message: "Run 'Batch Add Test' first to create test coins",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
-            return
-        }
-        
-        print("\n🧪 ===== BATCH REMOVE PERFORMANCE TEST =====")
-        let startTime = CFAbsoluteTimeGetCurrent()
-        
-        Dependencies.container.watchlistManager().removeMultipleFromWatchlist(coinIds: existingIds)
-        
-        let endTime = CFAbsoluteTimeGetCurrent()
-        let duration = (endTime - startTime) * 1000
-        
-        print("⚡ Batch remove completed in \(String(format: "%.2f", duration))ms")
-        print("📊 Performance: \(String(format: "%.2f", duration / Double(existingIds.count)))ms per coin")
-        print("🧪 ==========================================\n")
-        
-        let alert = UIAlertController(
-            title: "🗑️ Batch Remove Complete",
-            message: "Removed \(existingIds.count) coins in \(String(format: "%.2f", duration))ms\n\nOptimized with atomic transactions and rollback support!",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Excellent!", style: .default))
-        present(alert, animated: true)
-    }
-    
-    private func showPerformanceComparison() {
-        let _ = viewModel.getPerformanceMetrics()
-        let managerMetrics = Dependencies.container.watchlistManager().getPerformanceMetrics()
-        
-        let message = """
-        🚀 OPTIMIZATION RESULTS
-        
-        ⚡ Before vs After:
-        • Database queries: 3 per operation → 0 (cached)
-        • Lookup time: O(n) → O(1)
-        • UI blocking: 50ms+ → <1ms
-        • Batch operations: N queries → 1 query
-        
-        📊 Current Performance:
-        • Cache hit rate: ~100%
-        • Operations completed: \(managerMetrics["operationCount"] ?? 0)
-        • Background processing: ✅
-        • Optimistic updates: ✅
-        
-        🏆 Performance Improvement:
-        10-50x faster operations!
-        """
-        
-        let alert = UIAlertController(
-            title: "📈 Performance Analysis",
-            message: message,
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "View Console Logs", style: .default) { _ in
-            Dependencies.container.watchlistManager().printDatabaseContents()
-        })
-        
-        alert.addAction(UIAlertAction(title: "Impressive!", style: .cancel))
-        present(alert, animated: true)
-    }
-    #endif
     
     private func setupFilterHeaderView() {
         filterHeaderView = FilterHeaderView(watchlistMode: true)  // Enable watchlist mode
@@ -639,6 +450,19 @@ final class WatchlistVC: UIViewController {
         sortHeaderView.updatePriceChangeColumnTitle(priceChangeTitle)
     }
     
+    // MARK: - Sort Header Sync Methods
+    
+    private func syncViewModelWithSortHeader() {
+        // Ensure ViewModel starts with the same state as SortHeaderView
+        let headerColumn = sortHeaderView.currentSortColumn
+        let headerOrder = sortHeaderView.currentSortOrder
+        
+        if viewModel.getCurrentSortColumn() != headerColumn || viewModel.getCurrentSortOrder() != headerOrder {
+            viewModel.updateSorting(column: headerColumn, order: headerOrder)
+            AppLogger.ui("Synced ViewModel with SortHeader: \(headerColumn) \(headerOrder == .descending ? "DESC" : "ASC")")
+        }
+    }
+    
     // MARK: - Utility Methods
     
     private func showAlert(title: String, message: String) {
@@ -653,7 +477,7 @@ final class WatchlistVC: UIViewController {
 extension WatchlistVC: UICollectionViewDelegate {
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-                collectionView.deselectItem(at: indexPath, animated: true)
+        collectionView.deselectItem(at: indexPath, animated: true)
         
         let selectedCoin = viewModel.currentWatchlistCoins[indexPath.item]
         let detailsVC = CoinDetailsVC(coin: selectedCoin)
@@ -671,7 +495,7 @@ extension WatchlistVC: UICollectionViewDelegate {
                 image: UIImage(systemName: "trash"),
                 attributes: .destructive
             ) { [weak self] _ in
-                                    self?.remove(coin, at: indexPath)
+                self?.remove(coin, at: indexPath)
             }
             
             let detailsAction = UIAction(
@@ -761,43 +585,13 @@ extension WatchlistVC: UICollectionViewDelegate {
             }
         }
     }
-    
-    // MARK: - Sort Header Sync Methods
-    
-    private func syncViewModelWithSortHeader() {
-        // Ensure ViewModel starts with the same state as SortHeaderView
-        let headerColumn = sortHeaderView.currentSortColumn
-        let headerOrder = sortHeaderView.currentSortOrder
-        
-        if viewModel.getCurrentSortColumn() != headerColumn || viewModel.getCurrentSortOrder() != headerOrder {
-            viewModel.updateSorting(column: headerColumn, order: headerOrder)
-            #if DEBUG
-            print("🔧 Synced ViewModel with SortHeader: \(headerColumn) \(headerOrder == .descending ? "DESC" : "ASC")")
-            #endif
-        }
-    }
-    
-    private func syncSortHeaderWithViewModel() {
-        // Only sync if the states are different to avoid unnecessary updates
-        if sortHeaderView.currentSortColumn != viewModel.getCurrentSortColumn() ||
-           sortHeaderView.currentSortOrder != viewModel.getCurrentSortOrder() {
-            sortHeaderView.currentSortColumn = viewModel.getCurrentSortColumn()
-            sortHeaderView.currentSortOrder = viewModel.getCurrentSortOrder()
-            sortHeaderView.updateSortIndicators()
-            #if DEBUG
-            print("🔄 Synced sort header UI: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
-            #endif
-        }
-    }
 }
 
 // MARK: - SortHeaderViewDelegate
 
 extension WatchlistVC: SortHeaderViewDelegate {
     func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, order: CryptoSortOrder) {
-        #if DEBUG
-        print("🔄 Watchlist sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
-        #endif
+        AppLogger.ui("Watchlist sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
         viewModel.updateSorting(column: column, order: order)
     }
 }
@@ -812,8 +606,7 @@ extension WatchlistVC: FilterHeaderViewDelegate {
     }
     
     func filterHeaderView(_ headerView: FilterHeaderView, didTapTopCoinsButton button: FilterButton) {
-        // Not needed for watchlist - we only show the price change button
-        // But we need to implement this for protocol conformance
+        // Not used in watchlist mode
     }
     
     func filterHeaderView(_ headerView: FilterHeaderView, didTapAddCoinsButton button: UIButton) {
@@ -841,9 +634,7 @@ extension WatchlistVC: FilterHeaderViewDelegate {
 extension WatchlistVC: UIAdaptivePresentationControllerDelegate {
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         // Refresh watchlist when AddCoinsVC is dismissed
-        #if DEBUG
-        print("📱 AddCoinsVC dismissed - refreshing watchlist")
-        #endif
+        AppLogger.ui("AddCoinsVC dismissed - refreshing watchlist")
         
         // Force refresh the watchlist to pick up newly added coins
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -856,7 +647,7 @@ extension WatchlistVC: UIAdaptivePresentationControllerDelegate {
 
 extension WatchlistVC: FilterModalVCDelegate {
     func filterModalVC(_ modalVC: FilterModalVC, didSelectPriceChangeFilter filter: PriceChangeFilter) {
-        print("🎯 Watchlist Filter Selected: \(filter.displayName)")
+        AppLogger.ui("Watchlist Filter Selected: \(filter.displayName)")
         
         // Apply the filter - ViewModel will handle loading state
         viewModel.updatePriceChangeFilter(filter)
@@ -868,12 +659,11 @@ extension WatchlistVC: FilterModalVCDelegate {
     }
     
     func filterModalVC(_ modalVC: FilterModalVC, didSelectTopCoinsFilter filter: TopCoinsFilter) {
-        // Not used in watchlist, but needed for protocol conformance
+        // Not used in watchlist mode
     }
     
     func filterModalVCDidCancel(_ modalVC: FilterModalVC) {
-        // Handle cancellation if needed
-        print("Filter modal was cancelled")
+        AppLogger.ui("Filter modal was cancelled")
     }
 }
 
