@@ -502,27 +502,27 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     // MARK: - Pull to Refresh
 
     @objc func handleRefresh() {
-        print("\n🔄 Pull-to-Refresh | User initiated refresh")
+        AppLogger.ui("Pull-to-Refresh | User initiated refresh")
         
         // Prevent multiple concurrent refreshes
         guard !isRefreshing else {
-            print("🚫 Pull-to-Refresh | Already refreshing - cancelled")
+            AppLogger.ui("Pull-to-Refresh | Already refreshing - cancelled")
             refreshControl.endRefreshing()
             return
         }
         
         isRefreshing = true
-        print("✅ Pull-to-Refresh | Starting data fetch...")
+        AppLogger.ui("Pull-to-Refresh | Starting data fetch...")
         
         // Debug: Print sort state before refresh
-        print("🔍 Pull-to-refresh - Before fetch:")
-        print("  UI: \(sortHeaderView.currentSortColumn) \(sortHeaderView.currentSortOrder == .descending ? "DESC" : "ASC")")
-        print("  VM: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
+        AppLogger.ui("Pull-to-refresh - Before fetch:")
+        AppLogger.ui("  UI: \(sortHeaderView.currentSortColumn) \(sortHeaderView.currentSortOrder == .descending ? "DESC" : "ASC")")
+        AppLogger.ui("  VM: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
         
         // Use SharedCoinDataManager for pull-to-refresh instead of individual ViewModel calls
         Dependencies.container.sharedCoinDataManager().forceUpdate()
         
-        print("🏁 Pull-to-Refresh | Data fetch completed")
+        AppLogger.ui("Pull-to-Refresh | Data fetch completed")
         
         self.isRefreshing = false
         self.refreshControl.endRefreshing()
@@ -530,7 +530,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // Sync SortHeaderView UI with ViewModel's current sort state
         self.syncSortHeaderWithViewModel()
         
-        print("🎯 Pull-to-Refresh | Spinner stopped, refresh complete")
+        AppLogger.ui("Pull-to-Refresh | Spinner stopped, refresh complete")
     }
     
     // MARK: - Diffable Data Source Setup
@@ -626,11 +626,11 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 if isLoading {
                     // Show LoadingView in the collection view area
                     LoadingView.show(in: self.collectionView)
-                    print("🔄 Loading | Showing spinner in collection view")
+                    AppLogger.ui("Loading | Showing spinner in collection view")
                 } else {
                     // Hide LoadingView from collection view
                     LoadingView.dismiss(from: self.collectionView)
-                    print("✅ Loading | Hiding spinner from collection view")
+                    AppLogger.ui("Loading | Hiding spinner from collection view")
                 }
             }
             .store(in: &cancellables)
@@ -787,7 +787,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         //   Trigger price update for visible coin IDs
         // - This calls a ViewModel method that fetches prices only for the listed coin IDs
         // - Once the update completes, mark refresh as finished
-        print("\n🚀 Auto-Refresh | Starting price update cycle...")
+        AppLogger.performance("Auto-Refresh | Starting price update cycle...")
         viewModel.fetchPriceUpdatesForVisibleCoins(visibleCoinIds) { [weak self] in
             self?.isRefreshing = false
         }
@@ -827,8 +827,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         }
         
         if updatedCellsCount > 0 {
-            print("🎨 UI Refresh | Updated \(updatedCellsCount) visible cells")
-            print("═════════════════════════════════════════")
+            AppLogger.performance("UI Refresh | Updated \(updatedCellsCount) visible cells")
         }
         
         // Clear the updated coin IDs after processing
@@ -874,7 +873,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             sortHeaderView.currentSortColumn = viewModel.getCurrentSortColumn()
             sortHeaderView.currentSortOrder = viewModel.getCurrentSortOrder()
             sortHeaderView.updateSortIndicators()
-            print("🔄 Synced sort header UI: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
+            AppLogger.ui("Synced sort header UI: \(viewModel.getCurrentSortColumn()) \(viewModel.getCurrentSortOrder() == .descending ? "DESC" : "ASC")")
         }
     }
     
@@ -885,7 +884,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         
         if viewModel.getCurrentSortColumn() != headerColumn || viewModel.getCurrentSortOrder() != headerOrder {
             viewModel.updateSorting(column: headerColumn, order: headerOrder)
-            print("🔧 Synced ViewModel with SortHeader: \(headerColumn) \(headerOrder == .descending ? "DESC" : "ASC")")
+            AppLogger.ui("Synced ViewModel with SortHeader: \(headerColumn) \(headerOrder == .descending ? "DESC" : "ASC")")
         }
     }
 
@@ -977,7 +976,7 @@ extension CoinListVC: UICollectionViewDelegate {
         // If user has scrolled past 75% of the total content height, trigger pagination.
         // Balanced threshold for good UX while preventing excessive API calls
         if scrollProgress > 0.75 {
-            print("📜 Scroll | Triggered pagination at \(String(format: "%.1f", scrollProgress * 100))%")
+            AppLogger.performance("Scroll | Triggered pagination at \(String(format: "%.1f", scrollProgress * 100))%")
             viewModel.loadMoreCoins()
         }
     }
@@ -987,7 +986,7 @@ extension CoinListVC: UICollectionViewDelegate {
 
 extension CoinListVC: SortHeaderViewDelegate {
     func sortHeaderView(_ headerView: SortHeaderView, didSelect column: CryptoSortColumn, order: CryptoSortOrder) {
-        print("🔄 Sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
+        AppLogger.ui("Sort: Column \(column) | Order: \(order == .descending ? "Descending" : "Ascending")")
         viewModel.updateSorting(column: column, order: order)
     }
 }
@@ -1017,7 +1016,7 @@ extension CoinListVC: FilterHeaderViewDelegate {
 
 extension CoinListVC: FilterModalVCDelegate {
     func filterModalVC(_ modalVC: FilterModalVC, didSelectPriceChangeFilter filter: PriceChangeFilter) {
-        print("🎯 Filter Selected: \(filter.displayName)")
+        AppLogger.ui("Filter Selected: \(filter.displayName)")
         
         // Apply the filter - ViewModel will handle loading state and LoadingView will show automatically
         viewModel.updatePriceChangeFilter(filter)
@@ -1029,7 +1028,7 @@ extension CoinListVC: FilterModalVCDelegate {
     }
     
     func filterModalVC(_ modalVC: FilterModalVC, didSelectTopCoinsFilter filter: TopCoinsFilter) {
-        print("🎯 Filter Selected: \(filter.displayName)")
+        AppLogger.ui("Filter Selected: \(filter.displayName)")
         
         // Apply the filter - ViewModel will handle loading state and LoadingView will show automatically
         viewModel.updateTopCoinsFilter(filter)
@@ -1042,7 +1041,7 @@ extension CoinListVC: FilterModalVCDelegate {
     
     func filterModalVCDidCancel(_ modalVC: FilterModalVC) {
         // Handle cancellation if needed
-        print("Filter modal was cancelled")
+        AppLogger.ui("Filter modal was cancelled")
     }
 }
 
@@ -1065,24 +1064,10 @@ extension CoinListVC: SegmentControlDelegate {
     #if DEBUG
     private func showWatchlistDatabaseContents() {
         let items = Dependencies.container.watchlistManager().watchlistItems
-        print("\n🗄️ === WATCHLIST DATABASE VIEW ===")
-        print("📊 Total watchlist items: \(items.count)")
-        
-        if items.isEmpty {
-            print("📝 Watchlist database is empty")
-        } else {
-            for (index, item) in items.enumerated() {
-                print("\n📝 Database Item \(index + 1):")
-                print("   • ID: \(item.id)")
-                print("   • Symbol: \(item.symbol ?? "nil")")
-                print("   • Name: \(item.name ?? "nil")")
-                print("   • CMC Rank: \(item.cmcRank)")
-                print("   • Date Added: \(item.dateAdded?.description ?? "nil")")
-                print("   • Logo URL: \(item.logoURL?.prefix(50) ?? "none")...")
-                print("   • Slug: \(item.slug ?? "none")")
-            }
+        let tableData = items.map { item in
+            ("\(item.symbol ?? "?") (\(item.name ?? "Unknown"))", "ID: \(item.id) | Rank: \(item.cmcRank)")
         }
-        print("🗄️ ============================\n")
+        AppLogger.databaseTable("Watchlist Database Contents - \(items.count) items", items: tableData)
     }
     #endif
 

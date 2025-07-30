@@ -200,7 +200,7 @@ final class CoinListVM: ObservableObject {
         if let cachedCoins = persistenceService.loadCoinList(), 
            cachedCoins.count < 100 { // Less than 100 coins = insufficient data
             persistenceService.clearCache()
-            print("🗑️ Cleared insufficient cache (\(cachedCoins.count) coins) to force fresh data fetch")
+            AppLogger.cache("Cleared insufficient cache (\(cachedCoins.count) coins) to force fresh data fetch")
         }
         
         // 🌐 SUBSCRIBE TO SHARED DATA: Listen to shared coin data for consistency
@@ -228,7 +228,7 @@ final class CoinListVM: ObservableObject {
         
         let timestamp = Date().timeIntervalSince1970
         let btcPrice = allCoins.first(where: { $0.symbol == "BTC" })?.quote?["USD"]?.price ?? 0
-        print("🌐 CoinListVM: Received shared data update with \(allCoins.count) coins at \(timestamp) | BTC: $\(String(format: "%.2f", btcPrice))")
+        AppLogger.data("CoinListVM: Received shared data update with \(allCoins.count) coins at \(timestamp) | BTC: $\(String(format: "%.2f", btcPrice))")
         
         // Apply current filters and sorting
         let filteredCoins = applyCurrentFilters(to: allCoins)
@@ -252,23 +252,23 @@ final class CoinListVM: ObservableObject {
         // 🎯 TRIGGER ANIMATIONS: If prices changed, trigger UI animations
         if !changedCoinIds.isEmpty {
             updatedCoinIdsSubject.send(changedCoinIds)
-            print("💰 CoinListVM: \(changedCoinIds.count) coins had price changes - triggering UI animations")
+            AppLogger.price("CoinListVM: \(changedCoinIds.count) coins had price changes - triggering UI animations")
             
             // Log the changed prices
             for coin in initialCoins.filter({ changedCoinIds.contains($0.id) }) {
                 if let price = coin.quote?["USD"]?.price {
-                    print("📈 \(coin.symbol): Updated to $\(String(format: "%.2f", price))")
+                    AppLogger.price("\(coin.symbol): Updated to $\(String(format: "%.2f", price))")
                 }
             }
         } else {
-            print("💰 CoinListVM: No price changes detected in displayed coins")
+            AppLogger.price("CoinListVM: No price changes detected in displayed coins")
         }
         
         // 🖼️ FETCH LOGOS: Start downloading coin images for visible coins
         let displayedIds = initialCoins.map { $0.id }
         fetchCoinLogosIfNeeded(forIDs: displayedIds)
         
-        print("📱 CoinListVM: Updated UI with \(initialCoins.count) coins from shared data")
+        AppLogger.ui("CoinListVM: Updated UI with \(initialCoins.count) coins from shared data")
     }
     
     /// Find coins that have price changes between current and updated arrays
@@ -330,7 +330,7 @@ final class CoinListVM: ObservableObject {
         let oldState = currentFilterState
         filterStateSubject.send(newState)
         
-        print("🎯 FILTER CHANGE: \(oldState.topCoinsFilter.displayName) + \(oldState.priceChangeFilter.displayName) → \(newState.topCoinsFilter.displayName) + \(newState.priceChangeFilter.displayName)")
+        AppLogger.ui("FILTER CHANGE: \(oldState.topCoinsFilter.displayName) + \(oldState.priceChangeFilter.displayName) → \(newState.topCoinsFilter.displayName) + \(newState.priceChangeFilter.displayName)")
         
         // Reset optimization state for fresh data
         resetOptimizationState()
@@ -358,7 +358,7 @@ final class CoinListVM: ObservableObject {
         currentSortColumn = column
         currentSortOrder = order
         
-        print("🔄 Applying sort: \(columnName(for: column)) - \(order == .descending ? "Descending" : "Ascending")")
+        AppLogger.ui("Applying sort: \(columnName(for: column)) - \(order == .descending ? "Descending" : "Ascending")")
         
         // Apply sorting to current data instantly (no API call needed)
         applySortingToCurrentData()
@@ -401,21 +401,21 @@ final class CoinListVM: ObservableObject {
      * It maintains pagination by showing only the first page after sorting.
      */
     private func applySortingToCurrentData() {
-        print("🔧 applySortingToCurrentData | fullFilteredCoins: \(fullFilteredCoins.count), coins: \(currentCoins.count)")
+        AppLogger.performance("applySortingToCurrentData | fullFilteredCoins: \(fullFilteredCoins.count), coins: \(currentCoins.count)")
         
         // Fallback: If we have no full dataset, use currently displayed coins
         if fullFilteredCoins.isEmpty && !currentCoins.isEmpty {
-            print("🔧 Using displayed coins for sorting (\(currentCoins.count) coins)")
+            AppLogger.performance("Using displayed coins for sorting (\(currentCoins.count) coins)")
             fullFilteredCoins = currentCoins
         }
         
         // Guard: Can't sort empty data
         guard !fullFilteredCoins.isEmpty else {
-            print("⚠️ No data to sort")
+            AppLogger.performance("No data to sort", level: .warning)
             return
         }
         
-        print("🔧 Sorting \(fullFilteredCoins.count) coins by \(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")")
+        AppLogger.performance("Sorting \(fullFilteredCoins.count) coins by \(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")")
         
         // Sort the complete dataset
         fullFilteredCoins = sortCoins(fullFilteredCoins)
@@ -433,8 +433,8 @@ final class CoinListVM: ObservableObject {
         let displayedIds = sortedDisplayCoins.map { $0.id }
         fetchCoinLogosIfNeeded(forIDs: displayedIds)
         
-        print("✅ Sort applied: Displaying \(sortedDisplayCoins.count) coins of \(fullFilteredCoins.count) total")
-        print("📖 Pagination reset: canLoadMore = \(canLoadMore), currentPage = \(currentPage)")
+        AppLogger.success("Sort applied: Displaying \(sortedDisplayCoins.count) coins of \(fullFilteredCoins.count) total")
+        AppLogger.performance("Pagination reset: canLoadMore = \(canLoadMore), currentPage = \(currentPage)")
     }
     
     /**
@@ -453,12 +453,12 @@ final class CoinListVM: ObservableObject {
         let oldState = currentFilterState
         filterStateSubject.send(newState)  //  This triggers UI update via AnyPublisher
         
-        print("🎯 FILTER CHANGE: \(oldState.topCoinsFilter.displayName) + \(oldState.priceChangeFilter.displayName) → \(newState.topCoinsFilter.displayName) + \(newState.priceChangeFilter.displayName)")
+        AppLogger.ui("FILTER CHANGE: \(oldState.topCoinsFilter.displayName) + \(oldState.priceChangeFilter.displayName) → \(newState.topCoinsFilter.displayName) + \(newState.priceChangeFilter.displayName)")
         
         // Cache invalidation: Clear cache when top coins filter changes
         // (Different coin count requires fresh API call)
         if oldState.topCoinsFilter != newState.topCoinsFilter {
-            print("🗑️ Clearing cache due to Top Coins filter change")
+            AppLogger.cache("Clearing cache due to Top Coins filter change")
             persistenceService.clearCache()
         }
         
@@ -471,7 +471,7 @@ final class CoinListVM: ObservableObject {
         // Clear optimization state to prevent stale requests
         resetOptimizationState()
         
-        print("🔄 Fetching fresh data with new filters...")
+        AppLogger.data("Fetching fresh data with new filters...")
         
         // HIGH PRIORITY: User-initiated filter changes get immediate processing
         fetchCoins(convert: "USD", priority: .high)
@@ -505,13 +505,13 @@ final class CoinListVM: ObservableObject {
      * - Background thread processing with main thread UI updates
      */
     func fetchCoins(convert: String = "USD", priority: RequestPriority = .normal, onFinish: (() -> Void)? = nil) {
-        print("🔧 VM.fetchCoins | Called with completion: \(onFinish != nil)")
-        print("🔧 VM.fetchCoins | Current sort: \(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")")
+        AppLogger.performance("VM.fetchCoins | Called with completion: \(onFinish != nil)")
+        AppLogger.performance("VM.fetchCoins | Current sort: \(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")")
         
         //  RATE LIMITING: Prevent rapid successive calls
         if let lastFetch = lastFetchTime,
             Date().timeIntervalSince(lastFetch) < minimumFetchInterval {
-            print("⏰ VM.fetchCoins | Skipped due to recent fetch")
+            AppLogger.performance("VM.fetchCoins | Skipped due to recent fetch")
             onFinish?()
             return
         }
@@ -523,7 +523,7 @@ final class CoinListVM: ObservableObject {
             let offlineData = persistenceService.getOfflineData(), // Offline support with cached data
            currentFilterState == .defaultState,
            isDefaultSort { // Only use cache with default sort to preserve custom sort views
-            print("💾 VM.fetchCoins | Using cached offline data (default filters + default sort)")
+            AppLogger.cache("VM.fetchCoins | Using cached offline data (default filters + default sort)")
             currentPage = 1
             
             // Apply current sorting to cached data BEFORE setting coins (prevents UI flash)
@@ -533,14 +533,14 @@ final class CoinListVM: ObservableObject {
             let cachedIds = sortedCachedCoins.map { $0.id }
             let uniqueCachedIds = Set(cachedIds)
             if cachedIds.count != uniqueCachedIds.count {
-                print("❌ WARNING: Cached data contains duplicate coin IDs!")
-                print("   Total: \(cachedIds.count), Unique: \(uniqueCachedIds.count)")
+                AppLogger.data("WARNING: Cached data contains duplicate coin IDs!", level: .warning)
+                AppLogger.data("   Total: \(cachedIds.count), Unique: \(uniqueCachedIds.count)")
                 
                 // Deduplicate cached data
                 var seenIds = Set<Int>()
                 let deduplicatedCachedCoins = sortedCachedCoins.filter { coin in
                     if seenIds.contains(coin.id) {
-                        print("   Removing cached duplicate: \(coin.name) (ID: \(coin.id))")
+                        AppLogger.data("   Removing cached duplicate: \(coin.name) (ID: \(coin.id))")
                         return false
                     } else {
                         seenIds.insert(coin.id)
@@ -559,7 +559,7 @@ final class CoinListVM: ObservableObject {
                 // Enable pagination if we have more data
                 canLoadMore = deduplicatedCachedCoins.count > pageSize
                 
-                print("📱 UI: Displaying \(initialCoins.count) coins (page 1 of \(deduplicatedCachedCoins.count) total from cache)")
+                AppLogger.ui("UI: Displaying \(initialCoins.count) coins (page 1 of \(deduplicatedCachedCoins.count) total from cache)")
             } else {
                 // PAGINATION: Set fullFilteredCoins for proper pagination
                 fullFilteredCoins = sortedCachedCoins
@@ -572,7 +572,7 @@ final class CoinListVM: ObservableObject {
                 // Enable pagination if we have more data
                 canLoadMore = sortedCachedCoins.count > pageSize
                 
-                print("📱 UI: Displaying \(initialCoins.count) coins (page 1 of \(sortedCachedCoins.count) total from cache)")
+                AppLogger.ui("UI: Displaying \(initialCoins.count) coins (page 1 of \(sortedCachedCoins.count) total from cache)")
             }
             coinLogosSubject.send(offlineData.logos)
             
@@ -586,13 +586,13 @@ final class CoinListVM: ObservableObject {
         
         // FRESH DATA PATH: For filters, expired cache, or custom sort
         if currentFilterState != .defaultState {
-            print("🎯 VM.fetchCoins | Filters applied (\(currentFilterState.topCoinsFilter.displayName) + \(currentFilterState.priceChangeFilter.displayName)) - fetching fresh data")
+            AppLogger.data("VM.fetchCoins | Filters applied (\(currentFilterState.topCoinsFilter.displayName) + \(currentFilterState.priceChangeFilter.displayName)) - fetching fresh data")
         } else if !isDefaultSort {
-            print("🔄 VM.fetchCoins | Custom sort detected (\(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")) - fetching fresh data to preserve sort")
+            AppLogger.data("VM.fetchCoins | Custom sort detected (\(columnName(for: currentSortColumn)) \(currentSortOrder == .descending ? "DESC" : "ASC")) - fetching fresh data to preserve sort")
         }
         
         // RESET STATE FOR FRESH FETCH
-        print("\n🌟 Initial Load | Fetching coin data...")
+        AppLogger.data("Initial Load | Fetching coin data...")
         currentPage = 1
         canLoadMore = true
         coinsSubject.send([])  // 🎯 Clear UI (triggers loading spinner via AnyPublisher)
@@ -614,8 +614,8 @@ final class CoinListVM: ObservableObject {
         let bufferSize = min(10, max(5, topCoinsLimit / 20)) // 5-10 extra coins as safety buffer
         let fetchLimit = topCoinsLimit + bufferSize
         
-        print("🎯 Filter: \(filterDescription)")
-        print("🔄 Backend: Fetching top \(fetchLimit) coins (target: \(topCoinsLimit) + \(bufferSize) buffer) by market cap...")
+        AppLogger.ui("Filter: \(filterDescription)")
+        AppLogger.network("Backend: Fetching top \(fetchLimit) coins (target: \(topCoinsLimit) + \(bufferSize) buffer) by market cap...")
         
         // API CALL WITH REACTIVE PROCESSING PIPELINE
         coinManager.getTopCoins(
@@ -640,7 +640,7 @@ final class CoinListVM: ObservableObject {
             
             #if DEBUG
             if finalCoins.count > 0 {
-                print("✅ Fetched \(finalCoins.count) top coins (ranks 1-\(finalCoins.last?.cmcRank ?? 0))")
+                AppLogger.success("Fetched \(finalCoins.count) top coins (ranks 1-\(finalCoins.last?.cmcRank ?? 0))")
             }
             #endif
             
@@ -654,7 +654,7 @@ final class CoinListVM: ObservableObject {
             // COMPLETION HANDLER: Handle success/failure
             self?.isLoadingSubject.send(false)  // 🎯 Hide loading spinner
             if case let .failure(error) = completion {
-                print("❌ VM.fetchCoins | Error: \(error.localizedDescription)")
+                AppLogger.error("VM.fetchCoins | Error", error: error)
                 self?.errorMessageSubject.send(ErrorMessageProvider.shared.getCoinListErrorMessage(for: error))
                 self?.canLoadMore = false
                 
@@ -703,7 +703,7 @@ final class CoinListVM: ObservableObject {
                         // Enable pagination if we have more data
                         self?.canLoadMore = sortedFallbackCoins.count > pageSize
                         
-                        print("📱 UI: Displaying \(initialFallbackCoins.count) fallback coins (page 1 of \(sortedFallbackCoins.count) total)")
+                        AppLogger.ui("UI: Displaying \(initialFallbackCoins.count) fallback coins (page 1 of \(sortedFallbackCoins.count) total)")
                     }
                     self?.coinLogosSubject.send(offlineData.logos)
                     self?.errorMessageSubject.send("Using offline data due to network error")
@@ -713,7 +713,7 @@ final class CoinListVM: ObservableObject {
                     self?.fetchCoinLogosIfNeeded(forIDs: displayedIds)
                 }
             }
-            print("🔄 VM.fetchCoins | Calling completion handler")
+            AppLogger.performance("VM.fetchCoins | Calling completion handler")
             onFinish?()
         } receiveValue: { [weak self] filteredAndSortedCoins in
             // Process the successful data
@@ -757,11 +757,11 @@ final class CoinListVM: ObservableObject {
             // 💾 OFFLINE STORAGE: Save FULL dataset for offline use (only default filters to avoid stale data)
             if self.currentFilterState == .defaultState {
                 self.persistenceService.saveCoinList(filteredAndSortedCoins)  // Save FULL dataset, not just first page
-                print("💾 Saved \(filteredAndSortedCoins.count) coins to cache (full dataset)")
+                AppLogger.cache("Saved \(filteredAndSortedCoins.count) coins to cache (full dataset)")
                 
                 // 📢 NOTIFY SEARCH: Tell SearchVM that fresh data is available
                 NotificationCenter.default.post(name: Notification.Name("coinListCacheUpdated"), object: nil)
-                print("📢 Posted cache update notification for SearchVM")
+                AppLogger.cache("Posted cache update notification for SearchVM")
             }
         }
         .store(in: &cancellables)  //  Store subscription for memory management
@@ -877,7 +877,7 @@ final class CoinListVM: ObservableObject {
     func loadMoreCoins(convert: String = "USD") {
         // GUARD CONDITIONS: Prevent invalid or duplicate pagination calls + race conditions
         guard canLoadMore && !isLoadingMoreSubject.value && !currentIsLoading && !isUpdatingPrices else { 
-            print("🚫 Pagination | Blocked | CanLoad: \(canLoadMore) | Loading: \(currentIsLoading) | LoadingMore: \(isLoadingMoreSubject.value) | UpdatingPrices: \(isUpdatingPrices)")
+            AppLogger.performance("Pagination | Blocked | CanLoad: \(canLoadMore) | Loading: \(currentIsLoading) | LoadingMore: \(isLoadingMoreSubject.value) | UpdatingPrices: \(isUpdatingPrices)")
             return 
         }
 
@@ -887,7 +887,7 @@ final class CoinListVM: ObservableObject {
         
         if currentCount >= totalAvailable {
             canLoadMore = false
-            print("🛑 Pagination | All coins loaded | \(currentCount)/\(totalAvailable)")
+            AppLogger.performance("Pagination | All coins loaded | \(currentCount)/\(totalAvailable)")
             return
         }
 
@@ -896,7 +896,7 @@ final class CoinListVM: ObservableObject {
         isLoadingMoreSubject.send(true)  // Show pagination loading indicator
         errorMessageSubject.send(nil)
         
-        print("📖 Pagination | Loading page \(currentPage) | Current: \(currentCoins.count) coins")
+        AppLogger.performance("Pagination | Loading page \(currentPage) | Current: \(currentCoins.count) coins")
 
         // CALCULATE NEW SLICE: Get next batch of coins from cached data
         let startIndex = currentCoins.count
@@ -906,7 +906,7 @@ final class CoinListVM: ObservableObject {
             // 🛡️ EDGE CASE: No more items available
             isLoadingMoreSubject.send(false)
             canLoadMore = false
-            print("🛑 Pagination | No more items available")
+            AppLogger.performance("Pagination | No more items available")
             return
         }
         
@@ -997,7 +997,7 @@ final class CoinListVM: ObservableObject {
      */
     func fetchPriceUpdates(completion: @escaping () -> Void) {
         guard !currentIsLoading && !isLoadingMoreSubject.value && !isUpdatingPrices else {
-            print("🚫 Price updates blocked - loading/updating in progress")
+            AppLogger.performance("Price updates blocked - loading/updating in progress")
             completion()
             return
         }
@@ -1121,7 +1121,7 @@ final class CoinListVM: ObservableObject {
     func fetchPriceUpdatesForVisibleCoins(_ visibleIds: [Int], completion: @escaping () -> Void) {
         // RESPECT LOADING STATES + PREVENT RACE CONDITIONS
         guard !currentIsLoading && !isLoadingMoreSubject.value && !isUpdatingPrices else {
-            print("🚫 Visible price updates blocked - operations in progress")
+            AppLogger.performance("Visible price updates blocked - operations in progress")
             completion()
             return
         }
@@ -1209,7 +1209,7 @@ final class CoinListVM: ObservableObject {
                     #endif
                 } else {
                     #if DEBUG
-                    print("📱 No changes detected (visible coins)")
+                    AppLogger.performance("No changes detected (visible coins)")
                     #endif
                 }
                 
@@ -1242,7 +1242,7 @@ final class CoinListVM: ObservableObject {
      * - UI updates on deallocated view controllers
      */
     func cancelAllRequests() {
-        print("🛑 Cancelling all ongoing API calls for coin list")
+        AppLogger.performance("Cancelling all ongoing API calls for coin list")
         cancellables.removeAll()  // Cancel all Combine subscriptions
         isLoadingSubject.send(false)
         isLoadingMoreSubject.send(false)
@@ -1255,7 +1255,7 @@ final class CoinListVM: ObservableObject {
      * This is a safety net for memory management.
      */
     deinit {
-        print("🧹 CoinListVM deinit - cleaning up subscriptions")
+        AppLogger.ui("CoinListVM deinit - cleaning up subscriptions")
         cancellables.removeAll()
     }
 }

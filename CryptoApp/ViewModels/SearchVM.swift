@@ -156,7 +156,7 @@ final class SearchVM: ObservableObject {
         // Reset loading state
         isLoadingSubject.send(false)
         
-        print("🛑 SearchVM: Cancelled API requests (keeping search functionality intact)")
+        AppLogger.performance("SearchVM: Cancelled API requests (keeping search functionality intact)")
     }
     
     // MARK: - Init
@@ -190,7 +190,7 @@ final class SearchVM: ObservableObject {
     private func setupCacheUpdateListener() {
         NotificationCenter.default.publisher(for: .coinListCacheUpdated)
             .sink { [weak self] _ in
-                print("🔍 Search: Received cache update notification")
+                AppLogger.search("Search: Received cache update notification")
                 self?.refreshSearchData()
             }
             .store(in: &cancellables)
@@ -212,17 +212,17 @@ final class SearchVM: ObservableObject {
                 // Only update if we have search results to refresh
                 guard !self.currentSearchResults.isEmpty || !self.currentPopularCoins.isEmpty else { return }
                 
-                print("🔍 Search: Received fresh coin data from SharedCoinDataManager - updating search results")
+                AppLogger.search("Search: Received fresh coin data from SharedCoinDataManager - updating search results")
                 
                 // Re-perform current search to merge fresh prices
                 self.performSearch(for: self.currentSearchText)
                 
                 // For popular coins: Only refresh if cache is invalid, otherwise let cache handle it
                 if !self.isPopularCoinsCacheValid {
-                    print("💰 Popular Coins: Cache expired - refreshing with SharedCoinDataManager data")
+                    AppLogger.cache("Popular Coins: Cache expired - refreshing with SharedCoinDataManager data")
                     self.fetchFreshPopularCoins(for: self.currentPopularCoinsState.selectedFilter)
                 } else {
-                    print("🎯 Popular Coins: Cache still valid - skipping refresh from SharedCoinDataManager")
+                    AppLogger.cache("Popular Coins: Cache still valid - skipping refresh from SharedCoinDataManager")
                 }
             }
             .store(in: &cancellables)
@@ -259,7 +259,7 @@ final class SearchVM: ObservableObject {
     private func loadInitialData() {
         // Only use cached data for search functionality - no background fetching to avoid pagination conflicts
         if let cachedCoins = persistenceService.loadCoinList() {
-            print("🔍 Search: Loaded \(cachedCoins.count) coins from cache for search")
+            AppLogger.search("Search: Loaded \(cachedCoins.count) coins from cache for search")
             self.allCoins = cachedCoins
             
             // Load cached logos
@@ -267,7 +267,7 @@ final class SearchVM: ObservableObject {
                 coinLogosSubject.send(cachedLogos)
             }
         } else {
-            print("🔍 Search: No cached coins available - search will be empty until main list loads data")
+            AppLogger.search("Search: No cached coins available - search will be empty until main list loads data", level: .warning)
             self.allCoins = []
         }
         
@@ -308,7 +308,7 @@ final class SearchVM: ObservableObject {
             return
         }
         
-        print("🔍 Search: Searching for '\(trimmedText)' in \(allCoins.count) cached coins")
+        AppLogger.search("Search: Searching for '\(trimmedText)' in \(allCoins.count) cached coins")
         
         // Perform filtering on background queue for better performance
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -350,7 +350,7 @@ final class SearchVM: ObservableObject {
                     sharedCoins.contains { $0.id == result.id }
                 }.count
                 
-                print("🔍 Search: Found \(results.count) results for '\(trimmedText)' (\(freshCount) with fresh prices)")
+                AppLogger.search("Search: Found \(results.count) results for '\(trimmedText)' (\(freshCount) with fresh prices)")
                 
                 // Fetch missing logos for search results
                 self.fetchLogosIfNeeded(for: results)
@@ -681,7 +681,7 @@ final class SearchVM: ObservableObject {
     // MARK: - Cleanup
     
     deinit {
-        print("🧹 SearchVM deinit - cleaning up all subscriptions")
+        AppLogger.ui("SearchVM deinit - cleaning up all subscriptions")
         cancellables.removeAll() // Remove persistent search subscriptions
         apiRequestCancellables.removeAll() // Remove API request subscriptions
     }

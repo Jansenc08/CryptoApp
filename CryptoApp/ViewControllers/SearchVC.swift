@@ -199,18 +199,18 @@ import Combine
     func stopBackgroundOperationsFromChild() {
         // Called by CoinDetailsVC to stop any background operations
         viewModel.cancelAllRequests()
-        print("⏸️ SearchVC: Stopped background operations from child request")
+        AppLogger.performance("SearchVC: Stopped background operations from child request")
     }
     
     func resumeBackgroundOperationsFromChild() {
         // Called by CoinDetailsVC when returning - can restart operations if needed
-        print("🔄 SearchVC: Resumed background operations from child request")
+        AppLogger.performance("SearchVC: Resumed background operations from child request")
         // Note: Search doesn't have continuous background operations to resume
         // The search functionality is reactive and will work when needed
         
         // Ensure search functionality is working by checking if data is available
         if viewModel.cachedCoins.isEmpty {
-            print("🔄 SearchVC: Refreshing search data after returning from child")
+            AppLogger.search("SearchVC: Refreshing search data after returning from child")
             viewModel.refreshSearchData()
         }
     }
@@ -563,12 +563,12 @@ import Combine
                     self.popularCoinsLoadingView.startAnimating()
                     self.popularCoinsCollectionView.isHidden = true
                     self.popularCoinsHeaderView.setLoading(true) // Disable buttons during loading
-                    print("🔄 Popular Coins: Loading started")
+                    AppLogger.ui("Popular Coins: Loading started")
                 } else {
                     self.popularCoinsLoadingView.stopAnimating()
                     self.popularCoinsCollectionView.isHidden = false
                     self.popularCoinsHeaderView.setLoading(false) // Re-enable buttons
-                    print("✅ Popular Coins: Loading finished")
+                    AppLogger.ui("Popular Coins: Loading finished")
                     
                     // Force height update after loading completes to ensure proper sizing
                     DispatchQueue.main.async {
@@ -635,11 +635,11 @@ import Combine
             // Only update height if not currently loading (prevents race condition)
             if !self.isPopularCoinsLoading && !coins.isEmpty {
                 self.updatePopularCoinsHeight(for: coins.count)
-                print("📦 Popular Coins: Height updated for \(coins.count) items (not loading)")
+                AppLogger.ui("Popular Coins: Height updated for \(coins.count) items (not loading)")
             } else if coins.isEmpty && self.isPopularCoinsLoading {
-                print("⏳ Popular Coins: Skipping height update for 0 items (loading in progress)")
+                AppLogger.ui("Popular Coins: Skipping height update for 0 items (loading in progress)")
             } else {
-                print("📦 Popular Coins: Height update skipped - loading: \(self.isPopularCoinsLoading), items: \(coins.count)")
+                AppLogger.ui("Popular Coins: Height update skipped - loading: \(self.isPopularCoinsLoading), items: \(coins.count)")
             }
         }
     }
@@ -661,7 +661,7 @@ import Combine
             self?.view.layoutIfNeeded()
         }
         
-        print("📦 Popular Coins: Container height set to \(calculatedHeight)pt for \(itemCount) items")
+        AppLogger.ui("Popular Coins: Container height set to \(calculatedHeight)pt for \(itemCount) items")
     }
     
     private func forcePopularCoinsHeightUpdate() {
@@ -669,7 +669,7 @@ import Combine
         let currentItems = viewModel.currentPopularCoins
         if !currentItems.isEmpty {
             updatePopularCoinsHeight(for: currentItems.count)
-            print("🔧 Popular Coins: Forced height update for \(currentItems.count) items after loading")
+            AppLogger.ui("Popular Coins: Forced height update for \(currentItems.count) items after loading")
         }
     }
     
@@ -834,7 +834,7 @@ import Combine
                 self?.view.layoutIfNeeded()
             }
             
-            print("🗑️ User cleared all recent searches")
+            AppLogger.search("User cleared all recent searches")
         })
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -894,7 +894,7 @@ extension SearchVC: SearchBarComponentDelegate {
 
 extension SearchVC: PopularCoinsHeaderViewDelegate {
     func popularCoinsHeaderView(_ headerView: PopularCoinsHeaderView, didSelectFilter filter: PopularCoinsFilter) {
-        print("🌟 Popular Coins: User selected \(filter.displayName)")
+        AppLogger.search("Popular Coins: User selected \(filter.displayName)")
         viewModel.updatePopularCoinsFilter(filter)
     }
 }
@@ -913,7 +913,7 @@ extension SearchVC: UICollectionViewDelegate {
         if collectionView == self.collectionView {
             // Main search results collection view
             selectedCoin = currentSearchResults[indexPath.item]
-            print("🔍 Search: User tapped on search result: \(selectedCoin.symbol)")
+            AppLogger.search("Search: User tapped on search result: \(selectedCoin.symbol)")
             
             // Save this as a recent search since user selected it from search results
             let logoUrl = viewModel.currentCoinLogos[selectedCoin.id]
@@ -927,7 +927,7 @@ extension SearchVC: UICollectionViewDelegate {
         } else if collectionView == popularCoinsCollectionView {
             // Popular coins collection view
             selectedCoin = viewModel.currentPopularCoins[indexPath.item]
-            print("🌟 Popular Coins: User tapped on popular coin: \(selectedCoin.symbol)")
+            AppLogger.search("Popular Coins: User tapped on popular coin: \(selectedCoin.symbol)")
             
             // Don't add popular coins to recent searches - they're separate sections
             // Popular coins stay persistent and don't get affected by user interactions
@@ -939,10 +939,10 @@ extension SearchVC: UICollectionViewDelegate {
         let sharedCoins = Dependencies.container.sharedCoinDataManager().currentCoins
         let coinToNavigateTo: Coin
         if let freshCoin = sharedCoins.first(where: { $0.id == selectedCoin.id }) {
-            print("✅ Using FRESH coin data for \(selectedCoin.symbol) from SharedCoinDataManager")
+            AppLogger.data("Using FRESH coin data for \(selectedCoin.symbol) from SharedCoinDataManager")
             coinToNavigateTo = freshCoin
         } else {
-            print("⚠️ Using selected coin data for \(selectedCoin.symbol) (not in SharedCoinDataManager)")
+            AppLogger.data("Using selected coin data for \(selectedCoin.symbol) (not in SharedCoinDataManager)", level: .warning)
             coinToNavigateTo = selectedCoin
         }
         
@@ -960,7 +960,7 @@ extension SearchVC {
      */
     private func loadRecentSearches() {
         let recentSearchItems = recentSearchManager.getRecentSearchItems()
-        print("🔍 Recent Searches: Found \(recentSearchItems.count) searches: \(recentSearchItems.map { $0.symbol })")
+        AppLogger.search("Recent Searches: Found \(recentSearchItems.count) searches: \(recentSearchItems.map { $0.symbol })")
         displayRecentSearches(recentSearchItems)
         
         let hasRecentSearches = !recentSearchItems.isEmpty
@@ -987,7 +987,7 @@ extension SearchVC {
             recentSearchesStackView.addArrangedSubview(button)
         }
         
-        print("🔍 Recent Searches: Displayed \(searchItems.count) buttons")
+        AppLogger.search("Recent Searches: Displayed \(searchItems.count) buttons")
     }
     
     /**
@@ -1005,7 +1005,7 @@ extension SearchVC {
             self.view.layoutIfNeeded()
         }
         
-        print("🔍 Recent Searches: \(show ? "Showing" : "Hiding") container")
+        AppLogger.search("Recent Searches: \(show ? "Showing" : "Hiding") container")
     }
     
     /**
@@ -1015,7 +1015,7 @@ extension SearchVC {
         // Guard against nil constraints (safety check)
         guard let withRecentSearches = popularCoinsTopWithRecentSearches,
               let withoutRecentSearches = popularCoinsTopWithoutRecentSearches else {
-            print("⚠️ Popular Coins: Position constraints not initialized yet")
+            AppLogger.ui("Popular Coins: Position constraints not initialized yet", level: .warning)
             return
         }
         
@@ -1030,7 +1030,7 @@ extension SearchVC {
             withoutRecentSearches.isActive = true
         }
         
-        print("🌟 Popular Coins: Position updated - Recent searches: \(hasRecentSearches)")
+        AppLogger.ui("Popular Coins: Position updated - Recent searches: \(hasRecentSearches)")
     }
     
     /**
@@ -1054,19 +1054,19 @@ extension SearchVC {
             }
         }
         
-        print("🌟 Popular Coins: \(show ? "Showing" : "Hiding") container")
+        AppLogger.ui("Popular Coins: \(show ? "Showing" : "Hiding") container")
     }
     
     /**
      * Handle recent search button tap - find real coin data and navigate
      */
     private func recentSearchButtonTapped(_ searchItem: RecentSearchItem) {
-        print("🔍 Recent Search: Tapped \(searchItem.symbol) - finding fresh coin data")
+        AppLogger.search("Recent Search: Tapped \(searchItem.symbol) - finding fresh coin data")
         
         // 🌐 FIRST: Try to get fresh data from SharedCoinDataManager
         let sharedCoins = Dependencies.container.sharedCoinDataManager().currentCoins
         if let freshCoin = sharedCoins.first(where: { $0.id == searchItem.coinId }) {
-            print("✅ Found FRESH coin data for \(searchItem.symbol) from SharedCoinDataManager")
+            AppLogger.data("Found FRESH coin data for \(searchItem.symbol) from SharedCoinDataManager")
             let detailsVC = CoinDetailsVC(coin: freshCoin)
             navigationController?.pushViewController(detailsVC, animated: true)
             return
@@ -1074,14 +1074,14 @@ extension SearchVC {
         
         // FALLBACK: Try to find the coin in current search results
         if let cachedCoin = findCoinInCache(coinId: searchItem.coinId) {
-            print("⚠️ Using cached coin data for \(searchItem.symbol) (SharedCoinDataManager didn't have it)")
+            AppLogger.data("Using cached coin data for \(searchItem.symbol) (SharedCoinDataManager didn't have it)", level: .warning)
             let detailsVC = CoinDetailsVC(coin: cachedCoin)
             navigationController?.pushViewController(detailsVC, animated: true)
             return
         }
         
         // LAST RESORT: Search for the coin by symbol to get real data
-        print("🔍 Searching for \(searchItem.symbol) to get real coin data")
+                    AppLogger.search("Searching for \(searchItem.symbol) to get real coin data")
         searchForCoinAndNavigate(searchItem: searchItem)
     }
     
@@ -1094,14 +1094,14 @@ extension SearchVC {
         
         // First try to search in the search view model's cached data directly
         if let cachedCoin = findCoinBySymbolInCache(searchItem.symbol) {
-            print("✅ Found coin in search cache: \(searchItem.symbol)")
+                            AppLogger.search("Found coin in search cache: \(searchItem.symbol)")
             let detailsVC = CoinDetailsVC(coin: cachedCoin)
             navigationController?.pushViewController(detailsVC, animated: true)
             return
         }
         
         // If not in cache, trigger a live search
-        print("🔍 Triggering live search for \(searchItem.symbol)")
+                    AppLogger.search("Triggering live search for \(searchItem.symbol)")
         searchBarComponent.text = searchItem.symbol
         viewModel.updateSearchText(searchItem.symbol)
         
@@ -1116,7 +1116,7 @@ extension SearchVC {
                     searchSubscription?.cancel()
                     
                     if case .failure = completion {
-                        print("⚠️ Search timeout for \(searchItem.symbol) - using fallback navigation")
+                        AppLogger.search("Search timeout for \(searchItem.symbol) - using fallback navigation", level: .warning)
                         self?.navigateWithFallback(searchItem: searchItem, fallbackText: originalSearchText)
                     }
                 },
@@ -1131,7 +1131,7 @@ extension SearchVC {
                     
                     if let coin = matchingCoin {
                         searchSubscription?.cancel()
-                        print("✅ Found real coin data for \(searchItem.symbol)")
+                                                    AppLogger.search("Found real coin data for \(searchItem.symbol)")
                         
                         // Restore original search text
                         self.searchBarComponent.text = originalSearchText

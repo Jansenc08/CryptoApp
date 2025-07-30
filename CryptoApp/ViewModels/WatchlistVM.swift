@@ -223,7 +223,7 @@ final class WatchlistVM: ObservableObject {
         let coins = watchlistManager.getWatchlistCoins()
         
         #if DEBUG
-        print("🔄 Refreshing watchlist with \(coins.count) coins")
+        AppLogger.data("Refreshing watchlist with \(coins.count) coins")
         #endif
         
         if coins.isEmpty {
@@ -329,7 +329,7 @@ final class WatchlistVM: ObservableObject {
                 if !sharedCoins.isEmpty {
                     handleSharedDataUpdate(sharedCoins)
                 } else {
-                    print("🔄 WatchlistVM: No shared data available, forcing SharedCoinDataManager update")
+                    AppLogger.data("WatchlistVM: No shared data available, forcing SharedCoinDataManager update")
                     sharedCoinDataManager.forceUpdate()
                     // DO NOT send incomplete coins to UI - wait for shared data with quotes
                 }
@@ -349,7 +349,7 @@ final class WatchlistVM: ObservableObject {
             if !sharedCoins.isEmpty {
                 handleSharedDataUpdate(sharedCoins)
             } else {
-                print("🔄 WatchlistVM: Same coins, but no shared data available, forcing update")
+                AppLogger.data("WatchlistVM: Same coins, but no shared data available, forcing update")
                 sharedCoinDataManager.forceUpdate()
                 // DO NOT send incomplete coins to UI - wait for shared data with quotes
             }
@@ -406,13 +406,13 @@ final class WatchlistVM: ObservableObject {
         
         let timestamp = Date().timeIntervalSince1970
         let btcPrice = allCoins.first(where: { $0.symbol == "BTC" })?.quote?["USD"]?.price ?? 0
-        print("🌐 WatchlistVM: Received shared data update - filtering for \(watchlistCoinIds.count) watchlist coins at \(timestamp) | BTC: $\(String(format: "%.2f", btcPrice))")
+        AppLogger.data("WatchlistVM: Received shared data update - filtering for \(watchlistCoinIds.count) watchlist coins at \(timestamp) | BTC: $\(String(format: "%.2f", btcPrice))")
         
         // Filter shared data for watchlist coins
         let idSet = Set(watchlistCoinIds)
         let watchlistCoins = allCoins.filter { idSet.contains($0.id) }
         
-        print("✅ WatchlistVM: Found \(watchlistCoins.count) watchlist coins in shared data")
+        AppLogger.data("WatchlistVM: Found \(watchlistCoins.count) watchlist coins in shared data")
         
         // Check for price changes and detect which coins changed
         let currentCoins = currentWatchlistCoins
@@ -425,16 +425,16 @@ final class WatchlistVM: ObservableObject {
         // If prices changed, trigger animation updates
         if !changedCoinIds.isEmpty {
             updatedCoinIdsSubject.send(changedCoinIds)
-            print("💰 WatchlistVM: \(changedCoinIds.count) coins had price changes - triggering UI animations")
+            AppLogger.price("WatchlistVM: \(changedCoinIds.count) coins had price changes - triggering UI animations")
             
             // Log the changed prices
             for coin in watchlistCoins.filter({ changedCoinIds.contains($0.id) }) {
                 if let price = coin.quote?["USD"]?.price {
-                    print("📈 \(coin.symbol): Updated to $\(String(format: "%.2f", price))")
+                    AppLogger.price("\(coin.symbol): Updated to $\(String(format: "%.2f", price))")
                 }
             }
         } else {
-            print("💰 WatchlistVM: No price changes detected in watchlist")
+            AppLogger.price("WatchlistVM: No price changes detected in watchlist")
         }
         
         // Apply current sorting
@@ -447,7 +447,7 @@ final class WatchlistVM: ObservableObject {
         if let btc = watchlistCoins.first(where: { $0.symbol == "BTC" }),
            let quote = btc.quote?["USD"],
            let marketCap = quote.marketCap {
-            print("📊 WatchlistVM: BTC received with market cap: $\(String(format: "%.0f", marketCap))")
+            AppLogger.data("WatchlistVM: BTC received with market cap: $\(String(format: "%.0f", marketCap))")
         }
         
 
@@ -457,7 +457,7 @@ final class WatchlistVM: ObservableObject {
         // 🌐 NOW USING SHARED DATA: Just get from shared manager instead of API call
         let watchlistCoins = sharedCoinDataManager.getCoinsForIds(coinIds)
         
-        print("🌐 WatchlistVM: Using shared data for \(watchlistCoins.count) coins")
+        AppLogger.data("WatchlistVM: Using shared data for \(watchlistCoins.count) coins")
         
         isPriceUpdateInProgress = false
         completion(watchlistCoins)
@@ -539,7 +539,7 @@ final class WatchlistVM: ObservableObject {
     
     private func startOptimizedPeriodicUpdates() {
         // SharedCoinDataManager handles all updates now, no need for individual timers
-        print("🌐 WatchlistVM: Using SharedCoinDataManager for updates, no individual timer needed")
+        AppLogger.performance("WatchlistVM: Using SharedCoinDataManager for updates, no individual timer needed")
     }
     
 
@@ -584,7 +584,7 @@ final class WatchlistVM: ObservableObject {
                         self.applySortingToWatchlist()
                         
                         #if DEBUG
-                        print("💰 Periodic update: \(changedCoinIds.count) coins updated")
+                        AppLogger.price("Periodic update: \(changedCoinIds.count) coins updated")
                         
                         // Show detailed price changes for coins that actually changed
                         let changedCoins = updatedCoins.filter { changedCoinIds.contains($0.id) }
@@ -635,12 +635,12 @@ final class WatchlistVM: ObservableObject {
      */
     
     func startPeriodicUpdates() {
-        print("▶️ WatchlistVM: startPeriodicUpdates called - SharedCoinDataManager subscription continues")
+        AppLogger.performance("WatchlistVM: startPeriodicUpdates called - SharedCoinDataManager subscription continues")
         startOptimizedPeriodicUpdates()
     }
     
     func stopPeriodicUpdates() {
-        print("⏸️ WatchlistVM: stopPeriodicUpdates called - SharedCoinDataManager subscription continues")
+        AppLogger.performance("WatchlistVM: stopPeriodicUpdates called - SharedCoinDataManager subscription continues")
         updateTimer?.invalidate()
         updateTimer = nil
     }
@@ -709,7 +709,7 @@ final class WatchlistVM: ObservableObject {
         guard !currentWatchlistCoins.isEmpty else { return }
         
         #if DEBUG
-        print("🔧 Sorting \(currentWatchlistCoins.count) watchlist coins by \(columnName(for: currentSortColumn))")
+        AppLogger.performance("Sorting \(currentWatchlistCoins.count) watchlist coins by \(columnName(for: currentSortColumn))")
         #endif
         
         // Sort the watchlist coins
@@ -723,7 +723,7 @@ final class WatchlistVM: ObservableObject {
                 let sortValue = getSortValue(for: coin, column: currentSortColumn)
                 return "\(coin.symbol) (\(sortValue))"
             }.joined(separator: ", ")
-            print("🔍 Top watchlist by \(columnName(for: currentSortColumn)): \(sortedDebug)")
+            AppLogger.performance("Top watchlist by \(columnName(for: currentSortColumn)): \(sortedDebug)")
         }
         #endif
     }
@@ -844,7 +844,7 @@ final class WatchlistVM: ObservableObject {
     
     func updatePriceChangeFilter(_ filter: PriceChangeFilter) {
         #if DEBUG
-        print("🎯 Watchlist filter update: \(filter.displayName)")
+        AppLogger.ui("Watchlist filter update: \(filter.displayName)")
         #endif
         
         currentFilterState = FilterState(
