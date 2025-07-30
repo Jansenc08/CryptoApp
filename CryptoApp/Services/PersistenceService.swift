@@ -31,7 +31,7 @@ final class PersistenceService: PersistenceServiceProtocol {
             userDefaults.set(data, forKey: Keys.coinList)
             userDefaults.set(Date(), forKey: Keys.lastCacheTime)
         } catch {
-            print("❌ Failed to save coin list: \(error)")
+            AppLogger.error("Failed to save coin list", error: error)
         }
     }
     
@@ -42,7 +42,7 @@ final class PersistenceService: PersistenceServiceProtocol {
             let coins = try JSONDecoder().decode([Coin].self, from: data)
             return coins
         } catch {
-            print("❌ Failed to load coin list: \(error)")
+            AppLogger.error("Failed to load coin list", error: error)
             return nil
         }
     }
@@ -54,7 +54,7 @@ final class PersistenceService: PersistenceServiceProtocol {
             let data = try JSONEncoder().encode(logos)
             userDefaults.set(data, forKey: Keys.coinLogos)
         } catch {
-            print("❌ Failed to save coin logos: \(error)")
+            AppLogger.error("Failed to save coin logos", error: error)
         }
     }
     
@@ -65,7 +65,7 @@ final class PersistenceService: PersistenceServiceProtocol {
             let logos = try JSONDecoder().decode([Int: String].self, from: data)
             return logos
         } catch {
-            print("❌ Failed to load coin logos: \(error)")
+            AppLogger.error("Failed to load coin logos", error: error)
             return nil
         }
     }

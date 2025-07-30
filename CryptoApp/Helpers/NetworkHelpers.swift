@@ -31,7 +31,7 @@ extension URLSession {
     
     // Maps network/decoding errors to NetworkError cases
     static func mapToNetworkError(_ error: Error) -> NetworkErrors {
-        print("❌ Network request failed with error: \(error)")
+                    AppLogger.error("Network request failed", error: error)
         
         if let networkError = error as? NetworkErrors {
             return networkError

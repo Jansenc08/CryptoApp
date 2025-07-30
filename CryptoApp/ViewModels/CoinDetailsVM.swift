@@ -626,7 +626,7 @@ final class CoinDetailsVM: ObservableObject {
                     self.statsLoadingSubject.send(currentLoading)
                     
                     if case .failure(let error) = completion {
-                        print("❌ Failed to fetch OHLC data for stats \(range): \(error)")
+                        AppLogger.error("Failed to fetch OHLC data for stats \(range)", error: error)
                     }
                 },
                 receiveValue: { [weak self] ohlcData in
@@ -773,7 +773,7 @@ final class CoinDetailsVM: ObservableObject {
     }
     
     deinit {
-        print("🧹 CoinDetailsVM deinit - cleaning up Combine resources for \(coin.symbol)")
+        AppLogger.ui("CoinDetailsVM deinit - cleaning up Combine resources for \(coin.symbol)")
         
         // FIXED: Cancel dedicated chart data requests
         chartDataCancellable?.cancel()
@@ -794,7 +794,7 @@ final class CoinDetailsVM: ObservableObject {
         // Cancel any active timers
         cancelAllRequests() // This cancels refresh timers
         
-        print("✅ CoinDetailsVM Combine cleanup completed for \(coin.symbol)")
+        AppLogger.success("CoinDetailsVM Combine cleanup completed for \(coin.symbol)")
     }
 }
 

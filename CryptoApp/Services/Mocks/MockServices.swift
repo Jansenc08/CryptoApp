@@ -174,23 +174,23 @@ final class MockCoreDataManager: CoreDataManagerProtocol {
     
     func save() {
         guard !shouldFailSave else {
-            print("❌ Mock Core Data save failed (configured to fail)")
+            AppLogger.database("Mock Core Data save failed (configured to fail)", level: .error)
             return
         }
         // Mock save - no actual operation needed
-        print("✅ Mock Core Data save succeeded")
+        AppLogger.database("Mock Core Data save succeeded")
     }
     
     func delete<T: NSManagedObject>(_ object: T) {
         queue.async(flags: .barrier) {
             self.mockObjects.removeAll { $0 === object }
         }
-        print("🗑️ Mock Core Data deleted object")
+        AppLogger.database("Mock Core Data deleted object")
     }
     
     func fetch<T: NSManagedObject>(_ objectType: T.Type) -> [T] {
         guard !shouldFailFetch else {
-            print("❌ Mock Core Data fetch failed (configured to fail)")
+            AppLogger.database("Mock Core Data fetch failed (configured to fail)", level: .error)
             return []
         }
         
@@ -201,7 +201,7 @@ final class MockCoreDataManager: CoreDataManagerProtocol {
     
     func fetch<T: NSManagedObject>(_ objectType: T.Type, where predicate: NSPredicate) -> [T] {
         guard !shouldFailFetch else {
-            print("❌ Mock Core Data fetch with predicate failed (configured to fail)")
+            AppLogger.database("Mock Core Data fetch with predicate failed (configured to fail)", level: .error)
             return []
         }
         
@@ -218,7 +218,7 @@ final class MockCoreDataManager: CoreDataManagerProtocol {
     // Specific methods for WatchlistItem to avoid ambiguity
     func fetchWatchlistItems() -> [WatchlistItem] {
         guard !shouldFailFetch else {
-            print("❌ Mock Core Data fetch watchlist items failed (configured to fail)")
+            AppLogger.database("Mock Core Data fetch watchlist items failed (configured to fail)", level: .error)
             return []
         }
         
@@ -229,7 +229,7 @@ final class MockCoreDataManager: CoreDataManagerProtocol {
     
     func fetchWatchlistItems(where predicate: NSPredicate) -> [WatchlistItem] {
         guard !shouldFailFetch else {
-            print("❌ Mock Core Data fetch watchlist items with predicate failed (configured to fail)")
+            AppLogger.database("Mock Core Data fetch watchlist items with predicate failed (configured to fail)", level: .error)
             return []
         }
         

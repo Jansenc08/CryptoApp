@@ -69,7 +69,7 @@ final class RecentSearchManager {
         
         // Save
         saveRecentSearchItems(recentSearches)
-        print("💾 Recent Search: Added \(symbol) (\(name)) with slug: \(slug ?? "nil") | Total: \(recentSearches.count)")
+        AppLogger.search("Recent Search: Added \(symbol) (\(name)) with slug: \(slug ?? "nil") | Total: \(recentSearches.count)")
     }
     
     /**
@@ -82,7 +82,7 @@ final class RecentSearchManager {
             let items = try JSONDecoder().decode([RecentSearchItem].self, from: data)
             return items
         } catch {
-            print("❌ Failed to load recent searches: \(error)")
+            AppLogger.error("Failed to load recent searches", error: error)
             return []
         }
     }
@@ -99,7 +99,7 @@ final class RecentSearchManager {
      */
     func clearRecentSearches() {
         userDefaults.removeObject(forKey: recentSearchesKey)
-        print("🗑️ Recent Search: Cleared all recent searches")
+        AppLogger.search("Recent Search: Cleared all recent searches")
     }
     
     /**
@@ -109,7 +109,7 @@ final class RecentSearchManager {
         var recentSearches = getRecentSearchItems()
         recentSearches.removeAll { $0.coinId == coinId }
         saveRecentSearchItems(recentSearches)
-        print("🗑️ Recent Search: Removed coin ID \(coinId)")
+        AppLogger.search("Recent Search: Removed coin ID \(coinId)")
     }
     
     // MARK: - Private Methods
@@ -119,7 +119,7 @@ final class RecentSearchManager {
             let data = try JSONEncoder().encode(items)
             userDefaults.set(data, forKey: recentSearchesKey)
         } catch {
-            print("❌ Failed to save recent searches: \(error)")
+            AppLogger.error("Failed to save recent searches", error: error)
         }
     }
 } 

@@ -192,11 +192,11 @@ final class DependencyContainer {
      * All dependencies are created lazily when first accessed
      */
     init() {
-        print("🏗️ DependencyContainer initialized - services will be created lazily")
+        AppLogger.ui("DependencyContainer initialized - services will be created lazily")
     }
     
     deinit {
-        print("🧹 DependencyContainer deallocated")
+        AppLogger.ui("DependencyContainer deallocated")
     }
 }
 
@@ -217,7 +217,7 @@ class Dependencies {
      */
     static func initialize() {
         container = DependencyContainer()
-        print("🏗️ Global Dependencies initialized")
+        AppLogger.ui("Global Dependencies initialized")
     }
     
     /**
@@ -225,7 +225,7 @@ class Dependencies {
      */
     static func setContainer(_ newContainer: DependencyContainer) {
         container = newContainer
-        print("🧪 Custom dependency container set")
+        AppLogger.ui("Custom dependency container set")
     }
     
     /**
@@ -233,6 +233,6 @@ class Dependencies {
      */
     static func reset() {
         container = nil
-        print("🔄 Dependencies reset")
+        AppLogger.ui("Dependencies reset")
     }
 } 

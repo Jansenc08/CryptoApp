@@ -250,7 +250,7 @@ final class InfoCell: UITableViewCell {
         priceChangeContainer.backgroundColor = isPositive ? .systemGreen : .systemRed
         priceChangeContainer.isHidden = false
         
-        print("🎨 InfoCell: Real-time change - \(changeText) (isPositive: \(isPositive))")
+                        AppLogger.price("InfoCell: Real-time change - \(changeText) (isPositive: \(isPositive))")
         
         // Animate the appearance for real-time changes
         animateChangeIndicator()
@@ -265,7 +265,7 @@ final class InfoCell: UITableViewCell {
     private func revertToPermanentDisplay() {
         // This will be called to restore the 24h percentage display
         // The actual data will be updated when the next coin data update occurs
-        print("💡 Reverting price change indicator to 24h display")
+                        AppLogger.price("Reverting price change indicator to 24h display")
     }
     
     /// Hide the price change indicator
@@ -295,13 +295,13 @@ final class InfoCell: UITableViewCell {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
             self?.priceChangeContainer.layer.removeAllAnimations()
             self?.priceChangeContainer.alpha = 1
-            print("💡 Price change indicator settled - keeping new color visible")
+                            AppLogger.price("Price change indicator settled - keeping new color visible")
         }
     }
     
     deinit {
         // Clean up closure to prevent memory leaks
         onStarTapped = nil
-        print("🧹 InfoCell deinit - cleaned up star callback")
+        AppLogger.ui("InfoCell deinit - cleaned up star callback")
     }
 }

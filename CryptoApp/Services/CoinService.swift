@@ -75,7 +75,7 @@ final class CoinService: CoinServiceProtocol {
         // Check cache first
         // Always check cache before making API calls to avoid unnecessary requests
         if let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir) {
-            print("💾 Cache hit for coin list (limit: \(limit), start: \(start))")
+            AppLogger.cache("Cache hit for coin list (limit: \(limit), start: \(start))")
             return Just(cachedCoins)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()
@@ -147,7 +147,7 @@ final class CoinService: CoinServiceProtocol {
             .map { $0.data }
             .receive(on: DispatchQueue.main) // Switches to main thread
             .mapError { error in
-                print("❌ Decoding failed with error: \(error)")
+                AppLogger.error("Decoding failed", error: error)
                 if let error = error as? NetworkError {
                     return error
                 } else if error is DecodingError {
@@ -166,24 +166,24 @@ final class CoinService: CoinServiceProtocol {
     // 3. Calls performCoinLogosRequest to get logo URLs from:
 
     func fetchCoinLogos(forIDs ids: [Int], priority: RequestPriority = .low) -> AnyPublisher<[Int: String], Never> {
-        print("🖼️ CoinService.fetchCoinLogos | Requested IDs: \(ids)")
+        AppLogger.network("CoinService.fetchCoinLogos | Requested IDs: \(ids)")
         
         // PARTIAL CACHE LOGIC: Check which requested IDs are already cached
         let allCachedLogos = cacheService.getCoinLogos() ?? [:]
         let requestedCachedLogos = allCachedLogos.filter { ids.contains($0.key) }
         let missingIds = ids.filter { allCachedLogos[$0] == nil }
         
-        print("💾 CoinService.fetchCoinLogos | Cache status: \(requestedCachedLogos.count)/\(ids.count) cached, \(missingIds.count) missing")
+        AppLogger.cache("CoinService.fetchCoinLogos | Cache status: \(requestedCachedLogos.count)/\(ids.count) cached, \(missingIds.count) missing")
         
         // If all requested logos are cached, return them immediately
         if missingIds.isEmpty {
-            print("✅ CoinService.fetchCoinLogos | All requested logos cached, returning \(requestedCachedLogos.count) logos")
+            AppLogger.success("CoinService.fetchCoinLogos | All requested logos cached, returning \(requestedCachedLogos.count) logos")
             return Just(requestedCachedLogos)
                 .eraseToAnyPublisher()
         }
         
         // If some logos are missing, fetch missing ones and merge with cached
-        print("🌐 CoinService.fetchCoinLogos | Fetching \(missingIds.count) missing logos: \(missingIds)")
+        AppLogger.network("CoinService.fetchCoinLogos | Fetching \(missingIds.count) missing logos: \(missingIds)")
         
         // Use request manager with priority - logos get low priority since they're not urgent
         return requestManager.fetchCoinLogos(ids: missingIds, priority: priority) { [weak self] in
@@ -192,18 +192,18 @@ final class CoinService: CoinServiceProtocol {
         }
         .replaceError(with: [:])
         .handleEvents(receiveOutput: { [weak self] newLogos in
-            print("📥 CoinService.fetchCoinLogos | Received \(newLogos.count) new logos for missing IDs")
+            AppLogger.network("CoinService.fetchCoinLogos | Received \(newLogos.count) new logos for missing IDs")
             // LOGO MERGE FIX: Merge new logos with existing cached logos instead of overwriting
             let existingLogos = self?.cacheService.getCoinLogos() ?? [:]
             let mergedLogos = existingLogos.merging(newLogos) { _, new in new }
-            print("🔄 CoinService.fetchCoinLogos | Merging \(newLogos.count) new with \(existingLogos.count) existing = \(mergedLogos.count) total")
+            AppLogger.cache("CoinService.fetchCoinLogos | Merging \(newLogos.count) new with \(existingLogos.count) existing = \(mergedLogos.count) total")
             // Cache the merged result
             self?.cacheService.storeCoinLogos(mergedLogos)
         })
         .map { newLogos in
             // RESPONSE MERGE: Combine cached + newly fetched logos for complete response
             let combinedResponse = requestedCachedLogos.merging(newLogos) { cached, _ in cached }
-            print("📤 CoinService.fetchCoinLogos | Returning combined response: \(combinedResponse.count) logos for requested IDs")
+            AppLogger.network("CoinService.fetchCoinLogos | Returning combined response: \(combinedResponse.count) logos for requested IDs")
             return combinedResponse
         }
         .eraseToAnyPublisher()
@@ -255,7 +255,7 @@ final class CoinService: CoinServiceProtocol {
     func fetchQuotes(for ids: [Int], convert: String, priority: RequestPriority = .normal) -> AnyPublisher<[Int: Quote], NetworkError> {
         // Check cache first for price quotes
         if let cachedQuotes = cacheService.getQuotes(for: ids, convert: convert) {
-            print("💾 Cache hit for price quotes (IDs: \(ids))")
+            AppLogger.cache("Cache hit for price quotes (IDs: \(ids))")
             return Just(cachedQuotes)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()
@@ -342,13 +342,13 @@ final class CoinService: CoinServiceProtocol {
         // Check cache first
         let _ = "ohlc_\(coinId)_\(currency)_\(days)"
         if let cachedData = cacheService.getOHLCData(for: coinId, currency: currency, days: days) {
-            print("💾 ⚡ Instant cache hit for OHLC data: \(coinId) - \(days) (\(cachedData.count) candles)")
+            AppLogger.cache("⚡ Instant cache hit for OHLC data: \(coinId) - \(days) (\(cachedData.count) candles)")
             return Just(cachedData)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()
         }
         
-        print("🌐 Cache miss for OHLC data: \(coinId) - \(days) (priority: \(priority.description))")
+        AppLogger.cache("Cache miss for OHLC data: \(coinId) - \(days) (priority: \(priority.description))")
         
         return requestManager.fetchOHLCData(
             coinId: coinId,
@@ -369,7 +369,7 @@ final class CoinService: CoinServiceProtocol {
         }
         .handleEvents(receiveOutput: { [weak self] data in
             self?.cacheService.storeOHLCData(data, for: coinId, currency: currency, days: days)
-            print("💾 Cached OHLC data for \(coinId) - \(days): \(data.count) candles")
+            AppLogger.cache("Cached OHLC data for \(coinId) - \(days): \(data.count) candles")
         })
         .eraseToAnyPublisher()
     }
@@ -378,13 +378,13 @@ final class CoinService: CoinServiceProtocol {
         // Check cache first and return immediately if found
         // No rate limiting delays when data is cached. Makes filter switching instant
         if let cachedData = cacheService.getChartData(for: coinId, currency: currency, days: days) {
-            print("💾 ⚡ Instant cache hit for chart data: \(coinId) - \(days) (\(cachedData.count) points)")
+            AppLogger.cache("⚡ Instant cache hit for chart data: \(coinId) - \(days) (\(cachedData.count) points)")
             return Just(cachedData)
                 .setFailureType(to: NetworkError.self)
                 .eraseToAnyPublisher()
         }
         
-        print("🌐 Cache miss for chart data: \(coinId) - \(days) (priority: \(priority.description))")
+        AppLogger.cache("Cache miss for chart data: \(coinId) - \(days) (priority: \(priority.description))")
         
         // Use request manager with priority for non-cached data
         // High priority requests (filter changes) get processed faster
@@ -409,7 +409,7 @@ final class CoinService: CoinServiceProtocol {
         .handleEvents(receiveOutput: { [weak self] data in
             // Cache the result for future filter changes.
             self?.cacheService.storeChartData(data, for: coinId, currency: currency, days: days)
-            print("💾 Cached chart data for \(coinId) - \(days): \(data.count) points")
+            AppLogger.cache("Cached chart data for \(coinId) - \(days): \(data.count) points")
         })
         .eraseToAnyPublisher()
     }
@@ -423,9 +423,9 @@ final class CoinService: CoinServiceProtocol {
         let geckoId = mapCMCSlugToGeckoId(coinId)
         let endpoint = "\(coinGeckoBaseURL)/coins/\(geckoId)/ohlc?vs_currency=\(currency)&days=\(days)"
         
-        print("🔄 Mapping '\(coinId)' → '\(geckoId)' for OHLC data")
-        print("🌐 CoinGecko OHLC URL: \(endpoint)")
-        print("🔑 Using CoinGecko Demo API key: \(String(coinGeckoApiKey.prefix(8)))...")
+        AppLogger.network("Mapping '\(coinId)' → '\(geckoId)' for OHLC data")
+        AppLogger.network("CoinGecko OHLC URL: \(endpoint)")
+        AppLogger.network("Using CoinGecko Demo API key: \(String(coinGeckoApiKey.prefix(8)))...")
         
         guard let url = URL(string: endpoint) else {
             return Fail(error: .badURL).eraseToAnyPublisher()
@@ -438,20 +438,20 @@ final class CoinService: CoinServiceProtocol {
         return URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { output in
                 guard let response = output.response as? HTTPURLResponse else {
-                    print("❌ No HTTP response for OHLC")
+                    AppLogger.error("No HTTP response for OHLC")
                     throw NetworkError.invalidResponse
                 }
                 
-                print("📡 CoinGecko OHLC response: HTTP \(response.statusCode)")
+                AppLogger.network("CoinGecko OHLC response: HTTP \(response.statusCode)")
                 
                 if response.statusCode == 404 {
-                    print("❌ CoinGecko: OHLC data for '\(geckoId)' not found")
+                    AppLogger.error("CoinGecko: OHLC data for '\(geckoId)' not found")
                     throw NetworkError.badURL
                 } else if response.statusCode == 429 {
-                    print("⚠️ CoinGecko: Rate limit exceeded (429) for OHLC")
+                    AppLogger.network("CoinGecko: Rate limit exceeded (429) for OHLC", level: .warning)
                     throw NetworkError.invalidResponse
                 } else if response.statusCode != 200 {
-                    print("❌ CoinGecko OHLC: HTTP \(response.statusCode)")
+                    AppLogger.error("CoinGecko OHLC: HTTP \(response.statusCode)")
                     throw NetworkError.invalidResponse
                 }
                 return output.data
@@ -459,13 +459,13 @@ final class CoinService: CoinServiceProtocol {
             .decode(type: CoinGeckoOHLCResponse.self, decoder: JSONDecoder())
             .map { response in
                 let ohlcData = response.toOHLCData()
-                print("✅ Successfully fetched \(ohlcData.count) OHLC candles for '\(geckoId)'")
-                print("🔑 CoinGecko Demo API key working! Rate limit: 30 calls/minute")
+                AppLogger.success("Successfully fetched \(ohlcData.count) OHLC candles for '\(geckoId)'")
+                AppLogger.network("CoinGecko Demo API key working! Rate limit: 30 calls/minute")
                 return ohlcData
             }
             .receive(on: DispatchQueue.main)
             .mapError { error in
-                print("❌ CoinGecko OHLC fetch failed with error: \(error)")
+                AppLogger.error("CoinGecko OHLC fetch failed", error: error)
                 if let error = error as? NetworkError {
                     return error
                 } else if error is DecodingError {
@@ -482,9 +482,9 @@ final class CoinService: CoinServiceProtocol {
         let geckoId = mapCMCSlugToGeckoId(coinId)
         let endpoint = "\(coinGeckoBaseURL)/coins/\(geckoId)/market_chart?vs_currency=\(currency)&days=\(days)"
         
-        print("🔄 Mapping '\(coinId)' → '\(geckoId)'")
-        print("🌐 CoinGecko URL: \(endpoint)")
-        print("🔑 Using CoinGecko Demo API key: \(String(coinGeckoApiKey.prefix(8)))...")
+        AppLogger.network("Mapping '\(coinId)' → '\(geckoId)'")
+        AppLogger.network("CoinGecko URL: \(endpoint)")
+        AppLogger.network("Using CoinGecko Demo API key: \(String(coinGeckoApiKey.prefix(8)))...")
 
         guard let url = URL(string: endpoint) else {
             return Fail(error: .badURL).eraseToAnyPublisher()
@@ -497,7 +497,7 @@ final class CoinService: CoinServiceProtocol {
         return URLSession.shared.dataTaskPublisher(for: request)
             .tryMap { output in
                 guard let response = output.response as? HTTPURLResponse else {
-                    print("❌ No HTTP response")
+                    AppLogger.error("No HTTP response")
                     throw NetworkError.invalidResponse
                 }
                 
@@ -525,7 +525,7 @@ final class CoinService: CoinServiceProtocol {
             }
             .receive(on: DispatchQueue.main)
             .mapError { error in
-                print("❌ CoinGecko Chart fetch failed with error: \(error)")
+                AppLogger.error("CoinGecko Chart fetch failed", error: error)
                 if let error = error as? NetworkError {
                     return error
                 } else if error is DecodingError {

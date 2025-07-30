@@ -145,7 +145,7 @@ final class ChartView: LineChartView {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
         
-        print("📊 Chart zoom reset")
+        AppLogger.chart("Chart zoom reset")
     }
     
     @objc private func showZoomControls(_ gesture: UILongPressGestureRecognizer) {
@@ -211,7 +211,7 @@ final class ChartView: LineChartView {
         // Apply the zoom
         setVisibleXRangeMaximum(optimalVisiblePoints)
         
-        print("📊 Line chart initial zoom: showing \(Int(optimalVisiblePoints)) of \(dataCount) points")
+        AppLogger.chart("Line chart initial zoom: showing \(Int(optimalVisiblePoints)) of \(dataCount) points")
     }
     
     // MARK: - Layout
@@ -490,7 +490,7 @@ extension ChartView: ChartViewDelegate {
         }
         
         // Log zoom level for debugging
-        print("📊 Line chart zoom: X=\(String(format: "%.2f", scaleX)), Y=\(String(format: "%.2f", scaleY))")
+        AppLogger.chart("Line chart zoom: X=\(String(format: "%.2f", scaleX)), Y=\(String(format: "%.2f", scaleY))")
     }
     
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {

@@ -56,7 +56,7 @@ final class CoinDetailsVC: UIViewController {
     }
     
     deinit {
-        print("🧹 CoinDetailsVC deinit - cleaning up resources for \(coin.symbol)")
+        AppLogger.ui("CoinDetailsVC deinit - cleaning up resources for \(coin.symbol)")
         refreshTimer?.invalidate()
         refreshTimer = nil
         cancellables.removeAll()
@@ -100,7 +100,7 @@ final class CoinDetailsVC: UIViewController {
         
         if isMovingFromParent || isBeingDismissed {
             viewModel.cancelAllRequests()
-            print("🚪 Officially leaving coin details page - cancelled all API calls")
+            AppLogger.ui("Officially leaving coin details page - cancelled all API calls")
         }
     }
 
@@ -123,7 +123,7 @@ final class CoinDetailsVC: UIViewController {
             segmentCell.setSelectedRangeSilently(selectedRange.value)
         }
         
-        print("📱 UI synchronized: range=\(selectedRange.value), chartType=\(selectedChartType.value)")
+        AppLogger.ui("UI synchronized: range=\(selectedRange.value), chartType=\(selectedChartType.value)")
     }
     
     // MARK: - Setup
@@ -270,12 +270,12 @@ final class CoinDetailsVC: UIViewController {
                 self.updateChartCellWithOHLC(newOHLCData)
                 // Update StatsCell when OHLC data becomes available for Low/High section
                 if !newOHLCData.isEmpty {
-                    print("🔄 [Low/High] OHLC data loaded: \(newOHLCData.count) candles - refreshing StatsCell")
+                    AppLogger.data("[Low/High] OHLC data loaded: \(newOHLCData.count) candles - refreshing StatsCell")
                     DispatchQueue.main.async {
                         self.updateStatsCell()
                     }
                 } else {
-                    print("⚠️ [Low/High] OHLC data is empty - Low/High section won't show")
+                    AppLogger.data("[Low/High] OHLC data is empty - Low/High section won't show", level: .warning)
                 }
             }
             .store(in: &cancellables)
@@ -358,11 +358,11 @@ final class CoinDetailsVC: UIViewController {
                 
                 // Don't fetch data if this is a UI sync from landscape
                 guard !self.isUpdatingFromLandscape else {
-                    print("🔄 Skipping data fetch - updating from landscape sync")
+                    AppLogger.ui("Skipping data fetch - updating from landscape sync")
                     return
                 }
                 
-                print("⚡ Debounced filter change executing: \(range)")
+                AppLogger.ui("Debounced filter change executing: \(range)")
                 self.viewModel.fetchChartData(for: range)
             }
             .store(in: &cancellables)
@@ -379,7 +379,7 @@ final class CoinDetailsVC: UIViewController {
                     segmentCell.setSelectedRangeSilently(range)
                 }
                 
-                print("🔄 Filter UI updated to: \(range)")
+                AppLogger.ui("Filter UI updated to: \(range)")
             }
             .store(in: &cancellables)
         
@@ -390,7 +390,7 @@ final class CoinDetailsVC: UIViewController {
             .sink { [weak self] chartType in
                 guard let self = self else { return }
                 
-                print("🔄 Chart type changed to: \(chartType)")
+                AppLogger.ui("Chart type changed to: \(chartType)")
                 
                 // Update ViewModel
                 self.viewModel.setChartType(chartType, for: self.selectedRange.value)
@@ -429,11 +429,11 @@ final class CoinDetailsVC: UIViewController {
     
     private func performSmartRefresh() {
         guard isViewVisible && !isUserInteracting else {
-            print("⏸️ Skipping auto-refresh: visible=\(isViewVisible), interacting=\(isUserInteracting)")
+            AppLogger.performance("Skipping auto-refresh: visible=\(isViewVisible), interacting=\(isUserInteracting)")
             return
         }
         
-        print("🔄 Performing smart auto-refresh")
+        AppLogger.performance("Performing smart auto-refresh")
         
         // Refresh chart data
         viewModel.smartAutoRefresh(for: selectedRange.value)
@@ -525,7 +525,7 @@ final class CoinDetailsVC: UIViewController {
         }
         lastKnownPrice = coin.priceString
         
-        print("💰 CoinDetails: Updated InfoCell with fresh data for \(coin.symbol)")
+        AppLogger.price("CoinDetails: Updated InfoCell with fresh data for \(coin.symbol)")
     }
     
     // MARK: - Price Change Overview Updates
@@ -542,7 +542,7 @@ final class CoinDetailsVC: UIViewController {
         // Update cell with fresh data
         priceChangeCell.configure(with: coin)
         
-        print("📊 CoinDetails: Updated PriceChangeOverviewCell with fresh data for \(coin.symbol)")
+        AppLogger.price("CoinDetails: Updated PriceChangeOverviewCell with fresh data for \(coin.symbol)")
     }
 
     private func animatePriceChange(_ priceChange: PriceChangeIndicator) {
@@ -565,7 +565,7 @@ final class CoinDetailsVC: UIViewController {
         
         infoCell.updatePriceChangeIndicator(priceChange: signedPriceChange, percentageChange: signedPercentageChange)
         
-        print("🎨 CoinDetails: Animated price change - \(priceChange.direction) by $\(String(format: "%.2f", signedPriceChange))")
+        AppLogger.price("CoinDetails: Animated price change - \(priceChange.direction) by $\(String(format: "%.2f", signedPriceChange))")
     }
     
     // MARK: - Watchlist Management
@@ -574,14 +574,14 @@ final class CoinDetailsVC: UIViewController {
         if isNowInWatchlist {
             // Add to watchlist
             watchlistManager.addToWatchlist(coin, logoURL: nil)
-            print("⭐ Added \(coin.symbol) to watchlist")
+            AppLogger.ui("Added \(coin.symbol) to watchlist")
             
             // Show success feedback
             showWatchlistFeedback(message: "Added to Watchlist", isPositive: true)
         } else {
             // Remove from watchlist
             watchlistManager.removeFromWatchlist(coinId: coin.id)
-            print("⭐ Removed \(coin.symbol) from watchlist")
+            AppLogger.ui("Removed \(coin.symbol) from watchlist")
             
             // Show feedback
             showWatchlistFeedback(message: "Removed from Watchlist", isPositive: false)
@@ -653,7 +653,7 @@ final class CoinDetailsVC: UIViewController {
         guard isViewLoaded,
               view.window != nil,
               presentedViewController == nil else {
-            print("📊 Skipping error alert - view not in hierarchy or modal already presented")
+            AppLogger.ui("Skipping error alert - view not in hierarchy or modal already presented", level: .warning)
             return
         }
         
@@ -682,25 +682,25 @@ final class CoinDetailsVC: UIViewController {
         landscapeVC.onStateChanged = { [weak self] newRange, newChartType in
             guard let self = self else { return }
             
-            print("📊 Synchronizing state from landscape: range=\(newRange), chartType=\(newChartType)")
+            AppLogger.ui("Synchronizing state from landscape: range=\(newRange), chartType=\(newChartType)")
             
             // Simple state synchronization
             self.isUpdatingFromLandscape = true
             
             // Update state immediately
             if self.selectedRange.value != newRange {
-                print("📊 Range changed: \(self.selectedRange.value) → \(newRange)")
+                AppLogger.ui("Range changed: \(self.selectedRange.value) → \(newRange)")
                 self.selectedRange.send(newRange)
             }
             
             if self.selectedChartType.value != newChartType {
-                print("📊 Chart type changed: \(self.selectedChartType.value) → \(newChartType)")
+                AppLogger.ui("Chart type changed: \(self.selectedChartType.value) → \(newChartType)")
                 self.selectedChartType.send(newChartType)
             }
             
             // Clear flag
             self.isUpdatingFromLandscape = false
-            print("🔄 Landscape sync completed")
+            AppLogger.ui("Landscape sync completed")
         }
         
         landscapeVC.modalPresentationStyle = .fullScreen
@@ -792,11 +792,11 @@ extension CoinDetailsVC: UITableViewDataSource {
                     guard let self = self else { return }
                     
                     guard !self.isUpdatingFromLandscape else {
-                        print("🔄 Ignoring segment selection - updating from landscape")
+                        AppLogger.ui("Ignoring segment selection - updating from landscape")
                         return
                     }
                     
-                    print("🔄 Manual filter selection: \(range)")
+                    AppLogger.ui("Manual filter selection: \(range)")
                     self.selectedRange.send(range)
                 }
                 
@@ -837,7 +837,7 @@ extension CoinDetailsVC: UITableViewDataSource {
         case 4: // Stats section
             let cell = tableView.dequeueReusableCell(withIdentifier: "StatsCell", for: indexPath) as! StatsCell
             cell.configure(viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
-                print("📊 Selected stats filter: \(selectedRange)")
+                AppLogger.ui("Selected stats filter: \(selectedRange)")
                 self?.viewModel.updateStatsRange(selectedRange)
             }
             cell.selectionStyle = .none

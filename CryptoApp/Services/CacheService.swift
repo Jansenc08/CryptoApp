@@ -86,12 +86,12 @@ final class CacheService: NSObject, CacheServiceProtocol {
     }
 
     private func handleMemoryPressure() {
-        print("⚠️ Memory pressure detected - cleaning cache")
+                    AppLogger.cache("Memory pressure detected - cleaning cache", level: .warning)
         queue.async(flags: .barrier) {
             if self.currentMemoryUsage > self.maxMemoryUsage / 2 {
                 self.cache.removeAllObjects()
                 self.currentMemoryUsage = 0
-                print("🧹 Cleared all cache due to memory pressure")
+                AppLogger.cache("Cleared all cache due to memory pressure")
             }
         }
     }
@@ -149,7 +149,7 @@ final class CacheService: NSObject, CacheServiceProtocol {
     }
 
     private func evictOldestEntries(toFreeBytes bytes: Int) {
-        print("💾 Evicting cache entries to free \(bytes) bytes (note: NSCache manages this automatically)")
+        AppLogger.cache("Evicting cache entries to free \(bytes) bytes (note: NSCache manages this automatically)")
     }
 
     // MARK: - Removal / Clearing
@@ -238,7 +238,7 @@ final class CacheService: NSObject, CacheServiceProtocol {
         queue.async(flags: .barrier) {
             self.cache.removeAllObjects()
             self.currentMemoryUsage = 0
-            print("🗑️ Cache cleared - all objects removed")
+            AppLogger.cache("Cache cleared - all objects removed")
         }
     }
     
@@ -246,7 +246,7 @@ final class CacheService: NSObject, CacheServiceProtocol {
         queue.async(flags: .barrier) {
             // This method would iterate through cache and remove expired entries
             // For NSCache, we rely on automatic eviction based on memory pressure
-            print("♻️ Expired entries cleanup requested (automatic for NSCache)")
+            AppLogger.cache("Expired entries cleanup requested (automatic for NSCache)")
         }
     }
 
@@ -265,7 +265,7 @@ extension CacheService: NSCacheDelegate {
             queue.async(flags: .barrier) {
                 self.currentMemoryUsage -= entry.memorySize
             }
-            print("♻️ Cache evicted entry, freed \(entry.memorySize) bytes")
+            AppLogger.cache("Cache evicted entry, freed \(entry.memorySize) bytes")
         }
     }
 }

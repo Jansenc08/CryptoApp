@@ -83,13 +83,13 @@ final class RequestManager: RequestManagerProtocol {
         let now = Date()
         if isInCooldownMode && now < cooldownEndTime {
             let remainingTime = cooldownEndTime.timeIntervalSince(now)
-            print("❄️ Rate limit cooldown active: \(Int(remainingTime))s remaining")
+            AppLogger.network("Rate limit cooldown active: \(Int(remainingTime))s remaining", level: .warning)
             return true
         } else if isInCooldownMode && now >= cooldownEndTime {
             // Cooldown period ended
             isInCooldownMode = false
             consecutiveRateLimits = 0
-            print("🌟 Rate limit cooldown ended - resuming normal operations")
+            AppLogger.network("Rate limit cooldown ended - resuming normal operations")
         }
         return false
     }
@@ -109,11 +109,11 @@ final class RequestManager: RequestManagerProtocol {
         // If rate limits are happening quickly (< 60s apart), be more aggressive
         if timeSinceLastRateLimit < 60.0 && consecutiveRateLimits > 0 {
             consecutiveRateLimits += 1
-            print("🚨 Rapid rate limits detected - increasing cooldown severity")
+            AppLogger.network("Rapid rate limits detected - increasing cooldown severity", level: .warning)
         } else {
             // Reset consecutive count if rate limits are spaced out
             consecutiveRateLimits = 1
-            print("⏱️ Spaced rate limit - using moderate cooldown")
+            AppLogger.network("Spaced rate limit - using moderate cooldown", level: .warning)
         }
         
         lastRateLimitTime = now
@@ -125,7 +125,7 @@ final class RequestManager: RequestManagerProtocol {
         isInCooldownMode = true
         cooldownEndTime = now.addingTimeInterval(cooldownDuration)
         
-        print("❄️ Smart cooldown: \(Int(cooldownDuration))s (severity level: \(consecutiveRateLimits))")
+        AppLogger.network("Smart cooldown: \(Int(cooldownDuration))s (severity level: \(consecutiveRateLimits))", level: .warning)
     }
     
     // MARK: - Test Support
@@ -199,7 +199,7 @@ final class RequestManager: RequestManagerProtocol {
                 
                 // This checks if request is already running -> this prevents duplicate API calls
                 if let existingRequest = self.activeRequests[key] {
-                    print("♻️ \(priority.description) request deduplication: \(key)")
+                    AppLogger.performance("\(priority.description) request deduplication: \(key)")
                     // Return the existing request, cast to the correct type
                     existingRequest
                         .tryMap { result in
@@ -377,17 +377,17 @@ final class RequestManager: RequestManagerProtocol {
                     // Reset window
                     self.coinGeckoWindowStart = now
                     self.coinGeckoRequestCount = 0
-                    print("🔄 CoinGecko rate limit window reset for OHLC")
+                    AppLogger.network("CoinGecko rate limit window reset for OHLC")
                 }
                 
                 // Check if we're approaching rate limit
                 if self.coinGeckoRequestCount >= self.coinGeckoMaxRequests {
-                    print("⚠️ CoinGecko OHLC rate limit protection: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests) requests in current window")
+                    AppLogger.network("CoinGecko OHLC rate limit protection: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests) requests in current window", level: .warning)
                     promise(.failure(RequestError.rateLimited))
                     return
                 }
                 
-                print("📊 \(priority.description) CoinGecko OHLC request attempt \(self.coinGeckoRequestCount + 1)/\(self.coinGeckoMaxRequests) in current window")
+                AppLogger.network("\(priority.description) CoinGecko OHLC request attempt \(self.coinGeckoRequestCount + 1)/\(self.coinGeckoMaxRequests) in current window")
                 
                 // Add request to appropriate priority queue
                 let requestAction = { [weak self] in
@@ -399,7 +399,7 @@ final class RequestManager: RequestManagerProtocol {
                                     // Only increment counter on successful requests
                                     self?.queue.async {
                                         self?.coinGeckoRequestCount += 1
-                                        print("✅ CoinGecko OHLC request successful - counter now: \(self?.coinGeckoRequestCount ?? 0)/\(self?.coinGeckoMaxRequests ?? 0)")
+                                        AppLogger.success("CoinGecko OHLC request successful - counter now: \(self?.coinGeckoRequestCount ?? 0)/\(self?.coinGeckoMaxRequests ?? 0)")
                                     }
                                 })
                                 .map { $0 as [OHLCData] }
@@ -470,17 +470,17 @@ final class RequestManager: RequestManagerProtocol {
                     // Reset window
                     self.coinGeckoWindowStart = now
                     self.coinGeckoRequestCount = 0
-                    print("🔄 CoinGecko rate limit window reset")
+                    AppLogger.network("CoinGecko rate limit window reset")
                 }
                 
                 // Check if we're approaching rate limit
                 if self.coinGeckoRequestCount >= self.coinGeckoMaxRequests {
-                    print("⚠️ CoinGecko rate limit protection: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests) requests in current window")
+                    AppLogger.network("CoinGecko rate limit protection: \(self.coinGeckoRequestCount)/\(self.coinGeckoMaxRequests) requests in current window", level: .warning)
                     promise(.failure(RequestError.rateLimited))
                     return
                 }
                 
-                print("📊 \(priority.description) CoinGecko request attempt \(self.coinGeckoRequestCount + 1)/\(self.coinGeckoMaxRequests) in current window")
+                AppLogger.network("\(priority.description) CoinGecko request attempt \(self.coinGeckoRequestCount + 1)/\(self.coinGeckoMaxRequests) in current window")
                 
                 // Add request to appropriate priority queue
                 // High priority requests (filter changes) go to the front of the line
@@ -493,7 +493,7 @@ final class RequestManager: RequestManagerProtocol {
                                     // Only increment counter on successful requests
                                     self?.queue.async {
                                         self?.coinGeckoRequestCount += 1
-                                        print("✅ CoinGecko request successful - counter now: \(self?.coinGeckoRequestCount ?? 0)/\(self?.coinGeckoMaxRequests ?? 0)")
+                                        AppLogger.success("CoinGecko request successful - counter now: \(self?.coinGeckoRequestCount ?? 0)/\(self?.coinGeckoMaxRequests ?? 0)")
                                     }
                                 })
                                 .map { $0 as [Double] }
@@ -623,7 +623,7 @@ final class RequestManager: RequestManagerProtocol {
                     if currentAttempt < self.maxRetryAttempts {
                         let retryDelay = self.calculateRetryDelay(for: currentAttempt, error: error)
                         
-                        print("🔄 Retry attempt \(currentAttempt + 1)/\(self.maxRetryAttempts) for \(key) in \(String(format: "%.1f", retryDelay))s")
+                        AppLogger.network("Retry attempt \(currentAttempt + 1)/\(self.maxRetryAttempts) for \(key) in \(String(format: "%.1f", retryDelay))s", level: .warning)
                         
                         // Update retry count
                         self.queue.async(flags: .barrier) {
@@ -637,7 +637,7 @@ final class RequestManager: RequestManagerProtocol {
                             }
                             .eraseToAnyPublisher()
                     } else {
-                        print("❌ Max retry attempts reached for \(key)")
+                        AppLogger.error("Max retry attempts reached for \(key)")
                         // Clean up retry count
                         self.queue.async(flags: .barrier) {
                             self.retryAttempts.removeValue(forKey: key)
@@ -674,7 +674,7 @@ final class RequestManager: RequestManagerProtocol {
                     // Enter cooldown mode to prevent further API abuse
                     self.enterRateLimitCooldown()
                     
-                    print("⏸️ Extended CoinGecko rate limit window and entered cooldown due to 429 error")
+                    AppLogger.network("Extended CoinGecko rate limit window and entered cooldown due to 429 error", level: .warning)
                 }
             }
             return networkError == .invalidResponse

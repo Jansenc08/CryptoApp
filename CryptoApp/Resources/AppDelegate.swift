@@ -17,14 +17,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         // 🏗️ INITIALIZE DEPENDENCY CONTAINER: Set up dependency injection first
         Dependencies.initialize()
-        print("🏗️ AppDelegate: Dependency container initialized")
+        AppLogger.ui("AppDelegate: Dependency container initialized")
         
         // Initialize Core Data through DI container
         _ = Dependencies.container.coreDataManager()
         
         // 🌐 START SHARED DATA MANAGER: Ensure background price updates start immediately
         _ = Dependencies.container.sharedCoinDataManager()
-        print("🌐 AppDelegate: SharedCoinDataManager started at app launch")
+        AppLogger.ui("AppDelegate: SharedCoinDataManager started at app launch")
         
         #if DEBUG
         AppLogger.ui("CryptoApp launched in DEBUG mode with Dependency Injection")

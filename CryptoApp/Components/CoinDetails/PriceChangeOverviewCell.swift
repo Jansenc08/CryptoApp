@@ -88,7 +88,7 @@ final class PriceChangeOverviewCell: UITableViewCell {
         
         // Get quote data
         guard let usdQuote = coin.quote?["USD"] else {
-            print("❌ PriceChangeOverviewCell: No USD quote data for \(coin.symbol)")
+            AppLogger.ui("PriceChangeOverviewCell: No USD quote data for \(coin.symbol)", level: .warning)
             createEmptyState()
             return
         }
@@ -101,9 +101,9 @@ final class PriceChangeOverviewCell: UITableViewCell {
             TimePeriod(title: "90 days", value: usdQuote.percentChange90d)
         ]
         
-        print("📊 PriceChangeOverviewCell: Configuring for \(coin.symbol)")
+        AppLogger.ui("PriceChangeOverviewCell: Configuring for \(coin.symbol)")
         for (index, timePeriod) in timePeriods.enumerated() {
-            print("   \(index): \(timePeriod.title) = \(timePeriod.value?.description ?? "nil") (\(timePeriod.formattedValue))")
+            AppLogger.ui("   \(index): \(timePeriod.title) = \(timePeriod.value?.description ?? "nil") (\(timePeriod.formattedValue))")
         }
         
         // Create views for each time period

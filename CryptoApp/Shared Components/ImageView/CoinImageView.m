@@ -46,7 +46,7 @@
 
 - (void)downloadImageFromURL:(NSString *)urlString {
     if (!urlString) {
-        NSLog(@"❌ CoinImageView | No URL provided, setting placeholder");
+        // CoinImageView | No URL provided, setting placeholder
         [self setPlaceholder];
         return;
     }
@@ -61,14 +61,14 @@
     UIImage *cachedImage = [self.imageCache objectForKey:cacheKey];
 
     if (cachedImage) {
-        NSLog(@"💾 CoinImageView | Cache hit for: %@", urlString);
+        // CoinImageView | Cache hit for URL
         self.image = cachedImage;
         return;
     }
 
     NSURL *url = [NSURL URLWithString:urlString];
     if (!url) {
-        NSLog(@"❌ CoinImageView | Invalid URL: %@", urlString);
+        // CoinImageView | Invalid URL
         [self setPlaceholder];
         return;
     }
@@ -85,12 +85,12 @@
           
           // RACE CONDITION FIX: Only apply image if this is still the current download
           if (![strongSelf.currentDownloadURL isEqualToString:urlString]) {
-              NSLog(@"🛑 CoinImageView | Ignoring download result for %@ (no longer current)", urlString);
+              // CoinImageView | Ignoring download result (no longer current)
               return;
           }
           
           if (error) {
-              NSLog(@"❌ CoinImageView | Download error for %@: %@", urlString, error.localizedDescription);
+                              // CoinImageView | Download error
               dispatch_async(dispatch_get_main_queue(), ^{
                   // Only set placeholder if this is still the current download
                   if ([strongSelf.currentDownloadURL isEqualToString:urlString]) {
@@ -101,7 +101,7 @@
           }
           
           if (!data) {
-              NSLog(@"❌ CoinImageView | No data received for: %@", urlString);
+              // CoinImageView | No data received
               dispatch_async(dispatch_get_main_queue(), ^{
                   // Only set placeholder if this is still the current download
                   if ([strongSelf.currentDownloadURL isEqualToString:urlString]) {
@@ -125,7 +125,7 @@
                   }
               });
           } else {
-              NSLog(@"❌ CoinImageView | Failed to create image from data for: %@", urlString);
+              // CoinImageView | Failed to create image from data
               dispatch_async(dispatch_get_main_queue(), ^{
                   // Only set placeholder if this is still the current download
                   if ([strongSelf.currentDownloadURL isEqualToString:urlString]) {

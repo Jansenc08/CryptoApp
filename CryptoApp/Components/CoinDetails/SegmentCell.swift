@@ -210,6 +210,6 @@ final class SegmentCell: UITableViewCell {
         // Clean up closure properties to prevent memory leaks
         onChartTypeToggle = nil
         onLandscapeToggle = nil
-        print("🧹 SegmentCell deinit - cleaned up closures")
+        AppLogger.ui("SegmentCell deinit - cleaned up closures")
     }
 }

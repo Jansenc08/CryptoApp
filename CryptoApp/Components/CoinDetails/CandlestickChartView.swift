@@ -147,7 +147,7 @@ final class CandlestickChartView: CandleStickChartView {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
         
-        print("📊 Candlestick chart zoom reset with consistent Y-axis")
+        AppLogger.chart("Candlestick chart zoom reset with consistent Y-axis")
     }
     
     private func resetYAxisToOriginalRange() {
@@ -233,7 +233,7 @@ final class CandlestickChartView: CandleStickChartView {
         setVisibleXRangeMaximum(optimalVisibleCandles)
         setVisibleXRangeMinimum(optimalVisibleCandles / 4.0) // Allow zoom in to show 1/4 of optimal
         
-        print("📊 Candlestick initial zoom: showing \(Int(optimalVisibleCandles)) of \(dataCount) candles")
+        AppLogger.chart("Candlestick initial zoom: showing \(Int(optimalVisibleCandles)) of \(dataCount) candles")
     }
     
     // MARK: - Layout
@@ -426,7 +426,7 @@ final class CandlestickChartView: CandleStickChartView {
         // Set intelligent initial zoom based on range and data
         setInitialZoom()
         
-        print("📊 Candlestick chart updated with \(allOHLCData.count) candles")
+        AppLogger.chart("Candlestick chart updated with \(allOHLCData.count) candles")
         
         // Scroll to the latest entry (using index-based X values)
         moveViewToX(Double(entries.count - 1))
@@ -505,7 +505,7 @@ extension CandlestickChartView: ChartViewDelegate {
         // Log selection for debugging
         if let candleEntry = entry as? CandleChartDataEntry {
             let isBullish = candleEntry.close >= candleEntry.open
-            print("📊 Candlestick selected: \(isBullish ? "📈" : "📉") O:\(String(format: "%.0f", candleEntry.open)) C:\(String(format: "%.0f", candleEntry.close))")
+            AppLogger.chart("Candlestick selected: \(isBullish ? "📈" : "📉") O:\(String(format: "%.0f", candleEntry.open)) C:\(String(format: "%.0f", candleEntry.close))")
         }
     }
     
@@ -524,7 +524,7 @@ extension CandlestickChartView: ChartViewDelegate {
         
         // Calculate visible candles for user feedback
         let visibleCandles = Int(highestVisibleX - lowestVisibleX) + 1
-        print("📊 Candlestick zoom: \(visibleCandles) candles visible (X-axis only)")
+        AppLogger.chart("Candlestick zoom: \(visibleCandles) candles visible (X-axis only)")
     }
     
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {

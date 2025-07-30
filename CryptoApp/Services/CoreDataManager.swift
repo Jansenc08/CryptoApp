@@ -36,7 +36,7 @@ final class CoreDataManager: CoreDataManagerProtocol {
             do {
                 try context.save()
             } catch {
-                print("❌ Core Data save error: \(error)")
+                AppLogger.database("Core Data save error", level: .error)
             }
         }
     }
@@ -53,7 +53,7 @@ final class CoreDataManager: CoreDataManagerProtocol {
         do {
             return try context.fetch(request)
         } catch {
-            print("❌ Core Data fetch error: \(error)")
+            AppLogger.database("Core Data fetch error", level: .error)
             return []
         }
     }
@@ -66,7 +66,7 @@ final class CoreDataManager: CoreDataManagerProtocol {
         do {
             return try context.fetch(request)
         } catch {
-            print("❌ Core Data fetch with predicate error: \(error)")
+            AppLogger.database("Core Data fetch with predicate error", level: .error)
             return []
         }
     }
@@ -78,7 +78,7 @@ final class CoreDataManager: CoreDataManagerProtocol {
         do {
             return try context.fetch(request)
         } catch {
-            print("❌ Core Data fetch watchlist items error: \(error)")
+            AppLogger.database("Core Data fetch watchlist items error", level: .error)
             return []
         }
     }
@@ -90,7 +90,7 @@ final class CoreDataManager: CoreDataManagerProtocol {
         do {
             return try context.fetch(request)
         } catch {
-            print("❌ Core Data fetch watchlist items with predicate error: \(error)")
+            AppLogger.database("Core Data fetch watchlist items with predicate error", level: .error)
             return []
         }
     }
