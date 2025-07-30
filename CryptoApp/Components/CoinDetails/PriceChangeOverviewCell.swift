@@ -66,17 +66,17 @@ final class PriceChangeOverviewCell: UITableViewCell {
         timePeriodsStackView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(timePeriodsStackView)
         
-        // Layout constraints - matching StatsCell margins and padding
+        // Layout constraints - reduced padding for more compact layout
         NSLayoutConstraint.activate([
-            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8), // Reduced from 12
             containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
+            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8), // Reduced from 12
             
-            timePeriodsStackView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
+            timePeriodsStackView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12), // Reduced from 16
             timePeriodsStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
             timePeriodsStackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
-            timePeriodsStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16)
+            timePeriodsStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12) // Reduced from 16
         ])
     }
     

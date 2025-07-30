@@ -43,6 +43,8 @@ final class CoinDetailsVM: ObservableObject {
     private let coinDataSubject: CurrentValueSubject<Coin, Never>
     private let chartPointsSubject = CurrentValueSubject<[Double], Never>([])
     private let ohlcDataSubject = CurrentValueSubject<[OHLCData], Never>([])
+    private let statsOhlcDataSubject = CurrentValueSubject<[String: [OHLCData]], Never>([:]) // Independent OHLC data for stats
+    private let statsLoadingSubject = CurrentValueSubject<Set<String>, Never>(Set<String>()) // Track which ranges are loading
     private let selectedStatsRangeSubject = CurrentValueSubject<String, Never>("24h")
     private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
     private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
@@ -51,6 +53,7 @@ final class CoinDetailsVM: ObservableObject {
     // FIXED: Request cancellation management
     private var chartDataCancellable: AnyCancellable?
     private var ohlcDataCancellable: AnyCancellable?
+    private var statsOhlcCancellables: [String: AnyCancellable] = [:] // Separate cancellables for stats OHLC data
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Published AnyPublisher Properties (Reactive UI Binding)
@@ -61,6 +64,14 @@ final class CoinDetailsVM: ObservableObject {
     
     var ohlcData: AnyPublisher<[OHLCData], Never> {
         ohlcDataSubject.eraseToAnyPublisher()
+    }
+    
+    var statsOhlcData: AnyPublisher<[String: [OHLCData]], Never> {
+        statsOhlcDataSubject.eraseToAnyPublisher()
+    }
+    
+    var statsLoadingState: AnyPublisher<Set<String>, Never> {
+        statsLoadingSubject.eraseToAnyPublisher()
     }
     
     var isLoading: AnyPublisher<Bool, Never> {
@@ -122,6 +133,19 @@ final class CoinDetailsVM: ObservableObject {
         return getStats(for: currentSelectedStatsRange)
     }
     
+    // Reactive stats publisher that updates when coin data or OHLC data changes
+    var stats: AnyPublisher<[StatItem], Never> {
+        Publishers.CombineLatest3(
+            coinData,
+            selectedStatsRange,
+            statsOhlcData
+        )
+        .map { [weak self] (_, range, _) in
+            self?.getStats(for: range) ?? []
+        }
+        .eraseToAnyPublisher()
+    }
+    
     // MARK: - Initialization
     
     init(coin: Coin, coinManager: CoinManagerProtocol, sharedCoinDataManager: SharedCoinDataManagerProtocol, requestManager: RequestManagerProtocol) {
@@ -134,14 +158,15 @@ final class CoinDetailsVM: ObservableObject {
         // ID MAPPING: Convert CMC slug to CoinGecko ID for chart API
         if let slug = coin.slug, !slug.isEmpty {
             self.geckoID = slug.lowercased()
-            print("✅ Using coin slug for \(coin.symbol): \(slug)")
         } else {
-            print("❌ No slug found for \(coin.symbol) - chart data will not be available")
             self.geckoID = nil
         }
         
         // 🌐 SUBSCRIBE TO SHARED DATA: Get real-time price updates
         setupSharedCoinDataListener()
+        
+        // Fetch initial OHLC data for default stats range (24h)
+        fetchStatsOHLCData(for: "24h")
     }
     
     // MARK: - Shared Data Management
@@ -199,9 +224,6 @@ final class CoinDetailsVM: ObservableObject {
             // Trigger price change animation
             priceChangeSubject.send(indicator)
             
-            print("💰 CoinDetails: \(freshCoin.symbol) price changed: $\(String(format: "%.2f", oldPrice)) → $\(String(format: "%.2f", newPrice)) (\(direction))")
-            print("💰 CoinDetails: Change amount: \(priceChange >= 0 ? "+" : "")$\(String(format: "%.2f", priceChange)), percentage: \(percentageChange >= 0 ? "+" : "")\(String(format: "%.2f", percentageChange))%")
-            
             // Clear indicator after animation
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                 self?.priceChangeSubject.send(nil)
@@ -225,7 +247,6 @@ final class CoinDetailsVM: ObservableObject {
                !cachedOHLCData.isEmpty {
                 ohlcDataSubject.send(cachedOHLCData)
                 errorMessageSubject.send(nil)
-                print("📦 ✅ Using cached OHLC data: \(cachedOHLCData.count) candles for \(targetRange)")
                 return
             }
             
@@ -261,7 +282,6 @@ final class CoinDetailsVM: ObservableObject {
         
         // FIXED: Centralized cache checking with consistent key generation
         let cacheKey = "\(geckoID)_\(days)"
-        print("🔑 Checking cache for key: \(cacheKey)")
         
         if let cachedChartData = CacheService.shared.getChartData(for: geckoID, currency: "usd", days: days),
            !cachedChartData.isEmpty {
@@ -269,15 +289,12 @@ final class CoinDetailsVM: ObservableObject {
             let processedData = processChartData(cachedChartData, for: days)
             chartPointsSubject.send(processedData)
             errorMessageSubject.send(nil)
-            print("📦 ✅ Using cached chart data: \(processedData.count) points for \(range)")
             
             // FIXED: Always fetch OHLC data for Low/High section, regardless of chart type
             if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
                !cachedOHLCData.isEmpty {
                 ohlcDataSubject.send(cachedOHLCData)
-                print("📦 ✅ Using cached OHLC data: \(cachedOHLCData.count) candles for \(range)")
             } else {
-                print("📊 Fetching OHLC data for Low/High section: \(range)")
                 fetchOHLCDataCombine(for: range)
             }
             return
@@ -289,9 +306,6 @@ final class CoinDetailsVM: ObservableObject {
             return
         }
         
-        print("🌐 No cache found - fetching fresh data for \(range)")
-        
-        // FIXED: Pure Combine request chain with dedicated cancellable
         isLoadingSubject.send(true)
         errorMessageSubject.send(nil)
         
@@ -305,7 +319,6 @@ final class CoinDetailsVM: ObservableObject {
             .handleEvents(
                 receiveOutput: { [weak self] processedData in
                     self?.errorMessageSubject.send(nil)
-                    print("📊 ✅ Chart updated with \(processedData.count) points for \(range)")
                 }
             )
             .sink(
@@ -315,7 +328,6 @@ final class CoinDetailsVM: ObservableObject {
                     if case .failure(let error) = completion {
                         // FIXED: Better error handling for throttled requests
                         if let requestError = error as? RequestError, requestError == .throttled {
-                            print("📊 Request throttled - not showing error")
                             // Don't show error for throttled requests, just stop loading
                         } else {
                             self?.handleError(error)
@@ -337,7 +349,6 @@ final class CoinDetailsVM: ObservableObject {
     
     private func fetchOHLCDataCombine(for range: String) {
         guard let geckoID = geckoID else {
-            print("⚠️ No geckoID available for OHLC data")
             return
         }
         
@@ -351,7 +362,6 @@ final class CoinDetailsVM: ObservableObject {
         if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
            !cachedOHLCData.isEmpty {
             ohlcDataSubject.send(cachedOHLCData)
-            print("📦 ✅ Using cached OHLC data: \(cachedOHLCData.count) candles for \(range)")
             return
         }
         
@@ -363,23 +373,15 @@ final class CoinDetailsVM: ObservableObject {
             return
         }
         
-        print("🌐 Fetching fresh OHLC data for \(range)")
-        
-        // FIXED: Pure Combine OHLC request with dedicated cancellable
         ohlcDataCancellable = coinManager.fetchOHLCData(for: geckoID, range: days, currency: "usd", priority: .normal)
             .subscribe(on: DispatchQueue.global(qos: .userInitiated))
             .receive(on: DispatchQueue.main)
-            .handleEvents(
-                receiveOutput: { [weak self] ohlcData in
-                    print("📊 ✅ Fetched \(ohlcData.count) OHLC candles for \(range)")
-                }
-            )
             .sink(
                 receiveCompletion: { [weak self] completion in
                     if case .failure(let error) = completion {
                         // FIXED: Better error handling for throttled OHLC requests
                         if let requestError = error as? RequestError, requestError == .throttled {
-                            print("📊 OHLC request throttled - not showing error")
+                            // Don't show error for throttled requests
                         } else {
                             self?.handleError(error)
                         }
@@ -402,7 +404,6 @@ final class CoinDetailsVM: ObservableObject {
                 .autoconnect()
                 .first() // Only fire once
                 .sink { [weak self] _ in
-                    print("🔄 Smart refresh: Cooldown ended, fetching fresh data")
                     self?.fetchChartData(for: range)
                 }
                 .store(in: &cancellables) // FIXED: Store in cancellables
@@ -412,10 +413,7 @@ final class CoinDetailsVM: ObservableObject {
             let days = mapRangeToDays(range)
             
             if CacheService.shared.getChartData(for: geckoID, currency: "usd", days: days) == nil {
-                print("🔄 Smart refresh: No cached data, fetching fresh data")
                 fetchChartData(for: range)
-            } else {
-                print("🔄 Smart refresh: Using existing cached data")
             }
         }
     }
@@ -429,7 +427,6 @@ final class CoinDetailsVM: ObservableObject {
         } else {
             errorMessageSubject.send(ErrorMessageProvider.shared.getChartErrorMessage(for: error, symbol: coin.symbol))
         }
-        print("📊 Chart fetch failed: \(error)")
     }
     
     // MARK: - Data Processing (Pure Functions)
@@ -459,11 +456,9 @@ final class CoinDetailsVM: ObservableObject {
                 index < smoothedData.count ? smoothedData[index] : nil
             }
             
-            print("📊 Chart processing: \(rawData.count) → \(validData.count) → \(smoothedData.count) → \(downsampledData.count) points for \(days)")
             return downsampledData
         }
         
-        print("📊 Chart processing: \(rawData.count) → \(validData.count) → \(smoothedData.count) points for \(days)")
         return smoothedData
     }
     
@@ -485,7 +480,6 @@ final class CoinDetailsVM: ObservableObject {
         isSmoothingEnabled = enabled
         // Refresh current chart data with new smoothing setting
         fetchChartData(for: currentRange)
-        print("📊 Chart smoothing \(enabled ? "enabled" : "disabled")")
     }
     
     // Change smoothing algorithm
@@ -493,7 +487,6 @@ final class CoinDetailsVM: ObservableObject {
         smoothingType = type
         // Refresh current chart data with new smoothing algorithm
         fetchChartData(for: currentRange)
-        print("📊 Chart smoothing type changed to: \(type)")
     }
     
     var smoothingEnabled: Bool {
@@ -508,7 +501,9 @@ final class CoinDetailsVM: ObservableObject {
     
     func updateStatsRange(_ range: String) {
         selectedStatsRangeSubject.send(range)
-        print("📊 Stats range updated to: \(range)")
+        
+        // Fetch OHLC data for the new range to calculate high/low prices
+        fetchStatsOHLCData(for: range)
     }
 
     
@@ -516,7 +511,12 @@ final class CoinDetailsVM: ObservableObject {
         var items: [StatItem] = []
         
         let currentCoinData = coinDataSubject.value
-        guard let quote = currentCoinData.quote?["USD"] else { return items }
+        guard let quote = currentCoinData.quote?["USD"] else { 
+            return items 
+        }
+        
+        // High/Low prices for selected time range - FIRST ITEM
+        addHighLowStats(to: &items, for: range)
         
         // Core metrics
         if let marketCap = quote.marketCap {
@@ -527,44 +527,43 @@ final class CoinDetailsVM: ObservableObject {
             items.append(StatItem(title: "Volume (24h)", value: volume24h.abbreviatedString()))
         }
         
-        // Volume change (24h) - NEW
+        // Volume change (24h)
         if let volumeChange24h = quote.volumeChange24h {
             let changeString = String(format: "%.2f%%", volumeChange24h)
             let color = volumeChange24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
             items.append(StatItem(title: "Volume Change (24h)", value: changeString, valueColor: color))
         }
         
-        // Fully Diluted Market Cap - NEW
+        // Fully Diluted Market Cap
         if let fullyDilutedMarketCap = quote.fullyDilutedMarketCap {
             items.append(StatItem(title: "Fully Diluted Market Cap", value: fullyDilutedMarketCap.abbreviatedString()))
         }
         
-        // Market Cap Dominance - NEW
+        // Market Cap Dominance
         if let dominance = quote.marketCapDominance {
             items.append(StatItem(title: "Market Dominance", value: String(format: "%.2f%%", dominance)))
         }
-        
-        // Time-specific changes
-        addPercentageChangeStats(to: &items, from: quote, for: range)
         
         // Supply information
         if let circulating = currentCoinData.circulatingSupply {
             items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
         }
         
-        // Total Supply - NEW
+        // Total Supply
         if let totalSupply = currentCoinData.totalSupply {
             items.append(StatItem(title: "Total Supply", value: totalSupply.abbreviatedString()))
         }
         
-        // Max Supply - NEW
+        // Max Supply - Always show this field
         if let maxSupply = currentCoinData.maxSupply {
             items.append(StatItem(title: "Max Supply", value: maxSupply.abbreviatedString()))
         } else if currentCoinData.infiniteSupply == true {
             items.append(StatItem(title: "Max Supply", value: "∞ (Infinite)", valueColor: .systemBlue))
+        } else {
+            items.append(StatItem(title: "Max Supply", value: "N/A", valueColor: .secondaryLabel))
         }
         
-        // Market pairs - NEW
+        // Market pairs
         if let numMarketPairs = currentCoinData.numMarketPairs {
             items.append(StatItem(title: "Market Pairs", value: "\(numMarketPairs)"))
         }
@@ -576,22 +575,8 @@ final class CoinDetailsVM: ObservableObject {
     }
     
     private func addPercentageChangeStats(to items: inout [StatItem], from quote: Quote, for range: String) {
-        switch range {
-        case "24h":
-            addPercentageStat(to: &items, title: "1h Change", percentage: quote.percentChange1h)
-            addPercentageStat(to: &items, title: "24h Change", percentage: quote.percentChange24h)
-        case "30d":
-            addPercentageStat(to: &items, title: "7d Change", percentage: quote.percentChange7d)
-            addPercentageStat(to: &items, title: "30d Change", percentage: quote.percentChange30d)
-        case "1y":
-            addPercentageStat(to: &items, title: "60d Change", percentage: quote.percentChange60d)
-            addPercentageStat(to: &items, title: "90d Change", percentage: quote.percentChange90d)
-        default:
-            // Default view - show most common changes
-            addPercentageStat(to: &items, title: "24h Change", percentage: quote.percentChange24h)
-            addPercentageStat(to: &items, title: "7d Change", percentage: quote.percentChange7d)
-            break
-        }
+        // User requested: Filter should only change the high/low bar values, no percentage changes
+        // Therefore, this method now does nothing regardless of range
     }
     
     private func addPercentageStat(to items: inout [StatItem], title: String, percentage: Double?) {
@@ -602,6 +587,113 @@ final class CoinDetailsVM: ObservableObject {
         items.append(StatItem(title: title, value: changeString, valueColor: color))
     }
     
+    // MARK: - High/Low Price Calculation for Stats
+    
+    private func fetchStatsOHLCData(for range: String) {
+        guard let geckoID = geckoID else {
+            return
+        }
+        
+        let days = mapRangeToDays(range)
+        
+        // Check cache first
+        if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
+           !cachedOHLCData.isEmpty {
+            var currentStatsData = statsOhlcDataSubject.value
+            currentStatsData[range] = cachedOHLCData
+            statsOhlcDataSubject.send(currentStatsData)
+            return
+        }
+        
+        // Set loading state for this range
+        var currentLoading = statsLoadingSubject.value
+        currentLoading.insert(range)
+        statsLoadingSubject.send(currentLoading)
+        
+        // Cancel any existing request for this range
+        statsOhlcCancellables[range]?.cancel()
+        
+        statsOhlcCancellables[range] = coinManager.fetchOHLCData(for: geckoID, range: days, currency: "usd", priority: .normal)
+            .subscribe(on: DispatchQueue.global(qos: .userInitiated))
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    // Clear loading state
+                    var currentLoading = self.statsLoadingSubject.value
+                    currentLoading.remove(range)
+                    self.statsLoadingSubject.send(currentLoading)
+                    
+                    if case .failure(let error) = completion {
+                        print("❌ Failed to fetch OHLC data for stats \(range): \(error)")
+                    }
+                },
+                receiveValue: { [weak self] ohlcData in
+                    guard let self = self else { return }
+                    var currentStatsData = self.statsOhlcDataSubject.value
+                    currentStatsData[range] = ohlcData
+                    self.statsOhlcDataSubject.send(currentStatsData)
+                }
+            )
+    }
+    
+    private func getHighLowPrices(for range: String) -> (high: Double?, low: Double?) {
+        let statsData = statsOhlcDataSubject.value
+        let loadingStates = statsLoadingSubject.value
+        
+        // Check if we have data for the current range
+        if let ohlcData = statsData[range], !ohlcData.isEmpty {
+            let highs = ohlcData.map { $0.high }
+            let lows = ohlcData.map { $0.low }
+            
+            let highPrice = highs.max()
+            let lowPrice = lows.min()
+            
+            return (highPrice, lowPrice)
+        }
+        
+        // If currently loading this range, return placeholder values to maintain layout
+        if loadingStates.contains(range) {
+            // Use current coin price as both high and low for loading state
+            let currentCoinData = coinDataSubject.value
+            let currentPrice = currentCoinData.quote?["USD"]?.price ?? 0.0
+            return (currentPrice, currentPrice) // This will show indicator in middle
+        }
+        
+        // No data available and not loading
+        return (nil, nil)
+    }
+    
+    private func addHighLowStats(to items: inout [StatItem], for range: String) {
+        let (high, low) = getHighLowPrices(for: range)
+        
+        guard let highPrice = high, let lowPrice = low else { return }
+        
+        // Format prices
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        
+        let lowString = formatter.string(from: NSNumber(value: lowPrice)) ?? "$0"
+        let highString = formatter.string(from: NSNumber(value: highPrice)) ?? "$0"
+        
+        let currentCoinData = coinDataSubject.value
+        let currentPrice = currentCoinData.quote?["USD"]?.price ?? 0.0
+        
+        // Check if this is a loading state (high == low means placeholder values)
+        let isLoading = abs(highPrice - lowPrice) < 0.01 // Loading state when high ≈ low
+        
+        // Create a special StatItem that contains both high, low, current price, and loading state
+        let highLowItem = StatItem(
+            title: "Low / High", 
+            value: "\(lowString)|\(highString)|\(currentPrice)|\(isLoading)", // Include loading state
+            valueColor: nil
+        )
+        items.append(highLowItem)
+    }
+    
     // MARK: - Utility
     
     func mapRangeToDays(_ range: String) -> String {
@@ -609,7 +701,7 @@ final class CoinDetailsVM: ObservableObject {
         case "24h": return "1"
         case "7d": return "7"
         case "30d": return "30"
-        case "All", "365d": return "365"
+        case "1y", "All", "365d": return "365"
         default: return "7"
         }
     }
@@ -647,7 +739,6 @@ final class CoinDetailsVM: ObservableObject {
     // MARK: - FIXED: Proper Cleanup Methods
     
     func cancelAllRequests() {
-        print("🛑 Cancelling all Combine requests for \(coin.symbol)")
         
         // FIXED: Cancel dedicated chart data requests first
         chartDataCancellable?.cancel()
@@ -655,13 +746,21 @@ final class CoinDetailsVM: ObservableObject {
         ohlcDataCancellable?.cancel()
         ohlcDataCancellable = nil
         
+        // Cancel stats OHLC requests
+        for (_, cancellable) in statsOhlcCancellables {
+            cancellable.cancel()
+        }
+        statsOhlcCancellables.removeAll()
+        
+        // Clear loading states
+        statsLoadingSubject.send(Set<String>())
+        
         // Cancel all other Combine subscriptions
         cancellables.removeAll()
         
         // Reset loading states
         isLoadingSubject.send(false)
         
-        print("✅ All Combine subscriptions cancelled for \(coin.symbol)")
     }
     
     deinit {
@@ -670,6 +769,15 @@ final class CoinDetailsVM: ObservableObject {
         // FIXED: Cancel dedicated chart data requests
         chartDataCancellable?.cancel()
         ohlcDataCancellable?.cancel()
+        
+        // Cancel stats OHLC requests
+        for (_, cancellable) in statsOhlcCancellables {
+            cancellable.cancel()
+        }
+        statsOhlcCancellables.removeAll()
+        
+        // Clear loading states
+        statsLoadingSubject.send(Set<String>())
         
         // Cancel all other subscriptions
         cancellables.removeAll()

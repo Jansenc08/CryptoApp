@@ -254,6 +254,14 @@ final class CoinDetailsVC: UIViewController {
             }
             .store(in: &cancellables)
         
+        // Stats updates with reactive high/low data
+        viewModel.stats
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateStatsCell()
+            }
+            .store(in: &cancellables)
+        
         // OHLC data updates for candlestick charts and Low/High section
         viewModel.ohlcData
             .receive(on: DispatchQueue.main)
@@ -628,22 +636,14 @@ final class CoinDetailsVC: UIViewController {
 
     
     private func updateStatsCell() {
-        let statsIndexPath = IndexPath(row: 0, section: 4)
-        
-        guard statsIndexPath.section < tableView.numberOfSections else {
-            print("⚠️ Stats section doesn't exist yet")
+        guard let statsCell = tableView.cellForRow(at: IndexPath(row: 0, section: 4)) as? StatsCell else {
             return
         }
         
-        guard let statsCell = tableView.cellForRow(at: statsIndexPath) as? StatsCell else {
-            if statsIndexPath.section < tableView.numberOfSections {
-                tableView.reloadSections(IndexSet(integer: 4), with: .none)
-            }
-            return
-        }
+        // Use the current stats which includes all fields
+        let currentStatsData = viewModel.currentStats
         
-        statsCell.configure(viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
-            print("📊 Selected stats filter: \(selectedRange)")
+        statsCell.configure(currentStatsData, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
             self?.viewModel.updateStatsRange(selectedRange)
         }
     }
@@ -854,25 +854,10 @@ extension CoinDetailsVC: UITableViewDataSource {
 extension CoinDetailsVC: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        switch indexPath.section {
-        case 0: return UITableView.automaticDimension // Info
-        case 1: return 40 // Segment
-        case 2: return 300 // Chart
-        case 3: return UITableView.automaticDimension // Price Change Overview
-        case 4: return UITableView.automaticDimension // Stats
-        default: return 44
+        if indexPath.section == 2 { // Chart section only
+            return 300
         }
-    }
-    
-    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
-        switch indexPath.section {
-        case 0: return 100 // Info
-        case 1: return 40 // Segment
-        case 2: return 300 // Chart
-        case 3: return 90 // Price Change Overview
-        case 4: return 200 // Stats
-        default: return 44
-        }
+        return UITableView.automaticDimension
     }
 }
 
