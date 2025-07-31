@@ -7,9 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		9716CA7D2E1FCFF9002D2C8F /* mock_top_coins.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */; };
-		9716CA7F2E1FD00D002D2C8F /* mock_logos.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA7E2E1FD007002D2C8F /* mock_logos.json */; };
-		9716CA812E1FD020002D2C8F /* mock_quotes.json in Resources */ = {isa = PBXBuildFile; fileRef = 9716CA802E1FD019002D2C8F /* mock_quotes.json */; };
 		9716CD492E28AD17002D2C8F /* WatchlistModel.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 9716CD472E28AD17002D2C8F /* WatchlistModel.xcdatamodeld */; };
 		9716D6F02E2F7CD0002D2C8F /* DGCharts in Frameworks */ = {isa = PBXBuildFile; productRef = 9716D6EF2E2F7CD0002D2C8F /* DGCharts */; };
 /* End PBXBuildFile section */
@@ -25,9 +22,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_top_coins.json; sourceTree = "<group>"; };
-		9716CA7E2E1FD007002D2C8F /* mock_logos.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_logos.json; sourceTree = "<group>"; };
-		9716CA802E1FD019002D2C8F /* mock_quotes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = mock_quotes.json; sourceTree = "<group>"; };
 		9716CD482E28AD17002D2C8F /* WatchlistModel.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = WatchlistModel.xcdatamodel; sourceTree = "<group>"; };
 		9716CD742E2A3739002D2C8F /* CryptoAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CryptoAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9716CD982E2A3FF3002D2C8F /* CryptoAppTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = CryptoAppTests.xctestplan; sourceTree = "<group>"; };
@@ -84,9 +78,6 @@
 			children = (
 				9716CD982E2A3FF3002D2C8F /* CryptoAppTests.xctestplan */,
 				9716CD472E28AD17002D2C8F /* WatchlistModel.xcdatamodeld */,
-				9716CA802E1FD019002D2C8F /* mock_quotes.json */,
-				9716CA7E2E1FD007002D2C8F /* mock_logos.json */,
-				9716CA7C2E1FCFF1002D2C8F /* mock_top_coins.json */,
 				97CA70BA2E0BAEEB00E42811 /* CryptoApp */,
 				9716CD752E2A3739002D2C8F /* CryptoAppTests */,
 				97CA70B92E0BAEEB00E42811 /* Products */,
@@ -204,9 +195,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9716CA812E1FD020002D2C8F /* mock_quotes.json in Resources */,
-				9716CA7F2E1FD00D002D2C8F /* mock_logos.json in Resources */,
-				9716CA7D2E1FCFF9002D2C8F /* mock_top_coins.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
