@@ -118,6 +118,13 @@ import Combine
         // Set initial state to show popular coins
         showPopularCoins(true)
         collectionView.isHidden = true
+        
+        // Trigger initial popular coins data load
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            AppLogger.ui("SearchVC: viewDidLoad - triggering initial popular coins load")
+            self.viewModel.updatePopularCoinsFilter(.topGainers) // This will use cache or fetch fresh data
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -162,14 +169,22 @@ import Combine
         // Ensure popular coins are properly displayed if no search is active
         let currentSearchText = searchBarComponent.text ?? ""
         if currentSearchText.isEmpty {
+            AppLogger.ui("SearchVC: viewDidAppear - ensuring popular coins are displayed")
             // Force layout update and ensure popular coins fill the space
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 guard let self = self else { return }
                 self.view.layoutIfNeeded()
                 self.popularCoinsCollectionView.reloadData()
                 
-                // Trigger a refresh of popular coins data with fresh data
-                self.viewModel.fetchFreshPopularCoins(for: self.viewModel.currentPopularCoinsState.selectedFilter)
+                // Only fetch fresh data if we don't have any data or if cache is old
+                let currentCoins = self.viewModel.currentPopularCoins
+                if currentCoins.isEmpty {
+                    let currentFilter = self.viewModel.currentPopularCoinsState.selectedFilter
+                    AppLogger.ui("SearchVC: viewDidAppear - no data available, fetching fresh popular coins for \(currentFilter.displayName)")
+                    self.viewModel.fetchFreshPopularCoins(for: currentFilter)
+                } else {
+                    AppLogger.ui("SearchVC: viewDidAppear - popular coins data already available (\(currentCoins.count) coins)")
+                }
             }
         }
     }
@@ -562,19 +577,22 @@ import Combine
                     // Hide skeleton loading and restore data source for popular coins
                     SkeletonLoadingManager.dismissSkeletonFromCollectionView(self.popularCoinsCollectionView)
                     self.popularCoinsCollectionView.dataSource = self.popularCoinsDataSource
-                    
-                    // Force update with current popular coins data
-                    // Access current value directly from subject since SearchVM doesn't expose a current value accessor
-                    let currentPopularCoins = self.viewModel.currentPopularCoins
-                    if !currentPopularCoins.isEmpty {
-                        self.updatePopularCoinsDataSource(currentPopularCoins)
-                    }
                     self.popularCoinsHeaderView.setLoading(false) // Re-enable buttons
-                    AppLogger.ui("Popular Coins: Loading finished")
+                    AppLogger.ui("Popular Coins: Loading finished, skeleton dismissed")
                     
-                    // Force height update after loading completes to ensure proper sizing
+                    // Immediately apply any pending data updates
                     DispatchQueue.main.async {
-                        self.forcePopularCoinsHeightUpdate()
+                        let currentPopularCoins = self.viewModel.currentPopularCoins
+                        AppLogger.ui("Popular Coins: Post-loading update with \(currentPopularCoins.count) coins")
+                        
+                        if !currentPopularCoins.isEmpty {
+                            // Apply the current data now that skeleton is gone
+                            self.updatePopularCoinsDataSource(currentPopularCoins)
+                        } else {
+                            // Handle empty state - set minimum height
+                            self.updatePopularCoinsHeight(for: 0)
+                            AppLogger.ui("Popular Coins: No data available, set minimum height")
+                        }
                     }
                 }
             }
@@ -603,8 +621,11 @@ import Combine
         // Bind popular coins data
         viewModel.popularCoins
             .receive(on: DispatchQueue.main)
+            .removeDuplicates() // Prevent duplicate updates
             .sink { [weak self] popularCoins in
-                self?.updatePopularCoinsDataSource(popularCoins)
+                guard let self = self else { return }
+                AppLogger.ui("Popular Coins: Received \(popularCoins.count) coins, loading: \(self.isPopularCoinsLoading)")
+                self.updatePopularCoinsDataSource(popularCoins)
             }
             .store(in: &cancellables)
         
@@ -631,24 +652,22 @@ import Combine
     
     private func updatePopularCoinsDataSource(_ coins: [Coin]) {
         // Don't apply snapshot if skeleton loading is active
-        guard !SkeletonLoadingManager.isShowingSkeleton(in: popularCoinsCollectionView) else { return }
+        guard !SkeletonLoadingManager.isShowingSkeleton(in: popularCoinsCollectionView) else { 
+            AppLogger.ui("Popular Coins: Deferring data update - skeleton is showing, will update when loading ends")
+            return 
+        }
         
         var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
         snapshot.appendSections([.main])
         snapshot.appendItems(coins)
         
+        AppLogger.ui("Popular Coins: Applying snapshot with \(coins.count) items")
         popularCoinsDataSource.apply(snapshot, animatingDifferences: true) { [weak self] in
             guard let self = self else { return }
             
-            // Only update height if not currently loading (prevents race condition)
-            if !self.isPopularCoinsLoading && !coins.isEmpty {
-                self.updatePopularCoinsHeight(for: coins.count)
-                AppLogger.ui("Popular Coins: Height updated for \(coins.count) items (not loading)")
-            } else if coins.isEmpty && self.isPopularCoinsLoading {
-                AppLogger.ui("Popular Coins: Skipping height update for 0 items (loading in progress)")
-            } else {
-                AppLogger.ui("Popular Coins: Height update skipped - loading: \(self.isPopularCoinsLoading), items: \(coins.count)")
-            }
+            // Update height based on actual item count  
+            self.updatePopularCoinsHeight(for: coins.count)
+            AppLogger.ui("Popular Coins: ✅ Successfully updated with \(coins.count) items and adjusted height")
         }
     }
     
@@ -658,8 +677,20 @@ import Combine
         let bottomPadding: CGFloat = 12
         let minHeight: CGFloat = 100
         
-        // Calculate height needed for all items
-        let calculatedHeight = max(CGFloat(itemCount) * itemHeight + topPadding + bottomPadding, minHeight)
+        // Handle empty state properly
+        let calculatedHeight: CGFloat
+        if itemCount == 0 {
+            calculatedHeight = minHeight // Set to minimum height for empty state
+            AppLogger.ui("Popular Coins: Setting minimum height for empty state")
+        } else {
+            calculatedHeight = max(CGFloat(itemCount) * itemHeight + topPadding + bottomPadding, minHeight)
+        }
+        
+        // Only update if height actually changed (prevents unnecessary animations)
+        guard popularCoinsHeightConstraint.constant != calculatedHeight else {
+            AppLogger.ui("Popular Coins: Height unchanged (\(calculatedHeight)pt), skipping update")
+            return
+        }
         
         // Update the constraint
         popularCoinsHeightConstraint.constant = calculatedHeight
@@ -669,17 +700,11 @@ import Combine
             self?.view.layoutIfNeeded()
         }
         
-        AppLogger.ui("Popular Coins: Container height set to \(calculatedHeight)pt for \(itemCount) items")
+        AppLogger.ui("Popular Coins: Container height updated to \(calculatedHeight)pt for \(itemCount) items")
     }
     
-    private func forcePopularCoinsHeightUpdate() {
-        // Force height update based on current data after loading completes
-        let currentItems = viewModel.currentPopularCoins
-        if !currentItems.isEmpty {
-            updatePopularCoinsHeight(for: currentItems.count)
-            AppLogger.ui("Popular Coins: Forced height update for \(currentItems.count) items after loading")
-        }
-    }
+    // Removed forcePopularCoinsHeightUpdate - was causing race conditions
+    // Height updates now happen directly in updatePopularCoinsDataSource
     
     // MARK: - Empty State
     

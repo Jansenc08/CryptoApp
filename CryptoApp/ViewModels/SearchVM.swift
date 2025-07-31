@@ -139,6 +139,8 @@ final class SearchVM: ObservableObject {
     // MARK: - Popular Coins Caching
     
     private var cachedPopularCoinsData: [Coin] = []
+    private var cachedTopGainers: [Coin] = []  // Pre-calculated gainers
+    private var cachedTopLosers: [Coin] = []   // Pre-calculated losers
     private var popularCoinsCacheTimestamp: Date?
     private let popularCoinsCacheInterval: TimeInterval = 300 // 5 minutes cache
     
@@ -435,18 +437,28 @@ final class SearchVM: ObservableObject {
         let newState = PopularCoinsState(selectedFilter: filter)
         popularCoinsStateSubject.send(newState)
         
-        // Check if we have valid cached data
+        print("🔄 Popular Coins: Switching to \(filter.displayName)")
+        print("🔄 Popular Coins: Cache timestamp: \(popularCoinsCacheTimestamp?.description ?? "nil")")
+        print("🔄 Popular Coins: Raw cached data count: \(cachedPopularCoinsData.count)")
+        print("🔄 Popular Coins: Pre-calculated gainers: \(cachedTopGainers.count), losers: \(cachedTopLosers.count)")
+        
+        // Check if we have valid pre-calculated cached data
         if let cacheTime = popularCoinsCacheTimestamp,
            Date().timeIntervalSince(cacheTime) < popularCoinsCacheInterval,
-           !cachedPopularCoinsData.isEmpty {
+           !cachedTopGainers.isEmpty && !cachedTopLosers.isEmpty {
             
-            // Use cached data immediately - no loading state needed
-            print("🎯 Popular Coins: Using cached data instantly (age: \(Int(Date().timeIntervalSince(cacheTime)))s)")
-            calculatePopularCoins(from: cachedPopularCoinsData, filter: filter)
+            let cacheAge = Int(Date().timeIntervalSince(cacheTime))
+            print("🎯 Popular Coins: Using pre-calculated \(filter.displayName) instantly (age: \(cacheAge)s)")
+            
+            // Use pre-calculated results instantly
+            let cachedResults = filter == .topGainers ? cachedTopGainers : cachedTopLosers
+            popularCoinsSubject.send(cachedResults)
+            fetchLogosIfNeeded(for: cachedResults)
             
         } else {
-            // Cache expired or empty - fetch fresh data with loading state
-            print("💰 Popular Coins: Cache expired or empty - fetching fresh data")
+            let reason = popularCoinsCacheTimestamp == nil ? "no cache" : 
+                        (cachedTopGainers.isEmpty || cachedTopLosers.isEmpty) ? "incomplete cache" : "cache expired"
+            print("💰 Popular Coins: Cache invalid (\(reason)) - fetching fresh data for \(filter.displayName)")
             fetchFreshPopularCoins(for: filter)
         }
     }
@@ -458,6 +470,8 @@ final class SearchVM: ObservableObject {
      */
     func fetchFreshPopularCoins(for filter: PopularCoinsFilter) {
         print("🌟 Popular Coins: Fetching fresh data for \(filter.displayName)")
+        print("🌟 Popular Coins: Current loading state: \(isLoadingSubject.value)")
+        print("🌟 Popular Coins: Current popular coins count: \(popularCoinsSubject.value.count)")
         
         // Clear existing data immediately to prevent showing cached data
         popularCoinsSubject.send([])
@@ -502,7 +516,8 @@ final class SearchVM: ObservableObject {
      * CALCULATE POPULAR COINS FROM FRESH DATA
      */
     private func calculatePopularCoins(from freshCoins: [Coin], filter: PopularCoinsFilter) {
-        print("🌟 Popular Coins: Calculating \(filter.displayName) from \(freshCoins.count) fresh coins")
+        let startTime = Date()
+        print("🌟 Popular Coins: Pre-calculating BOTH gainers and losers from \(freshCoins.count) coins")
         
         // Perform filtering on background queue for better performance
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -515,49 +530,51 @@ final class SearchVM: ObservableObject {
             
             print("🌟 Popular Coins: Found \(eligibleCoins.count) eligible coins from fresh data")
             
-            // Sort and filter based on selected filter
-            let filteredCoins: [Coin]
-            switch filter {
-            case .topGainers:
-                let positiveCoins = eligibleCoins.filter { coin in
-                    let change = coin.percentChange24hValue
-                    return change > 0 // Only positive changes
-                }
-                print("🌟 Popular Coins: Found \(positiveCoins.count) coins with positive changes from fresh data")
-                
-                filteredCoins = positiveCoins
-                    .sorted { coin1, coin2 in
-                        // Sort by highest percentage gain first
-                        coin1.percentChange24hValue > coin2.percentChange24hValue
-                    }
-                    .prefix(10) // Top 10 gainers
-                    .map { $0 }
-                
-            case .topLosers:
-                let negativeCoins = eligibleCoins.filter { coin in
-                    let change = coin.percentChange24hValue
-                    return change < 0 // Only negative changes
-                }
-                print("🌟 Popular Coins: Found \(negativeCoins.count) coins with negative changes from fresh data")
-                
-                filteredCoins = negativeCoins
-                    .sorted { coin1, coin2 in
-                        // Sort by lowest percentage change first (most negative)
-                        coin1.percentChange24hValue < coin2.percentChange24hValue
-                    }
-                    .prefix(10) // Top 10 losers
-                    .map { $0 }
+            // Calculate BOTH gainers and losers at once for instant switching
+            let positiveCoins = eligibleCoins.filter { coin in
+                coin.percentChange24hValue > 0
             }
+            
+            let negativeCoins = eligibleCoins.filter { coin in
+                coin.percentChange24hValue < 0
+            }
+            
+            let topGainers = positiveCoins
+                .sorted { coin1, coin2 in
+                    coin1.percentChange24hValue > coin2.percentChange24hValue
+                }
+                .prefix(10)
+                .map { $0 }
+            
+            let topLosers = negativeCoins
+                .sorted { coin1, coin2 in
+                    coin1.percentChange24hValue < coin2.percentChange24hValue
+                }
+                .prefix(10)
+                .map { $0 }
+            
+            print("🌟 Popular Coins: Pre-calculated \(topGainers.count) gainers and \(topLosers.count) losers")
             
             // Update UI on main queue
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                self.popularCoinsSubject.send(filteredCoins)
+                let processingTime = Date().timeIntervalSince(startTime)
                 
-                print("🌟 Popular Coins: Updated UI with \(filteredCoins.count) fresh \(filter.displayName.lowercased())")
+                // Store pre-calculated results in cache
+                self.cachedTopGainers = topGainers
+                self.cachedTopLosers = topLosers
                 
-                // Fetch missing logos for popular coins
-                self.fetchLogosIfNeeded(for: filteredCoins)
+                // Send the requested filter's results
+                let requestedResults = filter == .topGainers ? topGainers : topLosers
+                self.popularCoinsSubject.send(requestedResults)
+                
+                print("🌟 Popular Coins: ✅ Updated UI with \(requestedResults.count) \(filter.displayName.lowercased()) in \(String(format: "%.3f", processingTime))s")
+                print("🌟 Popular Coins: 💾 Both gainers and losers cached for instant switching")
+                
+                // Pre-fetch logos for BOTH gainers and losers for instant switching
+                let allCoinsToPreload = Array(Set(topGainers + topLosers)) // Remove duplicates
+                print("🖼️ Popular Coins: Pre-loading logos for \(allCoinsToPreload.count) coins (both gainers & losers)")
+                self.fetchLogosIfNeeded(for: allCoinsToPreload)
             }
         }
     }
@@ -588,6 +605,7 @@ final class SearchVM: ObservableObject {
      * Call this method when the main coin list has loaded fresh data.
      */
     func refreshSearchData() {
+        print("🔍 Search: refreshSearchData() called - this will force fresh popular coins fetch!")
         // Only refresh from cache to avoid API conflicts
         if let cachedCoins = persistenceService.loadCoinList() {
             print("🔍 Search: Refreshed \(cachedCoins.count) coins from cache")
@@ -601,8 +619,17 @@ final class SearchVM: ObservableObject {
             // Re-perform current search with refreshed data
             performSearch(for: currentSearchText)
             
-            // Use fresh data for popular coins instead of cached data
-            fetchFreshPopularCoins(for: currentPopularCoinsState.selectedFilter)
+            // For popular coins, use pre-calculated cache if valid, otherwise fetch fresh
+            print("🔍 Search: Checking if popular coins cache needs refresh...")
+            if let cacheTime = popularCoinsCacheTimestamp,
+               Date().timeIntervalSince(cacheTime) < popularCoinsCacheInterval,
+               !cachedTopGainers.isEmpty && !cachedTopLosers.isEmpty {
+                print("🔍 Search: Popular coins pre-calculated cache is still valid, keeping current data")
+                // Cache is still valid, no need to fetch fresh data
+            } else {
+                print("🔍 Search: Popular coins cache expired or incomplete, fetching fresh data")
+                fetchFreshPopularCoins(for: currentPopularCoinsState.selectedFilter)
+            }
             
             // Also fetch logos for any existing search results
             let existingResults = currentSearchResults
@@ -666,6 +693,8 @@ final class SearchVM: ObservableObject {
     func refreshPopularCoinsCache() {
         print("🔄 Popular Coins: Manually refreshing cache")
         popularCoinsCacheTimestamp = nil // Invalidate cache
+        cachedTopGainers.removeAll()     // Clear pre-calculated cache
+        cachedTopLosers.removeAll()      // Clear pre-calculated cache
         fetchFreshPopularCoins(for: currentPopularCoinsState.selectedFilter)
     }
     

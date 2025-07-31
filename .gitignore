@@ -1,0 +1,35 @@
+# Xcode user-specific files
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+
+# Build generated files
+build/
+DerivedData/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# Swift Package Manager
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Debug symbols
+*.dSYM.zip
+*.dSYM
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Code coverage
+*.gcov
+*.lcov
+
+# AppCode
+.idea/ 
