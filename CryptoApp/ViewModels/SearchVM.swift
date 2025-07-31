@@ -440,11 +440,12 @@ final class SearchVM: ObservableObject {
            Date().timeIntervalSince(cacheTime) < popularCoinsCacheInterval,
            !cachedPopularCoinsData.isEmpty {
             
-            // Use cached data
-            print("🎯 Popular Coins: Using cached data (age: \(Int(Date().timeIntervalSince(cacheTime)))s)")
+            // Use cached data immediately - no loading state needed
+            print("🎯 Popular Coins: Using cached data instantly (age: \(Int(Date().timeIntervalSince(cacheTime)))s)")
             calculatePopularCoins(from: cachedPopularCoinsData, filter: filter)
+            
         } else {
-            // Cache expired or empty - fetch fresh data
+            // Cache expired or empty - fetch fresh data with loading state
             print("💰 Popular Coins: Cache expired or empty - fetching fresh data")
             fetchFreshPopularCoins(for: filter)
         }
