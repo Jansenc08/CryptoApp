@@ -203,10 +203,18 @@ final class AddCoinsVC: UIViewController {
         viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
+                guard let self = self else { return }
+                
                 if isLoading {
-                    LoadingView.show(in: self?.collectionView)
+                    // Show skeleton loading for AddCoinCell type
+                    SkeletonLoadingManager.showSkeletonInCollectionView(self.collectionView, cellType: .addCoinCell, numberOfItems: 12)
                 } else {
-                    LoadingView.dismiss(from: self?.collectionView)
+                    // Hide skeleton loading and restore data source
+                    SkeletonLoadingManager.dismissSkeletonFromCollectionView(self.collectionView)
+                    self.collectionView.dataSource = self.dataSource
+                    
+                    // Force update data source with current data after skeleton is dismissed
+                    self.updateDataSource()
                 }
             }
             .store(in: &cancellables)
@@ -239,6 +247,9 @@ final class AddCoinsVC: UIViewController {
     }
     
     private func updateDataSource() {
+        // Don't apply snapshot if skeleton loading is active
+        guard !SkeletonLoadingManager.isShowingSkeleton(in: collectionView) else { return }
+        
         // Filter out coins already in watchlist
         let watchlistManager = Dependencies.container.watchlistManager()
         let availableCoins = filteredCoins.filter { !watchlistManager.isInWatchlist(coinId: $0.id) }

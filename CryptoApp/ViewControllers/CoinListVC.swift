@@ -584,10 +584,15 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         viewModel.coins
             .receive(on: DispatchQueue.main) // ensures UI updates happens on the main thread
             .sink { [weak self] coins in // Creates a combine subscription
+                guard let self = self else { return }
+                
+                // Don't apply snapshot if skeleton loading is active
+                guard !SkeletonLoadingManager.isShowingSkeleton(in: self.collectionView) else { return }
+                
                 var snapshot = NSDiffableDataSourceSnapshot<CoinSection, Coin>()
                 snapshot.appendSections([.main])
                 snapshot.appendItems(coins)
-                self?.dataSource.apply(snapshot, animatingDifferences: true)
+                self.dataSource.apply(snapshot, animatingDifferences: true)
             }
             .store(in: &cancellables) // Keeps this subscription alive
         
@@ -617,20 +622,30 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             }
             .store(in: &cancellables)
         
-        // Bind loading state to show/hide LoadingView in collection view
+        // Bind loading state to show/hide skeleton screens in collection view
         viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
                 guard let self = self else { return }
                 
                 if isLoading {
-                    // Show LoadingView in the collection view area
-                    LoadingView.show(in: self.collectionView)
-                    AppLogger.ui("Loading | Showing spinner in collection view")
+                    // Show skeleton loading in the collection view
+                    SkeletonLoadingManager.showSkeletonInCollectionView(self.collectionView, cellType: .coinCell, numberOfItems: 10)
+                    AppLogger.ui("Loading | Showing skeleton screens in collection view")
                 } else {
-                    // Hide LoadingView from collection view
-                    LoadingView.dismiss(from: self.collectionView)
-                    AppLogger.ui("Loading | Hiding spinner from collection view")
+                    // Hide skeleton loading from collection view
+                    SkeletonLoadingManager.dismissSkeletonFromCollectionView(self.collectionView)
+                    // Restore original data source
+                    self.collectionView.dataSource = self.dataSource
+                    
+                    // Force refresh data source with current data after skeleton is dismissed
+                    if !self.viewModel.currentCoins.isEmpty {
+                        var snapshot = NSDiffableDataSourceSnapshot<CoinSection, Coin>()
+                        snapshot.appendSections([.main])
+                        snapshot.appendItems(self.viewModel.currentCoins)
+                        self.dataSource.apply(snapshot, animatingDifferences: false)
+                    }
+                    AppLogger.ui("Loading | Hiding skeleton screens from collection view")
                 }
             }
             .store(in: &cancellables)

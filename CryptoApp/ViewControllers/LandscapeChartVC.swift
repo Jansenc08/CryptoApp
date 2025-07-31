@@ -344,12 +344,12 @@ final class LandscapeChartVC: UIViewController {
                 
                 if isLoading {
                     // Show loading indicator
-                    LoadingView.show(in: self.containerView)
+                    _ = SkeletonLoadingManager.showChartSkeleton(in: self.containerView)
                     self.lineChartView.alpha = 0.6
                     self.candlestickChartView.alpha = 0.6
                 } else {
                     // Hide loading indicator
-                    LoadingView.dismiss(from: self.containerView)
+                    SkeletonLoadingManager.dismissChartSkeleton(from: self.containerView)
                     self.lineChartView.alpha = 1.0
                     self.candlestickChartView.alpha = 1.0
                 }

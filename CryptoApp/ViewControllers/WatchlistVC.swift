@@ -277,13 +277,23 @@ final class WatchlistVC: UIViewController {
         viewModel.isLoading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isLoading in
+                guard let self = self else { return }
+                
                 if isLoading {
-                    if self?.refreshControl.isRefreshing == false {
-                        LoadingView.show(in: self?.collectionView)
+                    if self.refreshControl.isRefreshing == false {
+                        // Show skeleton loading in the collection view
+                        SkeletonLoadingManager.showSkeletonInCollectionView(self.collectionView, cellType: .coinCell, numberOfItems: 8)
                     }
                 } else {
-                    LoadingView.dismiss(from: self?.collectionView)
-                    self?.refreshControl.endRefreshing()
+                    // Hide skeleton loading and restore data source
+                    SkeletonLoadingManager.dismissSkeletonFromCollectionView(self.collectionView)
+                    self.collectionView.dataSource = self.dataSource
+                    
+                    // Force update data source with current data after skeleton is dismissed
+                    if !self.viewModel.currentWatchlistCoins.isEmpty {
+                        self.updateDataSource(self.viewModel.currentWatchlistCoins)
+                    }
+                    self.refreshControl.endRefreshing()
                 }
             }
             .store(in: &cancellables)
@@ -308,6 +318,9 @@ final class WatchlistVC: UIViewController {
     }
     
     private func updateDataSource(_ coins: [Coin]) {
+        // Don't apply snapshot if skeleton loading is active
+        guard !SkeletonLoadingManager.isShowingSkeleton(in: collectionView) else { return }
+        
         // Filter out invalid coins and remove duplicates to prevent crashes
         let validCoins = coins
             .filter { $0.id > 0 && !$0.name.isEmpty && !$0.symbol.isEmpty } // Remove invalid coins

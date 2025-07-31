@@ -45,7 +45,7 @@ import Combine
     private var popularCoinsCollectionView: UICollectionView!
     private var popularCoinsDataSource: UICollectionViewDiffableDataSource<SearchSection, Coin>!
     private var popularCoinsHeightConstraint: NSLayoutConstraint!
-    private var popularCoinsLoadingView: UIActivityIndicatorView!
+    // Removed: Now using skeleton screens for loading states
     private var isPopularCoinsLoading = false // Track loading state to prevent height conflicts
     
     // MARK: - Dynamic Constraints
@@ -424,12 +424,7 @@ import Combine
         popularCoinsCollectionView.dataSource = popularCoinsDataSource
         popularCoinsCollectionView.delegate = self
         
-        // Add loading indicator for popular coins
-        popularCoinsLoadingView = UIActivityIndicatorView(style: .medium)
-        popularCoinsLoadingView.translatesAutoresizingMaskIntoConstraints = false
-        popularCoinsLoadingView.hidesWhenStopped = true
-        popularCoinsLoadingView.color = .systemGray
-        popularCoinsContainer.addSubview(popularCoinsLoadingView)
+        // Removed: Now using skeleton screens for loading states
         
         // Create dynamic top constraints for popular coins header positioning
         popularCoinsTopWithRecentSearches = popularCoinsHeaderView.topAnchor.constraint(equalTo: recentSearchesContainer.bottomAnchor, constant: 8)
@@ -461,8 +456,7 @@ import Combine
             popularCoinsCollectionView.bottomAnchor.constraint(equalTo: popularCoinsContainer.bottomAnchor, constant: -12),
             
             // Loading indicator constraints (centered in container)
-            popularCoinsLoadingView.centerXAnchor.constraint(equalTo: popularCoinsContainer.centerXAnchor),
-            popularCoinsLoadingView.centerYAnchor.constraint(equalTo: popularCoinsContainer.centerYAnchor)
+            // Removed: Loading indicator constraints (now using skeleton screens)
         ])
         
         // Start with the constraint for no recent searches (popular coins pushed up)
@@ -560,13 +554,21 @@ import Combine
                 self.isPopularCoinsLoading = isLoading // Track loading state
                 
                 if isLoading {
-                    self.popularCoinsLoadingView.startAnimating()
-                    self.popularCoinsCollectionView.isHidden = true
+                    // Show skeleton loading for popular coins collection view
+                    SkeletonLoadingManager.showSkeletonInCollectionView(self.popularCoinsCollectionView, cellType: .coinCell, numberOfItems: 6)
                     self.popularCoinsHeaderView.setLoading(true) // Disable buttons during loading
                     AppLogger.ui("Popular Coins: Loading started")
                 } else {
-                    self.popularCoinsLoadingView.stopAnimating()
-                    self.popularCoinsCollectionView.isHidden = false
+                    // Hide skeleton loading and restore data source for popular coins
+                    SkeletonLoadingManager.dismissSkeletonFromCollectionView(self.popularCoinsCollectionView)
+                    self.popularCoinsCollectionView.dataSource = self.popularCoinsDataSource
+                    
+                    // Force update with current popular coins data
+                    // Access current value directly from subject since SearchVM doesn't expose a current value accessor
+                    let currentPopularCoins = self.viewModel.currentPopularCoins
+                    if !currentPopularCoins.isEmpty {
+                        self.updatePopularCoinsDataSource(currentPopularCoins)
+                    }
                     self.popularCoinsHeaderView.setLoading(false) // Re-enable buttons
                     AppLogger.ui("Popular Coins: Loading finished")
                     
@@ -618,6 +620,9 @@ import Combine
     // MARK: - Data Source Updates
     
     private func updateDataSource(_ coins: [Coin]) {
+        // Don't apply snapshot if skeleton loading is active
+        guard !SkeletonLoadingManager.isShowingSkeleton(in: collectionView) else { return }
+        
         var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
         snapshot.appendSections([.main])
         snapshot.appendItems(coins)
@@ -625,6 +630,9 @@ import Combine
     }
     
     private func updatePopularCoinsDataSource(_ coins: [Coin]) {
+        // Don't apply snapshot if skeleton loading is active
+        guard !SkeletonLoadingManager.isShowingSkeleton(in: popularCoinsCollectionView) else { return }
+        
         var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
         snapshot.appendSections([.main])
         snapshot.appendItems(coins)

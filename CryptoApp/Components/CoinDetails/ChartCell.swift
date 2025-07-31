@@ -7,8 +7,6 @@ final class ChartCell: UITableViewCell {
     
     // Loading and error state views
     private let loadingView = UIView()
-    private let loadingLabel = UILabel()
-    private let activityIndicator = UIActivityIndicatorView(style: .medium)
     private let errorView = UIView()
     private let errorLabel = UILabel()
     
@@ -73,39 +71,18 @@ final class ChartCell: UITableViewCell {
     }
     
     private func setupLoadingView() {
-        // Loading container
+        // Loading container for skeleton screens
         containerView.addSubview(loadingView)
         loadingView.translatesAutoresizingMaskIntoConstraints = false
         loadingView.backgroundColor = .systemBackground
         loadingView.isHidden = true
-        
-        // Activity indicator
-        loadingView.addSubview(activityIndicator)
-        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
-        activityIndicator.color = .systemBlue
-        
-        // Loading label
-        loadingView.addSubview(loadingLabel)
-        loadingLabel.translatesAutoresizingMaskIntoConstraints = false
-        loadingLabel.text = "Loading chart data..."
-        loadingLabel.textAlignment = .center
-        loadingLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        loadingLabel.textColor = .secondaryLabel
         
         // Layout loading view
         NSLayoutConstraint.activate([
             loadingView.topAnchor.constraint(equalTo: containerView.topAnchor),
             loadingView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
             loadingView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            loadingView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            
-            activityIndicator.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: loadingView.centerYAnchor, constant: -20),
-            
-            loadingLabel.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
-            loadingLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 12),
-            loadingLabel.leadingAnchor.constraint(greaterThanOrEqualTo: loadingView.leadingAnchor, constant: 20),
-            loadingLabel.trailingAnchor.constraint(lessThanOrEqualTo: loadingView.trailingAnchor, constant: -20)
+            loadingView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
         ])
     }
     
@@ -160,19 +137,20 @@ final class ChartCell: UITableViewCell {
     private func updateViewsForState() {
         switch currentState {
         case .loading:
-            // Show loading, hide charts and error
+            // Show chart skeleton, hide charts and error
             loadingView.isHidden = false
             errorView.isHidden = true
             lineChartView.isHidden = true
             candlestickChartView.isHidden = true
-            activityIndicator.startAnimating()
-            print("📊 Chart cell showing loading state")
+            // Show chart skeleton instead of activity indicator
+            _ = SkeletonLoadingManager.showChartSkeleton(in: loadingView)
+            print("📊 Chart cell showing skeleton loading state")
             
         case .data:
             // Show appropriate chart based on type, hide loading and error
+            SkeletonLoadingManager.dismissChartSkeleton(from: loadingView)
             loadingView.isHidden = true
             errorView.isHidden = true
-            activityIndicator.stopAnimating()
             
             let showLineChart = (currentChartType == .line)
             lineChartView.isHidden = !showLineChart
@@ -181,11 +159,11 @@ final class ChartCell: UITableViewCell {
             
         case .error(let message):
             // Show error, hide charts and loading
+            SkeletonLoadingManager.dismissChartSkeleton(from: loadingView)
             loadingView.isHidden = true
             errorView.isHidden = false
             lineChartView.isHidden = true
             candlestickChartView.isHidden = true
-            activityIndicator.stopAnimating()
             errorLabel.text = message
             print("📊 Chart cell showing error state: \(message)")
         }
