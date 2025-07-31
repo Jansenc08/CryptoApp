@@ -306,6 +306,7 @@ final class CoinDetailsVM: ObservableObject {
         
         isLoadingSubject.send(true)
         errorMessageSubject.send(nil)
+        lastErrorSubject.send(nil) // Clear previous errors to prevent flashing
         
         chartDataCancellable = coinManager.fetchChartData(for: geckoID, range: days, currency: "usd", priority: .high)
             .subscribe(on: DispatchQueue.global(qos: .userInitiated)) // Background processing
@@ -793,6 +794,12 @@ final class CoinDetailsVM: ObservableObject {
     }
     
     // MARK: - FIXED: Proper Cleanup Methods
+    
+    func clearPreviousStates() {
+        // Clear any previous error states to prevent flashing when view appears
+        errorMessageSubject.send(nil)
+        lastErrorSubject.send(nil)
+    }
     
     func cancelAllRequests() {
         

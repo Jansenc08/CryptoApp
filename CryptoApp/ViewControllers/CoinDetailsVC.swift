@@ -81,6 +81,9 @@ final class CoinDetailsVC: UIViewController {
         stopParentTimers()
         isViewVisible = true
         
+        // Clear any previous error states to prevent flashing
+        viewModel.clearPreviousStates()
+        
         // Simple UI synchronization
         synchronizeUIWithCurrentState()
         

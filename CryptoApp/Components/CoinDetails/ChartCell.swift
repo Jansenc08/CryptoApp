@@ -25,7 +25,8 @@ final class ChartCell: UITableViewCell {
         case nonRetryableError(String)
     }
     
-    private var currentState: ChartState = .data
+    private var currentState: ChartState = .loading
+    private var isSetupComplete: Bool = false
     
     // Retry callback
     var onRetryRequested: (() -> Void)?
@@ -35,7 +36,28 @@ final class ChartCell: UITableViewCell {
         setupUI()
     }
     
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        
+        // Reset to loading state on reuse to prevent flashing
+        currentState = .loading
+        updateViewsForState()
+        
+        // Reset retry button to prevent constraint conflicts
+        retryButton.resetToNormalMode()
+        
+        // Clear any cached data
+        currentPoints = []
+        currentOHLCData = []
+        currentRange = "24h"
+        onRetryRequested = nil
+        
+        // Note: Don't reset isSetupComplete as UI setup should only happen once
+    }
+    
     private func setupUI() {
+        guard !isSetupComplete else { return }
+        
         // Add container to content view
         contentView.addSubview(containerView)
         containerView.translatesAutoresizingMaskIntoConstraints = false
@@ -74,6 +96,11 @@ final class ChartCell: UITableViewCell {
         
         // Initially show line chart
         showChart(type: .line, animated: false)
+        
+        // Start in loading state to show skeleton immediately
+        updateViewsForState()
+        
+        isSetupComplete = true
     }
     
     private func setupLoadingView() {
@@ -101,11 +128,11 @@ final class ChartCell: UITableViewCell {
         
         // Error label
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
-        errorLabel.text = "No chart data available"
         errorLabel.textAlignment = .center
         errorLabel.font = .systemFont(ofSize: 16, weight: .medium)
         errorLabel.textColor = .secondaryLabel
         errorLabel.numberOfLines = 0
+        // Note: No default text - will be set when actual errors occur
         
         // Retry button
         retryButton.translatesAutoresizingMaskIntoConstraints = false
@@ -221,9 +248,16 @@ final class ChartCell: UITableViewCell {
         self.currentRange = range
         
         if !points.isEmpty {
-            currentState = .data
-            lineChartView.update(points, range: range)
-            updateViewsForState()
+            // Only update to data state if not currently loading
+            // This prevents interrupting the loading skeleton during cell reuse
+            if case .loading = currentState {
+                // Keep loading state - will be updated by view controller bindings
+                lineChartView.update(points, range: range)
+            } else {
+                currentState = .data
+                lineChartView.update(points, range: range)
+                updateViewsForState()
+            }
         }
     }
     
@@ -233,9 +267,16 @@ final class ChartCell: UITableViewCell {
         self.currentRange = range
         
         if !ohlcData.isEmpty {
-            currentState = .data
-            candlestickChartView.update(ohlcData, range: range)
-            updateViewsForState()
+            // Only update to data state if not currently loading
+            // This prevents interrupting the loading skeleton during cell reuse
+            if case .loading = currentState {
+                // Keep loading state - will be updated by view controller bindings
+                candlestickChartView.update(ohlcData, range: range)
+            } else {
+                currentState = .data
+                candlestickChartView.update(ohlcData, range: range)
+                updateViewsForState()
+            }
         }
     }
     

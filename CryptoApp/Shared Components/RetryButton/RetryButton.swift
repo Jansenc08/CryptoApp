@@ -13,6 +13,7 @@ final class RetryButton: UIButton {
     
     var retryAction: (() -> Void)?
     private var isCompact: Bool = false
+    private var currentConstraints: [NSLayoutConstraint] = []
     
     // MARK: - Init
     
@@ -94,11 +95,15 @@ final class RetryButton: UIButton {
     // MARK: - Setup Methods
     
     private func setupConstraints() {
+        // Remove existing constraints first
+        NSLayoutConstraint.deactivate(currentConstraints)
+        currentConstraints.removeAll()
+        
         let iconSize: CGFloat = isCompact ? 14 : 16
         let buttonHeight: CGFloat = isCompact ? 40 : 44  // Increased minimum for better touch
         let minWidth: CGFloat = isCompact ? 100 : 100    // Ensure adequate width
         
-        NSLayoutConstraint.activate([
+        let newConstraints = [
             stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: centerYAnchor),
             
@@ -107,7 +112,10 @@ final class RetryButton: UIButton {
             
             heightAnchor.constraint(greaterThanOrEqualToConstant: buttonHeight),
             widthAnchor.constraint(greaterThanOrEqualToConstant: minWidth)
-        ])
+        ]
+        
+        NSLayoutConstraint.activate(newConstraints)
+        currentConstraints = newConstraints
         
         // Update font size for compact mode
         if isCompact {
@@ -179,13 +187,27 @@ final class RetryButton: UIButton {
     
     /// Configures the button for compact display (smaller size for charts)
     func enableCompactMode() {
+        // Prevent multiple calls to avoid constraint conflicts
+        guard !isCompact else { return }
+        
         isCompact = true
         
-        // Remove existing constraints
-        NSLayoutConstraint.deactivate(constraints)
-        
-        // Apply new compact constraints
+        // Update constraints with new compact size
         setupConstraints()
+    }
+    
+    /// Resets the button to normal size (for cell reuse)
+    func resetToNormalMode() {
+        guard isCompact else { return }
+        
+        isCompact = false
+        
+        // Reset to normal constraints
+        setupConstraints()
+        
+        // Reset font and spacing
+        customTitleLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        stackView.spacing = 8
     }
     
     /// Updates the button title
