@@ -11,10 +11,25 @@ import Foundation
 
 final class AddCoinsVC: UIViewController {
     
+    // MARK: - Constants for AddCoinSelectionType
+    
+    private let selectionTypeAdd = AddCoinSelectionType(rawValue: 0)!
+    private let selectionTypeRemove = AddCoinSelectionType(rawValue: 1)!
+    
     // MARK: - Section Enum for Diffable Data Source
     
-    enum AddCoinsSection {
-        case main
+    enum AddCoinsSection: CaseIterable {
+        case watchlisted
+        case available
+        
+        var title: String {
+            switch self {
+            case .watchlisted:
+                return "Currently in Watchlist"
+            case .available:
+                return "Available Coins"
+            }
+        }
     }
     
     // MARK: - Properties
@@ -27,10 +42,12 @@ final class AddCoinsVC: UIViewController {
     private var cancellables = Set<AnyCancellable>()
     private var dataSource: UICollectionViewDiffableDataSource<AddCoinsSection, Coin>!
     
-    // Selection management
+    // Selection management - now tracks both additions and removals
     private var selectedCoinIds: Set<Int> = []
+    private var coinsToRemove: Set<Int> = [] // Track watchlisted coins selected for removal
     private var allCoins: [Coin] = []
     private var filteredCoins: [Coin] = []
+    private var watchlistedCoins: [Coin] = [] // Coins currently in watchlist
     
     // Search debouncing
     private var searchWorkItem: DispatchWorkItem?
@@ -66,6 +83,9 @@ final class AddCoinsVC: UIViewController {
         
         // Load many more coins for better selection
         loadMoreCoinsForSelection()
+        
+        // Ensure ALL watchlisted coins have their logos loaded
+        loadWatchlistLogos()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -109,7 +129,8 @@ final class AddCoinsVC: UIViewController {
         let layout = UICollectionViewFlowLayout()
         layout.itemSize = CGSize(width: view.bounds.width - 32, height: 70)
         layout.minimumLineSpacing = 8
-        layout.sectionInset = UIEdgeInsets(top: 16, left: 16, bottom: 100, right: 16)
+        layout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 100, right: 16)
+        layout.headerReferenceSize = CGSize(width: view.bounds.width, height: 40)
         
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
@@ -118,8 +139,9 @@ final class AddCoinsVC: UIViewController {
         collectionView.allowsMultipleSelection = true
         collectionView.keyboardDismissMode = .onDrag
         
-        // Register cells
+        // Register cells and headers
         collectionView.register(AddCoinCell.self, forCellWithReuseIdentifier: AddCoinCell.reuseID())
+        collectionView.register(UICollectionReusableView.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "SectionHeader")
         
         view.addSubview(collectionView)
         
@@ -158,24 +180,85 @@ final class AddCoinsVC: UIViewController {
         dataSource = UICollectionViewDiffableDataSource<AddCoinsSection, Coin>(
             collectionView: collectionView
         ) { [weak self] collectionView, indexPath, coin in
-            guard let cell = collectionView.dequeueReusableCell(
+            guard let self = self,
+                  let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: AddCoinCell.reuseID(),
                 for: indexPath
             ) as? AddCoinCell else {
                 return UICollectionViewCell()
             }
             
-            let isSelected = self?.selectedCoinIds.contains(coin.id) ?? false
-            let logoURL = self?.viewModel.currentCoinLogos[coin.id]
+            let section = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+            
+            // Get logo URL: works for ALL coins (DOGE, ULTIMA, YFI, etc.)
+            let logoURL: String?
+            if section == .watchlisted {
+                // For ANY watchlisted coin, get logo from stored watchlist data
+                let watchlistManager = Dependencies.container.watchlistManager()
+                logoURL = watchlistManager.watchlistItems.first { $0.coinId == coin.id }?.logoURL
+                    ?? self.viewModel.currentCoinLogos[coin.id] // fallback to current logos
+            } else {
+                // For available coins, use current logos from view model
+                logoURL = self.viewModel.currentCoinLogos[coin.id]
+            }
+            
+            // Determine selection state and type based on section and user selections
+            let isSelected: Bool
+            let selectionType: AddCoinSelectionType
+            
+            switch section {
+            case .watchlisted:
+                // For watchlisted coins, show as selected if they're marked for removal
+                isSelected = self.coinsToRemove.contains(coin.id)
+                selectionType = self.selectionTypeRemove
+            case .available:
+                // For available coins, show as selected if they're marked for addition
+                isSelected = self.selectedCoinIds.contains(coin.id)
+                selectionType = self.selectionTypeAdd
+            }
             
             cell.configure(
                 withSymbol: coin.symbol,
                 name: coin.name,
                 logoURL: logoURL,
-                isSelected: isSelected
+                isSelected: isSelected,
+                selectionType: selectionType
             )
             
             return cell
+        }
+        
+        // Configure supplementary view provider for section headers
+        dataSource.supplementaryViewProvider = { [weak self] collectionView, kind, indexPath in
+            guard kind == UICollectionView.elementKindSectionHeader else {
+                return nil
+            }
+            
+            let headerView = collectionView.dequeueReusableSupplementaryView(
+                ofKind: kind,
+                withReuseIdentifier: "SectionHeader",
+                for: indexPath
+            )
+            
+            // Configure header view
+            headerView.subviews.forEach { $0.removeFromSuperview() }
+            
+            let titleLabel = UILabel()
+            titleLabel.translatesAutoresizingMaskIntoConstraints = false
+            titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+            titleLabel.textColor = .label
+            
+            let section = self?.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+            titleLabel.text = section?.title
+            
+            headerView.addSubview(titleLabel)
+            
+            NSLayoutConstraint.activate([
+                titleLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 16),
+                titleLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor)
+            ])
+            
+            return headerView
         }
         
         collectionView.dataSource = dataSource
@@ -250,24 +333,65 @@ final class AddCoinsVC: UIViewController {
         // Don't apply snapshot if skeleton loading is active
         guard !SkeletonLoadingManager.isShowingSkeleton(in: collectionView) else { return }
         
-        // Filter out coins already in watchlist
         let watchlistManager = Dependencies.container.watchlistManager()
+        
+        // Get ALL watchlisted coins directly (DOGE, ULTIMA, YFI, etc. - not just from API response)
+        let allWatchlistedCoins = watchlistManager.getWatchlistCoins()
+        
+        // Apply search filter to watchlisted coins
+        let searchText = searchBarComponent.text?.lowercased() ?? ""
+        let currentWatchlistedCoins = searchText.isEmpty 
+            ? allWatchlistedCoins
+            : allWatchlistedCoins.filter { coin in
+                coin.name.lowercased().contains(searchText) ||
+                coin.symbol.lowercased().contains(searchText)
+            }
+        
+        // Get available coins (not in watchlist)
         let availableCoins = filteredCoins.filter { !watchlistManager.isInWatchlist(coinId: $0.id) }
         
+        // Update local watchlisted coins array
+        watchlistedCoins = currentWatchlistedCoins
+        
         var snapshot = NSDiffableDataSourceSnapshot<AddCoinsSection, Coin>()
-        snapshot.appendSections([.main])
-        snapshot.appendItems(availableCoins)
+        
+        // Add watchlisted section if there are any watchlisted coins
+        if !currentWatchlistedCoins.isEmpty {
+            snapshot.appendSections([.watchlisted])
+            snapshot.appendItems(currentWatchlistedCoins)
+        }
+        
+        // Add available section if there are any available coins
+        if !availableCoins.isEmpty {
+            snapshot.appendSections([.available])
+            snapshot.appendItems(availableCoins)
+        }
+        
         dataSource.apply(snapshot, animatingDifferences: true)
     }
     
     private func updateAddButtonTitle() {
-        let count = selectedCoinIds.count
-        if count == 0 {
-            addButton.setTitle("Select coins to add", for: .normal)
+        let addCount = selectedCoinIds.count
+        let removeCount = coinsToRemove.count
+        let totalChanges = addCount + removeCount
+        
+        if totalChanges == 0 {
+            addButton.setTitle("Select coins to modify watchlist", for: .normal)
             addButton.isEnabled = false
             addButton.alpha = 0.5
         } else {
-            addButton.setTitle("Add \(count) coin\(count == 1 ? "" : "s") to Watchlist", for: .normal)
+            var titleComponents: [String] = []
+            
+            if addCount > 0 {
+                titleComponents.append("Add \(addCount)")
+            }
+            
+            if removeCount > 0 {
+                titleComponents.append("Remove \(removeCount)")
+            }
+            
+            let actionText = titleComponents.joined(separator: " • ")
+            addButton.setTitle("\(actionText) coin\(totalChanges == 1 ? "" : "s")", for: .normal)
             addButton.isEnabled = true
             addButton.alpha = 1.0
         }
@@ -280,11 +404,13 @@ final class AddCoinsVC: UIViewController {
     }
     
     @objc private func addButtonTapped() {
-        guard !selectedCoinIds.isEmpty else { return }
+        guard !selectedCoinIds.isEmpty || !coinsToRemove.isEmpty else { return }
         
         let watchlistManager = Dependencies.container.watchlistManager()
         var addedCount = 0
+        var removedCount = 0
         
+        // Handle additions
         for coinId in selectedCoinIds {
             if let coin = allCoins.first(where: { $0.id == coinId }) {
                 let logoURL = viewModel.currentCoinLogos[coin.id]
@@ -293,18 +419,33 @@ final class AddCoinsVC: UIViewController {
             }
         }
         
+        // Handle removals
+        for coinId in coinsToRemove {
+            watchlistManager.removeFromWatchlist(coinId: coinId)
+            removedCount += 1
+        }
+        
         // Show success feedback
-        let message = "Added \(addedCount) coin\(addedCount == 1 ? "" : "s") to your watchlist"
+        var messageComponents: [String] = []
+        if addedCount > 0 {
+            messageComponents.append("Added \(addedCount) coin\(addedCount == 1 ? "" : "s")")
+        }
+        if removedCount > 0 {
+            messageComponents.append("Removed \(removedCount) coin\(removedCount == 1 ? "" : "s")")
+        }
+        let message = messageComponents.joined(separator: " and ") + " from your watchlist"
         showSuccessFeedback(message: message)
         
         // Manually post notification to ensure watchlist refreshes immediately
-        NotificationCenter.default.post(name: .watchlistDidUpdate, object: nil, userInfo: ["action": "batch_add"])
+        let actionType = addedCount > 0 && removedCount > 0 ? "batch_modify" : (addedCount > 0 ? "batch_add" : "batch_remove")
+        NotificationCenter.default.post(name: .watchlistDidUpdate, object: nil, userInfo: ["action": actionType])
         
-        // Clear selection and update UI
+        // Clear selections and update UI
         selectedCoinIds.removeAll()
+        coinsToRemove.removeAll()
         updateAddButtonTitle()
         collectionView.reloadData()
-        updateDataSource() // Remove newly added coins from list
+        updateDataSource() // Refresh the entire list
         
         // Dismiss after a longer delay to give WatchlistVC time to refresh
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -351,6 +492,19 @@ final class AddCoinsVC: UIViewController {
             }
         }
     }
+    
+    private func loadWatchlistLogos() {
+        let watchlistManager = Dependencies.container.watchlistManager()
+        let watchlistedCoins = watchlistManager.getWatchlistCoins()
+        
+        // Get ALL coin IDs from watchlist (DOGE, ULTIMA, YFI, etc.)
+        let coinIds = watchlistedCoins.map { $0.id }
+        
+        if !coinIds.isEmpty {
+            // Fetch logos for ALL watchlisted coins
+            viewModel.fetchCoinLogos(forIDs: coinIds)
+        }
+    }
 }
 
 // MARK: - SearchBarComponentDelegate
@@ -388,15 +542,34 @@ extension AddCoinsVC: UICollectionViewDelegate {
         guard let coin = dataSource.itemIdentifier(for: indexPath),
               let cell = collectionView.cellForItem(at: indexPath) as? AddCoinCell else { return }
         
-        let isCurrentlySelected = selectedCoinIds.contains(coin.id)
+        let section = dataSource.snapshot().sectionIdentifiers[indexPath.section]
         
-        if isCurrentlySelected {
-            selectedCoinIds.remove(coin.id)
-        } else {
-            selectedCoinIds.insert(coin.id)
+        switch section {
+        case .watchlisted:
+            // Handle watchlisted coin selection (for removal)
+            let isCurrentlySelectedForRemoval = coinsToRemove.contains(coin.id)
+            
+            if isCurrentlySelectedForRemoval {
+                coinsToRemove.remove(coin.id)
+            } else {
+                coinsToRemove.insert(coin.id)
+            }
+            
+            cell.setSelectedForWatchlist(!isCurrentlySelectedForRemoval, selectionType: selectionTypeRemove, animated: true)
+            
+        case .available:
+            // Handle available coin selection (for addition)
+            let isCurrentlySelectedForAddition = selectedCoinIds.contains(coin.id)
+            
+            if isCurrentlySelectedForAddition {
+                selectedCoinIds.remove(coin.id)
+            } else {
+                selectedCoinIds.insert(coin.id)
+            }
+            
+            cell.setSelectedForWatchlist(!isCurrentlySelectedForAddition, selectionType: selectionTypeAdd, animated: true)
         }
         
-        cell.setSelectedForWatchlist(!isCurrentlySelected, animated: true)
         updateAddButtonTitle()
         
         // Animate button change

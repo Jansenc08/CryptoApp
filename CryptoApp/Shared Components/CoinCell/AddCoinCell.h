@@ -12,6 +12,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class GFBodyLabel;
 
+// Selection type enum for different visual states
+typedef NS_ENUM(NSInteger, AddCoinSelectionType) {
+    AddCoinSelectionTypeAdd = 0,    // Blue with checkmark (for adding to watchlist)
+    AddCoinSelectionTypeRemove = 1  // Red with X (for removing from watchlist)
+};
+
 @interface AddCoinCell : UICollectionViewCell
 
 // UI Components
@@ -23,15 +29,19 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Selection state
 @property (nonatomic, assign) BOOL isSelectedForWatchlist;
+@property (nonatomic, assign) AddCoinSelectionType selectionType;
 
 // Configuration
 - (void)configureWithSymbol:(NSString *)symbol
                        name:(NSString *)name
                    logoURL:(nullable NSString *)logoURL
-                 isSelected:(BOOL)isSelected;
+                 isSelected:(BOOL)isSelected
+              selectionType:(AddCoinSelectionType)selectionType;
 
 // Selection management
-- (void)setSelectedForWatchlist:(BOOL)selected animated:(BOOL)animated;
+- (void)setSelectedForWatchlist:(BOOL)selected 
+                  selectionType:(AddCoinSelectionType)selectionType
+                       animated:(BOOL)animated;
 
 // Reuse identifier
 + (NSString *)reuseID;

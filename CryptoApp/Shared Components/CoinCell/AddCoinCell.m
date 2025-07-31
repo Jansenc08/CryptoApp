@@ -100,10 +100,12 @@
 - (void)configureWithSymbol:(NSString *)symbol
                        name:(NSString *)name
                    logoURL:(nullable NSString *)logoURL
-                 isSelected:(BOOL)isSelected {
+                 isSelected:(BOOL)isSelected
+              selectionType:(AddCoinSelectionType)selectionType {
     
     self.symbolLabel.text = symbol;
     self.nameLabel.text = name;
+    self.selectionType = selectionType;
     
     // Load coin logo
     if (logoURL) {
@@ -113,17 +115,40 @@
     }
     
     // Set selection state
-    [self setSelectedForWatchlist:isSelected animated:NO];
+    [self setSelectedForWatchlist:isSelected selectionType:selectionType animated:NO];
 }
 
-- (void)setSelectedForWatchlist:(BOOL)selected animated:(BOOL)animated {
+- (void)setSelectedForWatchlist:(BOOL)selected 
+                  selectionType:(AddCoinSelectionType)selectionType
+                       animated:(BOOL)animated {
     _isSelectedForWatchlist = selected;
+    _selectionType = selectionType;
     
     void (^updateUI)(void) = ^{
         self.selectionOverlay.hidden = !selected;
         self.checkmarkImageView.hidden = !selected;
-        self.layer.borderColor = selected ? UIColor.systemBlueColor.CGColor : [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0].CGColor;
-        self.layer.borderWidth = selected ? 2.0 : 1.0;
+        
+        if (selected) {
+            // Configure visual state based on selection type
+            if (selectionType == AddCoinSelectionTypeRemove) {
+                // Red styling for removal
+                self.selectionOverlay.backgroundColor = [UIColor.systemRedColor colorWithAlphaComponent:0.1];
+                self.checkmarkImageView.image = [UIImage systemImageNamed:@"xmark.circle.fill"];
+                self.checkmarkImageView.tintColor = UIColor.systemRedColor;
+                self.layer.borderColor = UIColor.systemRedColor.CGColor;
+            } else {
+                // Blue styling for addition (default)
+                self.selectionOverlay.backgroundColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.1];
+                self.checkmarkImageView.image = [UIImage systemImageNamed:@"checkmark.circle.fill"];
+                self.checkmarkImageView.tintColor = UIColor.systemBlueColor;
+                self.layer.borderColor = UIColor.systemBlueColor.CGColor;
+            }
+            self.layer.borderWidth = 2.0;
+        } else {
+            // Unselected state
+            self.layer.borderColor = [UIColor colorWithRed:0.9 green:0.9 blue:0.9 alpha:1.0].CGColor;
+            self.layer.borderWidth = 1.0;
+        }
     };
     
     if (animated) {
@@ -137,7 +162,7 @@
     [super prepareForReuse];
     [self.coinImageView cancelCurrentDownload];
     [self.coinImageView setPlaceholder];
-    [self setSelectedForWatchlist:NO animated:NO];
+    [self setSelectedForWatchlist:NO selectionType:AddCoinSelectionTypeAdd animated:NO];
 }
 
 @end 
