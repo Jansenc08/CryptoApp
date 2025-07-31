@@ -317,6 +317,7 @@ final class AddCoinsVC: UIViewController {
     private func updateFilteredCoins() {
         let searchText = searchBarComponent.text?.lowercased() ?? ""
         
+        // Always filter API coins
         if searchText.isEmpty {
             filteredCoins = allCoins
         } else {
@@ -326,6 +327,7 @@ final class AddCoinsVC: UIViewController {
             }
         }
         
+        // Update data source (which handles both API coins and watchlisted coins search)
         updateDataSource()
     }
     
@@ -478,19 +480,24 @@ final class AddCoinsVC: UIViewController {
         viewModel.updateTopCoinsFilter(.top500) // Load top 500 coins instead of default 100
         viewModel.fetchCoins()
         
-        // Also trigger pagination to load even more coins
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.loadAdditionalCoins()
+        // Load just 2 more pages initially (conservative approach)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.loadAdditionalCoins(pageCount: 2)
         }
     }
     
-    private func loadAdditionalCoins() {
-        // Load more pages to get even more coin options
-        for _ in 0..<5 { // Load 5 more pages (100 more coins)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+    private func loadAdditionalCoins(pageCount: Int = 3) {
+        // Load additional pages with rate limit consideration
+        for i in 0..<pageCount {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.5) {
                 self.viewModel.loadMoreCoins()
             }
         }
+    }
+    
+    private func loadMoreCoinsForSearch() {
+        // Load more coins when user is actively searching
+        loadAdditionalCoins(pageCount: 5) // Load more pages for search
     }
     
     private func loadWatchlistLogos() {
@@ -518,10 +525,35 @@ extension AddCoinsVC: SearchBarComponentDelegate {
         // Create new work item with debouncing
         searchWorkItem = DispatchWorkItem { [weak self] in
             self?.updateFilteredCoins()
+            
+            // If searching and no results found, try loading more coins
+            if !searchText.isEmpty {
+                self?.handleSearchWithNoResults(searchText: searchText)
+            }
         }
         
         // Execute after 0.3 seconds delay -> Debouncing 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: searchWorkItem!)
+    }
+    
+    private func handleSearchWithNoResults(searchText: String) {
+        // Get current search results
+        let watchlistManager = Dependencies.container.watchlistManager()
+        let allWatchlistedCoins = watchlistManager.getWatchlistCoins()
+        
+        let watchlistedResults = allWatchlistedCoins.filter { coin in
+            coin.name.lowercased().contains(searchText.lowercased()) ||
+            coin.symbol.lowercased().contains(searchText.lowercased())
+        }
+        
+        let hasResults = !filteredCoins.isEmpty || !watchlistedResults.isEmpty
+        
+        if !hasResults && allCoins.count < 1000 { // Only if we haven't loaded many coins yet
+            #if DEBUG
+            print("🔍 No results for '\(searchText)' - loading more coins")
+            #endif
+            loadMoreCoinsForSearch()
+        }
     }
     
     func searchBarComponentDidBeginEditing(_ searchBar: SearchBarComponent) {
