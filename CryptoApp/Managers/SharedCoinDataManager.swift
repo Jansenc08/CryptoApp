@@ -20,6 +20,7 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
     
     // Single source of truth for all coin data
     private let coinDataSubject = CurrentValueSubject<[Coin], Never>([])
+    private let errorSubject = PassthroughSubject<Error, Never>()
     private var lastUpdateTime: Date?
     private var isUpdating = false
     
@@ -28,6 +29,11 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
     /// Publisher that emits the current list of all coins
     var allCoins: AnyPublisher<[Coin], Never> {
         coinDataSubject.eraseToAnyPublisher()
+    }
+    
+    /// Publisher that emits errors from shared data fetching
+    var errors: AnyPublisher<Error, Never> {
+        errorSubject.eraseToAnyPublisher()
     }
     
     /// Get current coins synchronously
@@ -123,6 +129,7 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                         self?.isUpdating = false
                         if case .failure(let error) = completion {
                             print("❌ SharedCoinDataManager: Failed to fetch quotes - \(error)")
+                            self?.errorSubject.send(error)
                         }
                     },
                     receiveValue: { [weak self] updatedQuotes in
@@ -168,6 +175,7 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                     self?.isUpdating = false
                     if case .failure(let error) = completion {
                         print("❌ SharedCoinDataManager: Failed to fetch initial data - \(error)")
+                        self?.errorSubject.send(error)
                     }
                 },
                 receiveValue: { [weak self] coins in

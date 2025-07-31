@@ -418,6 +418,7 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
     
     // Mock storage
     private let coinsSubject = CurrentValueSubject<[Coin], Never>([])
+    private let errorsSubject = PassthroughSubject<Error, Never>()
     
     // Test configuration
     var shouldFailUpdates: Bool = false
@@ -427,6 +428,10 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
     
     var allCoins: AnyPublisher<[Coin], Never> {
         coinsSubject.eraseToAnyPublisher()
+    }
+    
+    var errors: AnyPublisher<Error, Never> {
+        errorsSubject.eraseToAnyPublisher()
     }
     
     var currentCoins: [Coin] {

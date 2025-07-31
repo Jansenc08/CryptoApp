@@ -237,8 +237,10 @@ final class CoinDetailsVC: UIViewController {
                     chartCell.updateLoadingState(true)
                 case .loaded:
                     chartCell.updateLoadingState(false)
-                case .error:
-                    chartCell.showErrorState("No chart data available")
+                case .error(let retryInfo):
+                    chartCell.showRetryableError(retryInfo)
+                case .nonRetryableError(let message):
+                    chartCell.showNonRetryableError(message)
                 case .empty:
                     chartCell.updateLoadingState(false)
                 }
@@ -343,6 +345,19 @@ final class CoinDetailsVC: UIViewController {
         }
         
         return tableView.cellForRow(at: chartIndexPath) as? ChartCell
+    }
+    
+    // MARK: - Retry Handling
+    
+    private func handleChartRetry() {
+        AppLogger.ui("Chart retry requested by user")
+        
+        // Trigger retry in the view model
+        viewModel.retryAllChartData()
+        
+        // Provide haptic feedback
+        let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+        impactGenerator.impactOccurred()
     }
     
     // MARK: - Filter Binding with Debouncing
@@ -823,6 +838,11 @@ extension CoinDetailsVC: UITableViewDataSource {
             
             // Switch to current chart type
             cell.switchChartType(to: selectedChartType.value)
+            
+            // Set up retry callback
+            cell.onRetryRequested = { [weak self] in
+                self?.handleChartRetry()
+            }
             
             cell.selectionStyle = .none
             return cell

@@ -604,12 +604,12 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             }
             .store(in: &cancellables)
         
-        // Bind error message to show alert
+        // Bind error message to show alert with retry option
         viewModel.errorMessage
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
-                self?.showAlert(title: "Error", message: error)
+                self?.showRetryAlert(title: "Error", message: error)
             }
             .store(in: &cancellables)
         
@@ -655,6 +655,29 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // Reusable alert dialog for errors
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Dismiss", style: .default))
+        present(alert, animated: true)
+    }
+    
+    private func showRetryAlert(title: String, message: String) {
+        // Enhanced alert dialog with retry functionality
+        
+        // 🚫 Prevent multiple alerts from showing simultaneously
+        if presentedViewController is UIAlertController {
+            return // Already showing an alert
+        }
+        
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        
+        // Add retry action
+        alert.addAction(UIAlertAction(title: "Retry", style: .default) { [weak self] _ in
+            self?.viewModel.retryFetchCoins {
+                // Completion handler - could add success feedback here
+            }
+        })
+        
+        // Add dismiss action
+        alert.addAction(UIAlertAction(title: "Dismiss", style: .cancel))
+        
         present(alert, animated: true)
     }
     

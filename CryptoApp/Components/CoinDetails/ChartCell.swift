@@ -9,6 +9,8 @@ final class ChartCell: UITableViewCell {
     private let loadingView = UIView()
     private let errorView = UIView()
     private let errorLabel = UILabel()
+    private let retryButton = RetryButton()
+    private let errorStackView = UIStackView()
     
     private var currentChartType: ChartType = .line
     private var currentPoints: [Double] = []
@@ -19,10 +21,14 @@ final class ChartCell: UITableViewCell {
     private enum ChartState {
         case loading
         case data
-        case error(String)
+        case error(RetryErrorInfo)
+        case nonRetryableError(String)
     }
     
     private var currentState: ChartState = .data
+    
+    // Retry callback
+    var onRetryRequested: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -94,13 +100,29 @@ final class ChartCell: UITableViewCell {
         errorView.isHidden = true
         
         // Error label
-        errorView.addSubview(errorLabel)
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.text = "No chart data available"
         errorLabel.textAlignment = .center
         errorLabel.font = .systemFont(ofSize: 16, weight: .medium)
         errorLabel.textColor = .secondaryLabel
         errorLabel.numberOfLines = 0
+        
+        // Retry button
+        retryButton.translatesAutoresizingMaskIntoConstraints = false
+        retryButton.enableCompactMode() // Make it smaller for chart area
+        retryButton.setRetryAction { [weak self] in
+            self?.handleRetryTapped()
+        }
+        
+        // Error stack view
+        errorStackView.axis = .vertical
+        errorStackView.alignment = .center
+        errorStackView.spacing = 20  // More spacing for better touch area
+        errorStackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        errorStackView.addArrangedSubview(errorLabel)
+        errorStackView.addArrangedSubview(retryButton)
+        errorView.addSubview(errorStackView)
         
         // Layout error view
         NSLayoutConstraint.activate([
@@ -109,11 +131,22 @@ final class ChartCell: UITableViewCell {
             errorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             errorView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             
-            errorLabel.centerXAnchor.constraint(equalTo: errorView.centerXAnchor),
-            errorLabel.centerYAnchor.constraint(equalTo: errorView.centerYAnchor),
-            errorLabel.leadingAnchor.constraint(greaterThanOrEqualTo: errorView.leadingAnchor, constant: 20),
-            errorLabel.trailingAnchor.constraint(lessThanOrEqualTo: errorView.trailingAnchor, constant: -20)
+            errorStackView.centerXAnchor.constraint(equalTo: errorView.centerXAnchor),
+            errorStackView.centerYAnchor.constraint(equalTo: errorView.centerYAnchor),
+            errorStackView.leadingAnchor.constraint(greaterThanOrEqualTo: errorView.leadingAnchor, constant: 20),
+            errorStackView.trailingAnchor.constraint(lessThanOrEqualTo: errorView.trailingAnchor, constant: -20)
         ])
+    }
+    
+    private func handleRetryTapped() {
+        AppLogger.ui("Chart retry button tapped")
+        retryButton.showLoading()
+        onRetryRequested?()
+        
+        // Hide loading state after a short delay (actual loading will be managed by parent)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.retryButton.hideLoading()
+        }
     }
     
 
@@ -157,15 +190,28 @@ final class ChartCell: UITableViewCell {
             candlestickChartView.isHidden = showLineChart
             print("📊 Chart cell showing data state for \(currentChartType.rawValue) chart")
             
-        case .error(let message):
-            // Show error, hide charts and loading
+        case .error(let retryInfo):
+            // Show retryable error with retry button
+            SkeletonLoadingManager.dismissChartSkeleton(from: loadingView)
+            loadingView.isHidden = true
+            errorView.isHidden = false
+            lineChartView.isHidden = true
+            candlestickChartView.isHidden = true
+            errorLabel.text = retryInfo.message
+            retryButton.isHidden = false
+            retryButton.setTitle("Retry")
+            print("📊 Chart cell showing retryable error: \(retryInfo.message)")
+            
+        case .nonRetryableError(let message):
+            // Show non-retryable error without retry button
             SkeletonLoadingManager.dismissChartSkeleton(from: loadingView)
             loadingView.isHidden = true
             errorView.isHidden = false
             lineChartView.isHidden = true
             candlestickChartView.isHidden = true
             errorLabel.text = message
-            print("📊 Chart cell showing error state: \(message)")
+            retryButton.isHidden = true
+            print("📊 Chart cell showing non-retryable error: \(message)")
         }
     }
 
@@ -258,9 +304,19 @@ final class ChartCell: UITableViewCell {
     
 
     
-    // New method to handle error state
+    // New methods to handle error states
     func showErrorState(_ message: String) {
-        currentState = .error(message)
+        currentState = .nonRetryableError(message)
+        updateViewsForState()
+    }
+    
+    func showRetryableError(_ retryInfo: RetryErrorInfo) {
+        currentState = .error(retryInfo)
+        updateViewsForState()
+    }
+    
+    func showNonRetryableError(_ message: String) {
+        currentState = .nonRetryableError(message)
         updateViewsForState()
     }
     

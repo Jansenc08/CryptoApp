@@ -46,6 +46,7 @@ final class CoinListVM: ObservableObject {
     private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
     private let isLoadingMoreSubject = CurrentValueSubject<Bool, Never>(false)
     private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
+    private let lastErrorSubject = CurrentValueSubject<Error?, Never>(nil)
     private let updatedCoinIdsSubject = CurrentValueSubject<Set<Int>, Never>([])
     private let filterStateSubject = CurrentValueSubject<FilterState, Never>(.defaultState)
     
@@ -210,6 +211,14 @@ final class CoinListVM: ObservableObject {
                 self?.handleSharedDataUpdate(allCoins)
             }
             .store(in: &cancellables)
+        
+        // 🚨 SUBSCRIBE TO SHARED ERRORS: Listen to errors from shared data manager
+        sharedCoinDataManager.errors
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] error in
+                self?.handleSharedDataError(error)
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Utility Methods
@@ -220,6 +229,18 @@ final class CoinListVM: ObservableObject {
     }
     
     // MARK: - Shared Data Handling
+    
+    /// Handle errors from SharedCoinDataManager
+    private func handleSharedDataError(_ error: Error) {
+        AppLogger.error("VM.CoinList | SharedCoinDataManager error", error: error)
+        
+        // Store the last error for retry functionality
+        lastErrorSubject.send(error)
+        
+        // Generate user-friendly error message
+        let retryInfo = ErrorMessageProvider.shared.getCoinListRetryInfo(for: error)
+        errorMessageSubject.send(retryInfo.message)
+    }
     
     /// Handle updates from SharedCoinDataManager
     private func handleSharedDataUpdate(_ allCoins: [Coin]) {
@@ -655,7 +676,9 @@ final class CoinListVM: ObservableObject {
             self?.isLoadingSubject.send(false)  // 🎯 Hide loading spinner
             if case let .failure(error) = completion {
                 AppLogger.error("VM.fetchCoins | Error", error: error)
-                self?.errorMessageSubject.send(ErrorMessageProvider.shared.getCoinListErrorMessage(for: error))
+                self?.lastErrorSubject.send(error)
+                let retryInfo = ErrorMessageProvider.shared.getCoinListRetryInfo(for: error)
+                self?.errorMessageSubject.send(retryInfo.message)
                 self?.canLoadMore = false
                 
                 // 🛡️ OFFLINE FALLBACK: Try to load cached data on network error
@@ -1016,7 +1039,9 @@ final class CoinListVM: ObservableObject {
                 self?.isUpdatingPrices = false  // 🔓 Unlock after completion
                 if case .failure(let error) = completionResult {
                     if !error.localizedDescription.contains("throttled") {
-                        self?.errorMessageSubject.send(ErrorMessageProvider.shared.getPriceUpdateErrorMessage(for: error))
+                        self?.lastErrorSubject.send(error)
+                        let retryInfo = ErrorMessageProvider.shared.getRetryInfo(for: error, context: ErrorContext(feature: .priceUpdates))
+                        self?.errorMessageSubject.send(retryInfo.message)
                     }
                 }
                 completion()
@@ -1216,6 +1241,44 @@ final class CoinListVM: ObservableObject {
                 completion()
             }
             .store(in: &cancellables)
+    }
+    
+    // MARK: - Manual Retry Functionality
+    
+    /// Manually retry fetching coin data
+    func retryFetchCoins(completion: (() -> Void)? = nil) {
+        AppLogger.network("Manual retry requested for coin data")
+        
+        // Clear previous error state
+        errorMessageSubject.send(nil)
+        lastErrorSubject.send(nil)
+        
+        // Force update SharedCoinDataManager to retry
+        sharedCoinDataManager.forceUpdate()
+        
+        // Also retry fetching coins with current filter state
+        fetchCoins(onFinish: completion)
+    }
+    
+    /// Manually retry fetching price updates
+    func retryPriceUpdates(completion: @escaping () -> Void = {}) {
+        AppLogger.network("Manual retry requested for price updates")
+        
+        // Clear previous error state for price updates
+        if let lastError = lastErrorSubject.value,
+           lastError.localizedDescription.contains("price") {
+            errorMessageSubject.send(nil)
+            lastErrorSubject.send(nil)
+        }
+        
+        // Retry price updates
+        fetchPriceUpdates(completion: completion)
+    }
+    
+    /// Get retry information for the last error
+    func getRetryInfo() -> RetryErrorInfo? {
+        guard let lastError = lastErrorSubject.value else { return nil }
+        return ErrorMessageProvider.shared.getCoinListRetryInfo(for: lastError)
     }
     
     // MARK: - State Management

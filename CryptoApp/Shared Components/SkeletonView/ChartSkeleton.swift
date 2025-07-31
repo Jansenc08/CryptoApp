@@ -8,7 +8,7 @@ final class ChartSkeleton: UIView {
     private let containerView = UIView()
     
     // Chart skeleton components
-    private let chartAreaSkeleton = SkeletonView.rectangleSkeleton(width: 0, height: 0, cornerRadius: 8)
+    private let chartAreaSkeleton = SkeletonView.resizableSkeleton(cornerRadius: 8)
     private let yAxisLabelsSkeleton1 = SkeletonView.textSkeleton(width: 40, height: 12)
     private let yAxisLabelsSkeleton2 = SkeletonView.textSkeleton(width: 40, height: 12)
     private let yAxisLabelsSkeleton3 = SkeletonView.textSkeleton(width: 40, height: 12)

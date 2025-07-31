@@ -35,13 +35,27 @@ enum NetworkError: Error, Equatable {
 final class CoinService: CoinServiceProtocol {
 
     private let baseURL = "https://pro-api.coinmarketcap.com/v1"
-    private let apiKey = "d90efe2f-8893-44bc-889e-919fc01684c5" // CoinMarketCap Demo API Key
+    private let apiKey = "d90efe2f-8893-44bc-889e-919fc01684c5"       // CoinMarketCap Demo API Key
     private let coinGeckoBaseURL = "https://api.coingecko.com/api/v3" // CoinGecko Base URL
-    private let coinGeckoApiKey = "CG-yzBqmCqY8VybDQbMxbRZhaL9" // CoinGecko Demo API Key
+    private let coinGeckoApiKey = "CG-yzBqmCqY8VybDQbMxbRZhaL9"       // CoinGecko Demo API Key
     
     // Injected Dependencies
     private let cacheService: CacheServiceProtocol
     private let requestManager: RequestManagerProtocol
+    
+    // MARK: - Debug Testing Configuration
+    #if DEBUG
+    // Coin List Testing
+    private let simulateCoinListError = false        // Set to true to test coin list retry popup
+    private let forceEmptyState = false              // Set to true to test empty state
+    
+    // Chart Testing (for coin details page)
+    private let simulateChartError = false           // Set to true to test chart retry buttons
+    
+    private func getTestError() -> NetworkError {
+        return .invalidResponse                     // Change to test different error types
+    }
+    #endif
     
     // MARK: - Dependency Injection Initializer
     
@@ -72,9 +86,26 @@ final class CoinService: CoinServiceProtocol {
     // 4. On success: stores result in cache & returns [Coin]
     
     func fetchTopCoins(limit: Int = 100, convert: String = "USD", start: Int = 1, sortType: String = "market_cap", sortDir: String = "desc", priority: RequestPriority = .normal) -> AnyPublisher<[Coin], NetworkError> {
+        
+        #if DEBUG
+        if forceEmptyState {
+            cacheService.clearCache()
+            CoinService.clearTestingCache()
+        }
+        if simulateCoinListError {
+            return Fail(error: getTestError()).eraseToAnyPublisher()
+        }
+        #endif
+        
         // Check cache first
-        // Always check cache before making API calls to avoid unnecessary requests
-        if let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir) {
+        #if DEBUG
+        let shouldUseCache = !forceEmptyState
+        #else
+        let shouldUseCache = true
+        #endif
+        
+        if shouldUseCache,
+           let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir) {
             AppLogger.cache("Cache hit for coin list (limit: \(limit), start: \(start))")
             return Just(cachedCoins)
                 .setFailureType(to: NetworkError.self)
@@ -339,6 +370,13 @@ final class CoinService: CoinServiceProtocol {
     
     // MARK: Gets real OHLC candlestick data from CoinGecko
     func fetchCoinGeckoOHLCData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[OHLCData], NetworkError> {
+        
+        #if DEBUG
+        if simulateChartError {
+            return Fail(error: getTestError()).eraseToAnyPublisher()
+        }
+        #endif
+        
         // Check cache first
         let _ = "ohlc_\(coinId)_\(currency)_\(days)"
         if let cachedData = cacheService.getOHLCData(for: coinId, currency: currency, days: days) {
@@ -375,6 +413,13 @@ final class CoinService: CoinServiceProtocol {
     }
     
     func fetchCoinGeckoChartData(for coinId: String, currency: String, days: String, priority: RequestPriority = .normal) -> AnyPublisher<[Double], NetworkError> {
+        
+        #if DEBUG
+        if simulateChartError {
+            return Fail(error: getTestError()).eraseToAnyPublisher()
+        }
+        #endif
+        
         // Check cache first and return immediately if found
         // No rate limiting delays when data is cached. Makes filter switching instant
         if let cachedData = cacheService.getChartData(for: coinId, currency: currency, days: days) {
@@ -588,4 +633,12 @@ final class CoinService: CoinServiceProtocol {
         // Return mapped ID or fallback to original slug  
         return mapping[cmcSlug.lowercased()] ?? cmcSlug.lowercased()
     }
+
+    #if DEBUG
+    private static func clearTestingCache() {
+        UserDefaults.standard.removeObject(forKey: "coinList")
+        UserDefaults.standard.removeObject(forKey: "coinLogos") 
+        UserDefaults.standard.removeObject(forKey: "lastCacheTime")
+    }
+    #endif
 }

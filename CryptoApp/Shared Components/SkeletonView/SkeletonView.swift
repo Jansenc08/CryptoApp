@@ -100,6 +100,14 @@ extension SkeletonView {
         ])
         return skeleton
     }
+    
+    /// Creates a skeleton view that will be sized by its container constraints
+    static func resizableSkeleton(cornerRadius: CGFloat = 4) -> SkeletonView {
+        let skeleton = SkeletonView()
+        skeleton.translatesAutoresizingMaskIntoConstraints = false
+        skeleton.layer.cornerRadius = cornerRadius
+        return skeleton
+    }
 }
 
 // MARK: - Container View for Multiple Skeletons

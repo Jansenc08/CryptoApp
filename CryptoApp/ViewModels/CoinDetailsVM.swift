@@ -47,6 +47,7 @@ final class CoinDetailsVM: ObservableObject {
     private let statsLoadingSubject = CurrentValueSubject<Set<String>, Never>(Set<String>()) // Track which ranges are loading
     private let selectedStatsRangeSubject = CurrentValueSubject<String, Never>("24h")
     private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
+    private let lastErrorSubject = CurrentValueSubject<Error?, Never>(nil)
     private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
     private let priceChangeSubject = CurrentValueSubject<PriceChangeIndicator?, Never>(nil)
     
@@ -280,9 +281,6 @@ final class CoinDetailsVM: ObservableObject {
         
         let days = mapRangeToDays(range)
         
-        // FIXED: Centralized cache checking with consistent key generation
-        let cacheKey = "\(geckoID)_\(days)"
-        
         if let cachedChartData = CacheService.shared.getChartData(for: geckoID, currency: "usd", days: days),
            !cachedChartData.isEmpty {
             
@@ -327,11 +325,8 @@ final class CoinDetailsVM: ObservableObject {
                     
                     if case .failure(let error) = completion {
                         // FIXED: Better error handling for throttled requests
-                        if let requestError = error as? RequestError, requestError == .throttled {
-                            // Don't show error for throttled requests, just stop loading
-                        } else {
-                            self?.handleError(error)
-                        }
+                        // Don't show error for throttled requests, just stop loading
+                        self?.handleError(error)
                     }
                 },
                 receiveValue: { [weak self] processedData in
@@ -380,11 +375,8 @@ final class CoinDetailsVM: ObservableObject {
                 receiveCompletion: { [weak self] completion in
                     if case .failure(let error) = completion {
                         // FIXED: Better error handling for throttled OHLC requests
-                        if let requestError = error as? RequestError, requestError == .throttled {
-                            // Don't show error for throttled requests
-                        } else {
-                            self?.handleError(error)
-                        }
+                        // Don't show error for throttled requests
+                        self?.handleError(error)
                     }
                 },
                 receiveValue: { [weak self] ohlcData in
@@ -421,12 +413,54 @@ final class CoinDetailsVM: ObservableObject {
     // MARK: - Error Handling (Pure Combine)
     
     private func handleError(_ error: Error) {
+        // Store the last error for retry functionality
+        lastErrorSubject.send(error)
+        
         let cooldownStatus = requestManager.getCooldownStatus()
         if cooldownStatus.isInCooldown {
             errorMessageSubject.send("API rate limit reached. Cooling down for \(cooldownStatus.remainingSeconds)s...")
         } else {
-            errorMessageSubject.send(ErrorMessageProvider.shared.getChartErrorMessage(for: error, symbol: coin.symbol))
+            let retryInfo = ErrorMessageProvider.shared.getChartRetryInfo(for: error, symbol: coin.symbol)
+            errorMessageSubject.send(retryInfo.message)
         }
+    }
+    
+    // MARK: - Manual Retry Functionality
+    
+    /// Manually retry chart data loading for the current range
+    func retryChartData() {
+        AppLogger.network("Manual retry requested for chart data - \(coin.symbol) (\(currentRange))")
+        
+        // Clear previous error state
+        errorMessageSubject.send(nil)
+        lastErrorSubject.send(nil)
+        
+        // Retry with current range
+        fetchChartData(for: currentRange)
+    }
+    
+    /// Manually retry OHLC data loading for the current range
+    func retryOHLCData() {
+        AppLogger.network("Manual retry requested for OHLC data - \(coin.symbol) (\(currentRange))")
+        
+        // Clear previous error state
+        errorMessageSubject.send(nil)
+        lastErrorSubject.send(nil)
+        
+        // Retry with current range
+        fetchOHLCDataCombine(for: currentRange)
+    }
+    
+    /// Manually retry both chart and OHLC data for the current range
+    func retryAllChartData() {
+        AppLogger.network("Manual retry requested for all chart data - \(coin.symbol) (\(currentRange))")
+        
+        // Clear previous error state
+        errorMessageSubject.send(nil)
+        lastErrorSubject.send(nil)
+        
+        // Retry chart data first, which will automatically trigger OHLC data loading
+        fetchChartData(for: currentRange)
     }
     
     // MARK: - Data Processing (Pure Functions)
@@ -718,18 +752,30 @@ final class CoinDetailsVM: ObservableObject {
     // MARK: - Combine Publisher Helpers
     
     var chartLoadingState: AnyPublisher<ChartLoadingState, Never> {
-        Publishers.CombineLatest3(
+        Publishers.CombineLatest4(
             isLoading,
             chartPoints.map { !$0.isEmpty },
-            errorMessage.map { $0 != nil }
+            errorMessage.map { $0 != nil },
+            lastErrorSubject.eraseToAnyPublisher()
         )
-        .map { isLoading, hasData, hasError in
+        .map { [weak self] isLoading, hasData, hasError, lastError in
             if isLoading {
                 return .loading
             } else if hasData {
                 return .loaded
+            } else if hasError, let error = lastError {
+                // Generate retry information for the error
+                let symbol = self?.coin.symbol ?? "Unknown"
+                let retryInfo = ErrorMessageProvider.shared.getChartRetryInfo(for: error, symbol: symbol)
+                
+                if retryInfo.isRetryable {
+                    return .error(retryInfo)
+                } else {
+                    return .nonRetryableError(retryInfo.message)
+                }
             } else if hasError {
-                return .error
+                // Fallback for errors without retry information
+                return .nonRetryableError("Chart data temporarily unavailable")
             } else {
                 return .empty
             }
@@ -741,7 +787,8 @@ final class CoinDetailsVM: ObservableObject {
     enum ChartLoadingState: Equatable {
         case loading
         case loaded
-        case error
+        case error(RetryErrorInfo)
+        case nonRetryableError(String)
         case empty
     }
     

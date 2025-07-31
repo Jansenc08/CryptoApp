@@ -272,6 +272,7 @@ protocol CoinManagerProtocol {
  */
 protocol SharedCoinDataManagerProtocol {
     var allCoins: AnyPublisher<[Coin], Never> { get }
+    var errors: AnyPublisher<Error, Never> { get }
     var currentCoins: [Coin] { get }
     func forceUpdate()
     func startAutoUpdate()
