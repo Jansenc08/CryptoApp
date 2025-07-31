@@ -4,10 +4,10 @@ import Combine
 /**
  * DEPENDENCY INJECTION CONTAINER
  * 
- * Central container for managing all service dependencies using best practices:
- * - Constructor injection for better testability
- * - Lazy initialization for performance
- * - Protocol-based interfaces for flexibility
+ * Central container for managing all service dependencies:
+ * - Constructor injection - >  better testability
+ * - Lazy initialization - > performance
+ * - Protocol-based interfaces -> flexibility
  * - Singleton lifetime management where appropriate
  * - Easy mocking and testing support
  * 
@@ -158,7 +158,7 @@ final class DependencyContainer {
     
     /**
      * Creates a test container with mock dependencies
-     * Use this for unit testing to inject mock implementations
+     * Used for unit testing to inject mock implementations
      */
     static func testContainer(
         cacheService: CacheServiceProtocol? = nil,

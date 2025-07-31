@@ -366,7 +366,7 @@ extension AddCoinsVC: SearchBarComponentDelegate {
             self?.updateFilteredCoins()
         }
         
-        // Execute after 0.3 seconds delay
+        // Execute after 0.3 seconds delay -> Debouncing 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: searchWorkItem!)
     }
     
