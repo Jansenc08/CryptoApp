@@ -681,14 +681,19 @@ final class AddCoinsVC: UIViewController {
         
         // Handle additions
         for coinId in selectedCoinIds {
-            // Look in both loaded coins and cached coins
+            // Look in ALL available coin sources to ensure we find selected coins
+            // even if they're not in the current filtered results
             let coin = allCoins.first(where: { $0.id == coinId }) ?? 
-                      filteredCoins.first(where: { $0.id == coinId })
+                      filteredCoins.first(where: { $0.id == coinId }) ??
+                      cachedCoins.first(where: { $0.id == coinId })
             
             if let coin = coin {
                 let logoURL = viewModel.currentCoinLogos[coin.id]
                 watchlistManager.addToWatchlist(coin, logoURL: logoURL)
                 addedCount += 1
+                print("✅ AddCoinsVC: Successfully added \(coin.symbol) (\(coin.name)) to watchlist")
+            } else {
+                print("❌ AddCoinsVC: Failed to find coin with ID \(coinId) in any coin array")
             }
         }
         
