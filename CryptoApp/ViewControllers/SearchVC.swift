@@ -136,6 +136,9 @@ import Combine
         // Maintain the current state - if no search is active, show popular coins
         let currentSearchText = searchBarComponent.text ?? ""
         if currentSearchText.isEmpty {
+            // Immediately hide empty state when no search is active
+            emptyStateView?.isHidden = true
+            
             // No active search - show popular coins (not recent searches)
             let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
             showRecentSearches(hasRecentSearches)
@@ -822,6 +825,9 @@ extension SearchVC: SearchBarComponentDelegate {
         
         // Show/hide sections based on search text
         if searchText.isEmpty {
+            // Immediately hide empty state when search is cleared
+            emptyStateView?.isHidden = true
+            
             let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
             showRecentSearches(hasRecentSearches)
             showPopularCoins(true) // Always show popular coins when no search text
@@ -849,6 +855,9 @@ extension SearchVC: SearchBarComponentDelegate {
     
     func searchBarComponentCancelButtonClicked(_ searchBar: SearchBarComponent) {
         viewModel.clearSearch()
+        
+        // Immediately hide empty state when canceling search
+        emptyStateView?.isHidden = true
         
         // Show sections when canceling
         let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
