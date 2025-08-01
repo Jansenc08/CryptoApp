@@ -44,6 +44,7 @@ final class CoinListVM: ObservableObject {
     private let coinsSubject = CurrentValueSubject<[Coin], Never>([])
     private let coinLogosSubject = CurrentValueSubject<[Int: String], Never>([:])
     private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
+    private let isFetchingFreshDataSubject = CurrentValueSubject<Bool, Never>(false)
     private let isLoadingMoreSubject = CurrentValueSubject<Bool, Never>(false)
     private let errorMessageSubject = CurrentValueSubject<String?, Never>(nil)
     private let lastErrorSubject = CurrentValueSubject<Error?, Never>(nil)
@@ -69,6 +70,10 @@ final class CoinListVM: ObservableObject {
     
     var isLoading: AnyPublisher<Bool, Never> {
         isLoadingSubject.eraseToAnyPublisher()
+    }
+    
+    var isFetchingFreshData: AnyPublisher<Bool, Never> {
+        isFetchingFreshDataSubject.eraseToAnyPublisher()
     }
     
     var isLoadingMore: AnyPublisher<Bool, Never> {
@@ -543,9 +548,13 @@ final class CoinListVM: ObservableObject {
         if !persistenceService.isCacheExpired(maxAge: 300), 
             let offlineData = persistenceService.getOfflineData(), // Offline support with cached data
            currentFilterState == .defaultState,
-           isDefaultSort { // Only use cache with default sort to preserve custom sort views
+           isDefaultSort {
+            
             AppLogger.cache("VM.fetchCoins | Using cached offline data (default filters + default sort)")
             currentPage = 1
+            
+            // DON'T set isFetchingFreshData when using cached data
+            // This prevents skeleton loading from showing for cached data
             
             // Apply current sorting to cached data BEFORE setting coins (prevents UI flash)
             let sortedCachedCoins = sortCoins(offlineData.coins)
@@ -618,7 +627,8 @@ final class CoinListVM: ObservableObject {
         canLoadMore = true
         coinsSubject.send([])  // 🎯 Clear UI (triggers loading spinner via AnyPublisher)
         isLoadingSubject.send(true)  // 🎯 Show loading spinner
-        errorMessageSubject.send(nil)
+        isFetchingFreshDataSubject.send(true)  // 🎯 Show skeleton loading for fresh API data
+
         lastFetchTime = Date()
 
         // BACKEND FILTERING STRATEGY:
@@ -674,6 +684,7 @@ final class CoinListVM: ObservableObject {
         .sink { [weak self] completion in
             // COMPLETION HANDLER: Handle success/failure
             self?.isLoadingSubject.send(false)  // 🎯 Hide loading spinner
+            self?.isFetchingFreshDataSubject.send(false) // 🎯 Hide skeleton loading
             if case let .failure(error) = completion {
                 AppLogger.error("VM.fetchCoins | Error", error: error)
                 self?.lastErrorSubject.send(error)
@@ -1308,6 +1319,7 @@ final class CoinListVM: ObservableObject {
         AppLogger.performance("Cancelling all ongoing API calls for coin list")
         cancellables.removeAll()  // Cancel all Combine subscriptions
         isLoadingSubject.send(false)
+        isFetchingFreshDataSubject.send(false)
         isLoadingMoreSubject.send(false)
     }
     

@@ -21,6 +21,8 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
     // Single source of truth for all coin data
     private let coinDataSubject = CurrentValueSubject<[Coin], Never>([])
     private let errorSubject = PassthroughSubject<Error, Never>()
+    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
+    private let isFetchingFreshDataSubject = CurrentValueSubject<Bool, Never>(false)
     private var lastUpdateTime: Date?
     private var isUpdating = false
     
@@ -34,6 +36,16 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
     /// Publisher that emits errors from shared data fetching
     var errors: AnyPublisher<Error, Never> {
         errorSubject.eraseToAnyPublisher()
+    }
+    
+    /// Publisher that emits loading state
+    var isLoading: AnyPublisher<Bool, Never> {
+        isLoadingSubject.eraseToAnyPublisher()
+    }
+    
+    /// Publisher that emits when fetching fresh data from API
+    var isFetchingFreshData: AnyPublisher<Bool, Never> {
+        isFetchingFreshDataSubject.eraseToAnyPublisher()
     }
     
     /// Get current coins synchronously
@@ -90,6 +102,12 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
         updateTimer?.invalidate()
         updateTimer = nil
         cancellables.removeAll()
+        
+        // Reset loading states when stopping
+        isLoadingSubject.send(false)
+        isFetchingFreshDataSubject.send(false)
+        isUpdating = false
+        
         print("🌐 SharedCoinDataManager: Stopped shared updates")
     }
     
@@ -118,8 +136,14 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
         let timeString = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         print("🔄 SharedCoinDataManager: Fetching fresh price data at \(timeString)...")
         
+        // Set loading states based on whether this is initial fetch or price update
+        isLoadingSubject.send(true)
+        
         // If we already have coins, update their prices with fresh quotes
         if !currentCoins.isEmpty {
+            // Price update only - don't show skeleton loading
+            print("📊 SharedCoinDataManager: Updating prices for existing coins")
+            
             let coinIds = Array(currentCoins.prefix(200).map { $0.id }) // Update top 200 coins
             
             coinManager.getQuotes(for: coinIds, convert: "USD", priority: .high)
@@ -127,6 +151,7 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                 .sink(
                     receiveCompletion: { [weak self] completion in
                         self?.isUpdating = false
+                        self?.isLoadingSubject.send(false)
                         if case .failure(let error) = completion {
                             print("❌ SharedCoinDataManager: Failed to fetch quotes - \(error)")
                             self?.errorSubject.send(error)
@@ -136,6 +161,7 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                         guard let self = self else { return }
                         
                         self.isUpdating = false
+                        self.isLoadingSubject.send(false)
                         
                         // Update existing coins with fresh quotes
                         var updatedCoins = self.currentCoins
@@ -160,6 +186,10 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                 )
                 .store(in: &cancellables)
         } else {
+            // Initial fetch - show skeleton loading for fresh API data
+            isFetchingFreshDataSubject.send(true)
+            print("🚀 SharedCoinDataManager: Initial fetch - will show skeleton loading")
+            
             // First time: get initial coin list
             coinManager.getTopCoins(
                 limit: 500, // Get enough to cover all possible coins
@@ -173,6 +203,8 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     self?.isUpdating = false
+                    self?.isLoadingSubject.send(false)
+                    self?.isFetchingFreshDataSubject.send(false)
                     if case .failure(let error) = completion {
                         print("❌ SharedCoinDataManager: Failed to fetch initial data - \(error)")
                         self?.errorSubject.send(error)
@@ -182,6 +214,8 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                     guard let self = self else { return }
                     
                     self.isUpdating = false
+                    self.isLoadingSubject.send(false)
+                    self.isFetchingFreshDataSubject.send(false)
                     self.coinDataSubject.send(coins)
                     
                     print("✅ SharedCoinDataManager: Initial load with \(coins.count) coins")

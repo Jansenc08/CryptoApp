@@ -419,6 +419,8 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
     // Mock storage
     private let coinsSubject = CurrentValueSubject<[Coin], Never>([])
     private let errorsSubject = PassthroughSubject<Error, Never>()
+    private let isLoadingSubject = CurrentValueSubject<Bool, Never>(false)
+    private let isFetchingFreshDataSubject = CurrentValueSubject<Bool, Never>(false)
     
     // Test configuration
     var shouldFailUpdates: Bool = false
@@ -434,6 +436,14 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
         errorsSubject.eraseToAnyPublisher()
     }
     
+    var isLoading: AnyPublisher<Bool, Never> {
+        isLoadingSubject.eraseToAnyPublisher()
+    }
+    
+    var isFetchingFreshData: AnyPublisher<Bool, Never> {
+        isFetchingFreshDataSubject.eraseToAnyPublisher()
+    }
+    
     var currentCoins: [Coin] {
         coinsSubject.value
     }
@@ -444,10 +454,24 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
             return
         }
         
-        // Simulate update with test data
-        let mockCoins = TestDataFactory.createMockCoins(count: 10)
-        coinsSubject.send(mockCoins)
-        print("✅ Mock shared data force update completed with \(mockCoins.count) coins")
+        // Simulate loading states
+        isLoadingSubject.send(true)
+        if currentCoins.isEmpty {
+            isFetchingFreshDataSubject.send(true) // Simulate fresh data fetch
+        }
+        
+        // Simulate network delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            // Simulate update with test data
+            let mockCoins = TestDataFactory.createMockCoins(count: 10)
+            self?.coinsSubject.send(mockCoins)
+            
+            // Reset loading states
+            self?.isLoadingSubject.send(false)
+            self?.isFetchingFreshDataSubject.send(false)
+            
+            print("✅ Mock shared data force update completed with \(mockCoins.count) coins")
+        }
     }
     
     func startAutoUpdate() {
@@ -462,6 +486,11 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
     
     func stopAutoUpdate() {
         autoUpdateEnabled = false
+        
+        // Reset loading states
+        isLoadingSubject.send(false)
+        isFetchingFreshDataSubject.send(false)
+        
         print("✅ Mock shared data auto-update stopped")
     }
     

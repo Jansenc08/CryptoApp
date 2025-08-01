@@ -623,15 +623,15 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             .store(in: &cancellables)
         
         // Bind loading state to show/hide skeleton screens in collection view
-        viewModel.isLoading
+        Dependencies.container.sharedCoinDataManager().isFetchingFreshData
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isLoading in
+            .sink { [weak self] isFetchingFresh in
                 guard let self = self else { return }
                 
-                if isLoading {
-                    // Show skeleton loading in the collection view
+                if isFetchingFresh {
+                    // Show skeleton loading only when fetching fresh data from API
                     SkeletonLoadingManager.showSkeletonInCollectionView(self.collectionView, cellType: .coinCell, numberOfItems: 10)
-                    AppLogger.ui("Loading | Showing skeleton screens in collection view")
+                    AppLogger.ui("Loading | Showing skeleton screens - fetching fresh API data")
                 } else {
                     // Hide skeleton loading from collection view
                     SkeletonLoadingManager.dismissSkeletonFromCollectionView(self.collectionView)
@@ -645,7 +645,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                         snapshot.appendItems(self.viewModel.currentCoins)
                         self.dataSource.apply(snapshot, animatingDifferences: false)
                     }
-                    AppLogger.ui("Loading | Hiding skeleton screens from collection view")
+                    AppLogger.ui("Loading | Hiding skeleton screens - using cached data or fetch complete")
                 }
             }
             .store(in: &cancellables)
