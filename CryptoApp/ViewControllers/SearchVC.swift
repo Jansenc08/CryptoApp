@@ -58,7 +58,7 @@ import Combine
     
     private var shouldPresentKeyboardOnLoad = false
     private var hasAppeared = false
-    private var emptyStateView: UIView?
+    private var emptyStateView: UIContentUnavailableView?
     
     // MARK: - Search State
     
@@ -709,71 +709,22 @@ import Combine
     // MARK: - Empty State
     
     private func setupEmptyState() {
-        emptyStateView = createEmptyStateView(
-            title: "Search Cryptocurrencies",
-            message: "Enter a coin name or symbol to search",
-            imageName: "magnifyingglass.circle"
-        )
+        // Create initial configuration
+        var configuration = UIContentUnavailableConfiguration.search()
+        configuration.text = "Search Cryptocurrencies"
+        configuration.secondaryText = "Enter a coin name or symbol to search"
+        
+        emptyStateView = UIContentUnavailableView(configuration: configuration)
+        emptyStateView?.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView?.isHidden = true
         scrollContentView.addSubview(emptyStateView!)
         
         NSLayoutConstraint.activate([
             emptyStateView!.centerXAnchor.constraint(equalTo: scrollContentView.centerXAnchor),
-            emptyStateView!.centerYAnchor.constraint(equalTo: scrollContentView.centerYAnchor),
+            emptyStateView!.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 120),
             emptyStateView!.leadingAnchor.constraint(greaterThanOrEqualTo: scrollContentView.leadingAnchor, constant: 40),
             emptyStateView!.trailingAnchor.constraint(lessThanOrEqualTo: scrollContentView.trailingAnchor, constant: -40)
         ])
-    }
-    
-    private func createEmptyStateView(title: String, message: String, imageName: String) -> UIView {
-        let containerView = UIView()
-        containerView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Image view
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: imageName)
-        imageView.tintColor = .systemGray3
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Title label
-        let titleLabel = UILabel()
-        titleLabel.text = title
-        titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
-        titleLabel.textColor = .secondaryLabel
-        titleLabel.textAlignment = .center
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Message label
-        let messageLabel = UILabel()
-        messageLabel.text = message
-        messageLabel.font = .systemFont(ofSize: 16, weight: .regular)
-        messageLabel.textColor = .tertiaryLabel
-        messageLabel.textAlignment = .center
-        messageLabel.numberOfLines = 0
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        containerView.addSubview(imageView)
-        containerView.addSubview(titleLabel)
-        containerView.addSubview(messageLabel)
-        
-        NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            imageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 80),
-            imageView.heightAnchor.constraint(equalToConstant: 80),
-            
-            titleLabel.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            
-            messageLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            messageLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            messageLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            messageLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
-        ])
-        
-        return containerView
     }
     
     private func updateEmptyState(_ searchResults: [Coin], searchText: String) {
@@ -787,6 +738,12 @@ import Combine
             emptyStateView?.isHidden = false
             showPopularCoins(false)
             collectionView.isHidden = true
+            
+            // Customize empty state for no search results
+            var configuration = UIContentUnavailableConfiguration.search()
+            configuration.text = "No Results"
+            configuration.secondaryText = "Try searching for a different cryptocurrency name or symbol"
+            emptyStateView?.configuration = configuration
         } else {
             // Search results available - hide empty state and popular coins
             emptyStateView?.isHidden = true
@@ -797,26 +754,6 @@ import Combine
         // Update popular coins positioning when popular coins are visible
         if !popularCoinsContainer.isHidden {
             updatePopularCoinsPosition(hasRecentSearches: !recentSearchesContainer.isHidden)
-        }
-    }
-    
-    private func updateEmptyStateContent(title: String, message: String, imageName: String) {
-        guard let emptyStateView = emptyStateView else { return }
-        
-        if let imageView = emptyStateView.subviews.first(where: { $0 is UIImageView }) as? UIImageView {
-            imageView.image = UIImage(systemName: imageName)
-        }
-        
-        if let titleLabel = emptyStateView.subviews.first(where: { 
-            $0 is UILabel && ($0 as! UILabel).font.pointSize == 20 
-        }) as? UILabel {
-            titleLabel.text = title
-        }
-        
-        if let messageLabel = emptyStateView.subviews.first(where: { 
-            $0 is UILabel && ($0 as! UILabel).font.pointSize == 16 
-        }) as? UILabel {
-            messageLabel.text = message
         }
     }
     

@@ -37,7 +37,9 @@ final class AddCoinsVC: UIViewController {
     private var collectionView: UICollectionView!
     private var searchBarComponent: SearchBarComponent!
     private var addButton: UIButton!
-    
+    private var emptyStateView: UIContentUnavailableView!
+    private var emptyStateCenterConstraint: NSLayoutConstraint!
+
     private let viewModel: CoinListVM // Reuse existing view model for coin data
     private var cancellables = Set<AnyCancellable>()
     private var dataSource: UICollectionViewDiffableDataSource<AddCoinsSection, Coin>!
@@ -98,6 +100,7 @@ final class AddCoinsVC: UIViewController {
         configureSearchBar()
         configureCollectionView()
         configureAddButton()
+        configureEmptyState()
         configureDataSource()
         bindViewModel()
         
@@ -124,6 +127,25 @@ final class AddCoinsVC: UIViewController {
         searchWorkItem?.cancel()
         watchlistUpdateWorkItem?.cancel()
         dataSourceUpdateWorkItem?.cancel()
+    }
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        adjustEmptyStatePositioning()
+    }
+    
+    private func adjustEmptyStatePositioning() {
+        // Detect if this is a half modal vs full modal based on view height
+        let screenHeight = UIScreen.main.bounds.height
+        let viewHeight = view.bounds.height
+        let isHalfModal = viewHeight < screenHeight * 0.85 // Less than 85% of screen height
+        
+        // Adjust positioning based on presentation style
+        let newConstant: CGFloat = isHalfModal ? -20 : -80
+        
+        if emptyStateCenterConstraint.constant != newConstant {
+            emptyStateCenterConstraint.constant = newConstant
+        }
     }
     
     // MARK: - UI Setup
@@ -206,6 +228,28 @@ final class AddCoinsVC: UIViewController {
             addButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             addButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
             addButton.heightAnchor.constraint(equalToConstant: 50)
+        ])
+    }
+    
+    private func configureEmptyState() {
+        // Use search configuration like SearchVC (has built-in magnifying glass)
+        var configuration = UIContentUnavailableConfiguration.search()
+        configuration.text = "Search coins to add"
+        configuration.secondaryText = "Enter a coin name or symbol to search"
+        // Don't override the image - let search config use its default
+        
+        emptyStateView = UIContentUnavailableView(configuration: configuration)
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.isHidden = true
+        view.addSubview(emptyStateView)
+        view.bringSubviewToFront(emptyStateView) // Ensure it's on top
+        
+        // Create center constraint that we can adjust based on presentation
+        emptyStateCenterConstraint = emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -80)
+        
+        NSLayoutConstraint.activate([
+            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateCenterConstraint
         ])
     }
     
@@ -487,21 +531,46 @@ final class AddCoinsVC: UIViewController {
         // Update local watchlisted coins array
         watchlistedCoins = currentWatchlistedCoins
         
-        var snapshot = NSDiffableDataSourceSnapshot<AddCoinsSection, Coin>()
+        // Check if we should show empty state
+        let hasSearchText = !searchText.isEmpty
+        let hasNoResults = availableCoins.isEmpty && currentWatchlistedCoins.isEmpty
+        let shouldShowEmptyState = hasSearchText && hasNoResults
         
-        // Add watchlisted section if there are any watchlisted coins
-        if !currentWatchlistedCoins.isEmpty {
-            snapshot.appendSections([.watchlisted])
-            snapshot.appendItems(currentWatchlistedCoins)
+        // Update empty state visibility
+        emptyStateView.isHidden = !shouldShowEmptyState
+        collectionView.isHidden = shouldShowEmptyState
+        
+        // Update empty state content to match SearchVC exactly
+        if shouldShowEmptyState {
+            updateEmptyStateContent(for: searchText)
         }
         
-        // Add available section if there are any available coins
-        if !availableCoins.isEmpty {
-            snapshot.appendSections([.available])
-            snapshot.appendItems(availableCoins)
+        // Only update collection view data source if not showing empty state
+        if !shouldShowEmptyState {
+            var snapshot = NSDiffableDataSourceSnapshot<AddCoinsSection, Coin>()
+            
+            // Add watchlisted section if there are any watchlisted coins
+            if !currentWatchlistedCoins.isEmpty {
+                snapshot.appendSections([.watchlisted])
+                snapshot.appendItems(currentWatchlistedCoins)
+            }
+            
+            // Add available section if there are any available coins
+            if !availableCoins.isEmpty {
+                snapshot.appendSections([.available])
+                snapshot.appendItems(availableCoins)
+            }
+            
+            dataSource.apply(snapshot, animatingDifferences: true)
         }
-        
-        dataSource.apply(snapshot, animatingDifferences: true)
+    }
+    
+    private func updateEmptyStateContent(for searchText: String) {
+        // Match SearchVC exactly - same text and approach
+        var configuration = UIContentUnavailableConfiguration.search()
+        configuration.text = "No Results"
+        configuration.secondaryText = "Try searching for a different\ncryptocurrency name or symbol"
+        emptyStateView.configuration = configuration
     }
     
     // MARK: - Data Validation Helper

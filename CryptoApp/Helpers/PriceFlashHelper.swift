@@ -36,7 +36,7 @@ import UIKit
                 label.textColor = flashColor
                 label.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
             }) { _ in
-                UIView.animate(withDuration: 0.3, delay: 2.0, options: [], animations: {
+                UIView.animate(withDuration: 0.3, delay: 4.0, options: [], animations: {
                     label.textColor = originalColor
                     label.transform = .identity
                 }) { _ in
