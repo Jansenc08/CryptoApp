@@ -25,6 +25,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     private var filterHeaderView: FilterHeaderView!                         // Filter buttons container
     private var sortHeaderView: SortHeaderView!                             // Sort column headers
     
+    // MARK: - Empty State Properties
+    private var emptyStateView: UIContentUnavailableView!                   // Empty state view for when no coins are available
+    
     var autoRefreshTimer: Timer?                                            // Timer to refresh visible cells every few seconds
     let autoRefreshInterval: TimeInterval = 15                              //  Interval: 15 seconds
     
@@ -82,6 +85,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         configureView()
         configureCollectionView()
         configureDataSource()
+        configureEmptyState()
         bindViewModel()
         
         // Preload both tabs for seamless switching
@@ -572,6 +576,26 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         collectionView.dataSource = dataSource
     }
     
+    private func configureEmptyState() {
+        // Configure empty state view with better messaging
+        var configuration = UIContentUnavailableConfiguration.empty()
+        configuration.text = "No Cryptocurrencies"
+        configuration.secondaryText = "Unable to load cryptocurrency data.\nPlease check your connection and try again."
+        configuration.image = UIImage(systemName: "chart.bar.xaxis")
+        
+        emptyStateView = UIContentUnavailableView(configuration: configuration)
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        coinsContainerView.addSubview(emptyStateView)
+        
+        NSLayoutConstraint.activate([
+            emptyStateView.centerXAnchor.constraint(equalTo: coinsContainerView.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: coinsContainerView.centerYAnchor)
+        ])
+        
+        // Hide empty state view initially
+        emptyStateView.isHidden = true
+    }
+    
     // MARK: - ViewModel Bindings with Combine
 
     // Combine handles threading
@@ -589,10 +613,18 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 // Don't apply snapshot if skeleton loading is active
                 guard !SkeletonLoadingManager.isShowingSkeleton(in: self.collectionView) else { return }
                 
-                var snapshot = NSDiffableDataSourceSnapshot<CoinSection, Coin>()
-                snapshot.appendSections([.main])
-                snapshot.appendItems(coins)
-                self.dataSource.apply(snapshot, animatingDifferences: true)
+                // Show/hide empty state based on coin count
+                let isEmpty = coins.isEmpty
+                self.emptyStateView.isHidden = !isEmpty
+                self.collectionView.isHidden = isEmpty
+                
+                // Only update collection view if not empty
+                if !isEmpty {
+                    var snapshot = NSDiffableDataSourceSnapshot<CoinSection, Coin>()
+                    snapshot.appendSections([.main])
+                    snapshot.appendItems(coins)
+                    self.dataSource.apply(snapshot, animatingDifferences: true)
+                }
             }
             .store(in: &cancellables) // Keeps this subscription alive
         
@@ -631,6 +663,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 if isFetchingFresh {
                     // Show skeleton loading only when fetching fresh data from API
                     SkeletonLoadingManager.showSkeletonInCollectionView(self.collectionView, cellType: .coinCell, numberOfItems: 10)
+                    // Hide empty state while skeleton is loading
+                    self.emptyStateView.isHidden = true
+                    self.collectionView.isHidden = false
                     AppLogger.ui("Loading | Showing skeleton screens - fetching fresh API data")
                 } else {
                     // Hide skeleton loading from collection view
@@ -644,6 +679,14 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                         snapshot.appendSections([.main])
                         snapshot.appendItems(self.viewModel.currentCoins)
                         self.dataSource.apply(snapshot, animatingDifferences: false)
+                        
+                        // Show collection view, hide empty state
+                        self.collectionView.isHidden = false
+                        self.emptyStateView.isHidden = true
+                    } else {
+                        // Show empty state, hide collection view
+                        self.collectionView.isHidden = true
+                        self.emptyStateView.isHidden = false
                     }
                     AppLogger.ui("Loading | Hiding skeleton screens - using cached data or fetch complete")
                 }

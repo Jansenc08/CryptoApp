@@ -47,13 +47,18 @@ final class CoinService: CoinServiceProtocol {
     #if DEBUG
     // Coin List Testing
     private let simulateCoinListError = false        // Set to true to test coin list retry popup
-    private let forceEmptyState = false              // Set to true to test empty state
+    private let forceEmptyState = false               // Set to true to test empty state UI (returns empty array)
     
     // Chart Testing (for coin details page)
     private let simulateChartError = false           // Set to true to test chart retry buttons
     
     private func getTestError() -> NetworkError {
         return .invalidResponse                     // Change to test different error types
+    }
+    
+    // Public accessor for debug flag
+    var isForceEmptyStateEnabled: Bool {
+        return forceEmptyState
     }
     #endif
     
@@ -89,8 +94,11 @@ final class CoinService: CoinServiceProtocol {
         
         #if DEBUG
         if forceEmptyState {
-            cacheService.clearCache()
-            CoinService.clearTestingCache()
+            // Force empty state for testing - return empty array immediately
+            AppLogger.ui("🧪 DEBUG: Forcing empty state for testing")
+            return Just([])
+                .setFailureType(to: NetworkError.self)
+                .eraseToAnyPublisher()
         }
         if simulateCoinListError {
             return Fail(error: getTestError()).eraseToAnyPublisher()
@@ -98,14 +106,7 @@ final class CoinService: CoinServiceProtocol {
         #endif
         
         // Check cache first
-        #if DEBUG
-        let shouldUseCache = !forceEmptyState
-        #else
-        let shouldUseCache = true
-        #endif
-        
-        if shouldUseCache,
-           let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir) {
+        if let cachedCoins = cacheService.getCoinList(limit: limit, start: start, convert: convert, sortType: sortType, sortDir: sortDir) {
             AppLogger.cache("Cache hit for coin list (limit: \(limit), start: \(start))")
             return Just(cachedCoins)
                 .setFailureType(to: NetworkError.self)

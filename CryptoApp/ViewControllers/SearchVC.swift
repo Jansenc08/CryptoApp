@@ -47,6 +47,7 @@ import Combine
     private var popularCoinsHeightConstraint: NSLayoutConstraint!
     // Removed: Now using skeleton screens for loading states
     private var isPopularCoinsLoading = false // Track loading state to prevent height conflicts
+    private var popularCoinsEmptyStateView: UIContentUnavailableView! // Empty state view for popular coins
     
     // MARK: - Dynamic Constraints
     
@@ -140,13 +141,27 @@ import Combine
             emptyStateView?.isHidden = true
             
             // No active search - show popular coins (not recent searches)
+            #if DEBUG
+            // Check if debug flag is enabled to force empty state for testing
+            let coinService = Dependencies.container.coinService()
+            if let debugCoinService = coinService as? CoinService, debugCoinService.isForceEmptyStateEnabled {
+                // Force empty state - no recent searches
+                let hasRecentSearches = false
+                showRecentSearches(hasRecentSearches)
+                updatePopularCoinsPosition(hasRecentSearches: hasRecentSearches)
+            } else {
+                let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
+                showRecentSearches(hasRecentSearches)
+                updatePopularCoinsPosition(hasRecentSearches: hasRecentSearches)
+            }
+            #else
             let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
             showRecentSearches(hasRecentSearches)
+            updatePopularCoinsPosition(hasRecentSearches: hasRecentSearches)
+            #endif
+            
             showPopularCoins(true)
             collectionView.isHidden = true // Keep main collection view hidden
-            
-            // Update popular coins position based on recent searches
-            updatePopularCoinsPosition(hasRecentSearches: hasRecentSearches)
             
             // Force layout update and reload popular coins data
             view.layoutIfNeeded()
@@ -477,6 +492,27 @@ import Combine
             // Removed: Loading indicator constraints (now using skeleton screens)
         ])
         
+        // Configure empty state view for popular coins
+        var configuration = UIContentUnavailableConfiguration.empty()
+        configuration.text = "No Popular Coins"
+        configuration.secondaryText = "Unable to load popular coins data.\nPlease try again later."
+        configuration.image = UIImage(systemName: "chart.line.uptrend.xyaxis")
+        
+        popularCoinsEmptyStateView = UIContentUnavailableView(configuration: configuration)
+        popularCoinsEmptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(popularCoinsEmptyStateView) // Add to main view for simpler positioning
+        view.bringSubviewToFront(popularCoinsEmptyStateView)
+        
+        NSLayoutConstraint.activate([
+            popularCoinsEmptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            popularCoinsEmptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 40),
+            popularCoinsEmptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            popularCoinsEmptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+        ])
+        
+        // Hide empty state view initially
+        popularCoinsEmptyStateView.isHidden = true
+        
         // Start with the constraint for no recent searches (popular coins pushed up)
         popularCoinsTopWithoutRecentSearches.isActive = true
     }
@@ -574,6 +610,9 @@ import Combine
                 if isLoading {
                     // Show skeleton loading for popular coins collection view
                     SkeletonLoadingManager.showSkeletonInCollectionView(self.popularCoinsCollectionView, cellType: .coinCell, numberOfItems: 6)
+                    // Hide empty state during loading and show container
+                    self.popularCoinsEmptyStateView.isHidden = true
+                    self.popularCoinsContainer.isHidden = false
                     self.popularCoinsHeaderView.setLoading(true) // Disable buttons during loading
                     AppLogger.ui("Popular Coins: Loading started")
                 } else {
@@ -592,9 +631,11 @@ import Combine
                             // Apply the current data now that skeleton is gone
                             self.updatePopularCoinsDataSource(currentPopularCoins)
                         } else {
-                            // Handle empty state - set minimum height
+                            // Show empty state and hide container
+                            self.popularCoinsEmptyStateView.isHidden = false
+                            self.popularCoinsContainer.isHidden = true
                             self.updatePopularCoinsHeight(for: 0)
-                            AppLogger.ui("Popular Coins: No data available, set minimum height")
+                            AppLogger.ui("Popular Coins: No data available, showing empty state")
                         }
                     }
                 }
@@ -660,17 +701,29 @@ import Combine
             return 
         }
         
-        var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
-        snapshot.appendSections([.main])
-        snapshot.appendItems(coins)
+        // Show/hide empty state and container based on coin count
+        let isEmpty = coins.isEmpty
+        popularCoinsEmptyStateView.isHidden = !isEmpty
+        popularCoinsContainer.isHidden = isEmpty // Hide entire container when empty
         
-        AppLogger.ui("Popular Coins: Applying snapshot with \(coins.count) items")
-        popularCoinsDataSource.apply(snapshot, animatingDifferences: true) { [weak self] in
-            guard let self = self else { return }
+        // Only update collection view if not empty
+        if !isEmpty {
+            var snapshot = NSDiffableDataSourceSnapshot<SearchSection, Coin>()
+            snapshot.appendSections([.main])
+            snapshot.appendItems(coins)
             
-            // Update height based on actual item count  
-            self.updatePopularCoinsHeight(for: coins.count)
-            AppLogger.ui("Popular Coins: ✅ Successfully updated with \(coins.count) items and adjusted height")
+            AppLogger.ui("Popular Coins: Applying snapshot with \(coins.count) items")
+            popularCoinsDataSource.apply(snapshot, animatingDifferences: true) { [weak self] in
+                guard let self = self else { return }
+                
+                // Update height based on actual item count  
+                self.updatePopularCoinsHeight(for: coins.count)
+                AppLogger.ui("Popular Coins: ✅ Successfully updated with \(coins.count) items and adjusted height")
+            }
+        } else {
+            // For empty state, set height to 0 since container is hidden
+            self.updatePopularCoinsHeight(for: 0)
+            AppLogger.ui("Popular Coins: ✅ Showing empty state, container hidden")
         }
     }
     
@@ -683,8 +736,8 @@ import Combine
         // Handle empty state properly
         let calculatedHeight: CGFloat
         if itemCount == 0 {
-            calculatedHeight = minHeight // Set to minimum height for empty state
-            AppLogger.ui("Popular Coins: Setting minimum height for empty state")
+            calculatedHeight = 0 // Set to 0 height since container is hidden when empty
+            AppLogger.ui("Popular Coins: Setting height to 0 for hidden container")
         } else {
             calculatedHeight = max(CGFloat(itemCount) * itemHeight + topPadding + bottomPadding, minHeight)
         }
@@ -828,8 +881,21 @@ extension SearchVC: SearchBarComponentDelegate {
             // Immediately hide empty state when search is cleared
             emptyStateView?.isHidden = true
             
+            #if DEBUG
+            // Check if debug flag is enabled to force empty state for testing
+            let coinService = Dependencies.container.coinService()
+            if let debugCoinService = coinService as? CoinService, debugCoinService.isForceEmptyStateEnabled {
+                // Force empty state - no recent searches
+                showRecentSearches(false)
+            } else {
+                let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
+                showRecentSearches(hasRecentSearches)
+            }
+            #else
             let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
             showRecentSearches(hasRecentSearches)
+            #endif
+            
             showPopularCoins(true) // Always show popular coins when no search text
             
             // Hide main collection view when showing popular coins
@@ -860,8 +926,21 @@ extension SearchVC: SearchBarComponentDelegate {
         emptyStateView?.isHidden = true
         
         // Show sections when canceling
+        #if DEBUG
+        // Check if debug flag is enabled to force empty state for testing
+        let coinService = Dependencies.container.coinService()
+        if let debugCoinService = coinService as? CoinService, debugCoinService.isForceEmptyStateEnabled {
+            // Force empty state - no recent searches
+            showRecentSearches(false)
+        } else {
+            let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
+            showRecentSearches(hasRecentSearches)
+        }
+        #else
         let hasRecentSearches = !recentSearchManager.getRecentSearchItems().isEmpty
         showRecentSearches(hasRecentSearches)
+        #endif
+        
         showPopularCoins(true) // Show popular coins when canceling search
         
         // Hide main collection view when showing popular coins
@@ -938,6 +1017,18 @@ extension SearchVC {
      * Load and display recent searches
      */
     private func loadRecentSearches() {
+        #if DEBUG
+        // Check if debug flag is enabled to force empty state for testing
+        let coinService = Dependencies.container.coinService()
+        if let debugCoinService = coinService as? CoinService, debugCoinService.isForceEmptyStateEnabled {
+            AppLogger.search("🧪 DEBUG: Force empty state enabled - hiding recent searches for testing")
+            displayRecentSearches([]) // Display empty array
+            showRecentSearches(false) // Hide container
+            updatePopularCoinsPosition(hasRecentSearches: false)
+            return
+        }
+        #endif
+        
         let recentSearchItems = recentSearchManager.getRecentSearchItems()
         AppLogger.search("Recent Searches: Found \(recentSearchItems.count) searches: \(recentSearchItems.map { $0.symbol })")
         displayRecentSearches(recentSearchItems)

@@ -17,7 +17,7 @@ final class WatchlistVC: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<WatchlistSection, Coin>!
     
     private let refreshControl = UIRefreshControl()
-    private var emptyStateView: UIView?
+    private var emptyStateView: UIContentUnavailableView!
     private var filterHeaderView: FilterHeaderView!
     private var sortHeaderView: SortHeaderView!
     
@@ -386,69 +386,34 @@ final class WatchlistVC: UIViewController {
     // MARK: - Empty State
     
     private func setupEmptyState() {
-        let emptyView = UIView()
-        emptyView.translatesAutoresizingMaskIntoConstraints = false
+        // Configure empty state view with better messaging - matching CoinListVC style
+        var configuration = UIContentUnavailableConfiguration.empty()
+        configuration.text = "No Watchlist Items"
+        configuration.secondaryText = "Add coins to your watchlist by tapping the +\nbutton above or by long pressing on any coin in\nthe Markets tab"
+        configuration.image = UIImage(systemName: "star.fill")
         
-        let imageView = UIImageView(image: UIImage(systemName: "star.fill"))
-        imageView.tintColor = .systemGray3
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        
-        let titleLabel = UILabel()
-        titleLabel.text = "No Watchlist Items"
-        titleLabel.font = UIFont.systemFont(ofSize: 22, weight: .semibold)
-        titleLabel.textColor = .secondaryLabel
-        titleLabel.textAlignment = .center
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        let messageLabel = UILabel()
-        messageLabel.text = "Add coins to your watchlist by tapping the + button above or by long pressing on any coin in the Markets tab"
-        messageLabel.font = UIFont.systemFont(ofSize: 16, weight: .regular)
-        messageLabel.textColor = .tertiaryLabel
-        messageLabel.textAlignment = .center
-        messageLabel.numberOfLines = 0
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        let stackView = UIStackView(arrangedSubviews: [imageView, titleLabel, messageLabel])
-        stackView.axis = .vertical
-        stackView.spacing = 16
-        stackView.alignment = .center
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        
-        emptyView.addSubview(stackView)
+        emptyStateView = UIContentUnavailableView(configuration: configuration)
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(emptyStateView)
+        view.bringSubviewToFront(emptyStateView)
         
         NSLayoutConstraint.activate([
-            imageView.widthAnchor.constraint(equalToConstant: 60),
-            imageView.heightAnchor.constraint(equalToConstant: 60),
-            
-            stackView.centerXAnchor.constraint(equalTo: emptyView.centerXAnchor),
-            stackView.centerYAnchor.constraint(equalTo: emptyView.centerYAnchor),
-            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: emptyView.leadingAnchor, constant: 40),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: emptyView.trailingAnchor, constant: -40)
+            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
         
-        self.emptyStateView = emptyView
+        // Hide empty state view initially
+        emptyStateView.isHidden = true
     }
     
     private func updateEmptyState(isEmpty: Bool) {
+        // Simple visibility toggle - empty state is already added to view in setupEmptyState
+        emptyStateView.isHidden = !isEmpty
+        collectionView.isHidden = isEmpty
+        
+        // Ensure empty state appears above all other views when shown
         if isEmpty {
-            if emptyStateView?.superview == nil {
-                guard let emptyView = emptyStateView else { return }
-                view.addSubview(emptyView)
-                emptyView.translatesAutoresizingMaskIntoConstraints = false
-                NSLayoutConstraint.activate([
-                    // Start empty state below the sort header, not covering the filter header
-                    emptyView.topAnchor.constraint(equalTo: sortHeaderView.bottomAnchor),
-                    emptyView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                    emptyView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                    emptyView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-                ])
-            }
-            collectionView.isHidden = true
-            emptyStateView?.isHidden = false
-        } else {
-            collectionView.isHidden = false
-            emptyStateView?.isHidden = true
+            view.bringSubviewToFront(emptyStateView)
         }
     }
     
