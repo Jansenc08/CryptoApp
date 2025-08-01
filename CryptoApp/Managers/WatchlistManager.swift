@@ -455,7 +455,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
     
     func getWatchlistCoins() -> [Coin] {
         guard isInitialized else { return [] }
-        return syncQueue.sync { localWatchlistItems.map { $0.toCoin() } }
+        return syncQueue.sync { 
+            localWatchlistItems.compactMap { $0.toCoin() }
+        }
     }
     
     // MARK: - WatchlistManagerProtocol Conformance
@@ -485,7 +487,11 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             guard let self = self else { return }
             
             let items = self.coreDataManager.fetchWatchlistItems()
-            let sortedItems = items.sorted { 
+            
+            // Clean up any corrupted entries
+            let validItems = self.cleanupCorruptedEntries(items)
+            
+            let sortedItems = validItems.sorted { 
                 ($0.dateAdded ?? Date.distantPast) > ($1.dateAdded ?? Date.distantPast) 
             }
             
@@ -497,6 +503,38 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
                 self.watchlistItems = sortedItems
             }
         }
+    }
+    
+    private func cleanupCorruptedEntries(_ items: [WatchlistItem]) -> [WatchlistItem] {
+        var validItems: [WatchlistItem] = []
+        var corruptedItems: [WatchlistItem] = []
+        
+        for item in items {
+            // Check if this item would create a valid Coin object
+            if item.toCoin() != nil {
+                validItems.append(item)
+            } else {
+                corruptedItems.append(item)
+            }
+        }
+        
+        // Remove corrupted items from database
+        if !corruptedItems.isEmpty {
+            #if DEBUG
+            print("🗑️ WatchlistManager: Found \(corruptedItems.count) corrupted entries, removing...")
+            #endif
+            
+            for corruptedItem in corruptedItems {
+                coreDataManager.delete(corruptedItem)
+            }
+            coreDataManager.save()
+            
+            #if DEBUG
+            print("✅ WatchlistManager: Cleaned up \(corruptedItems.count) corrupted entries")
+            #endif
+        }
+        
+        return validItems
     }
     
     private func scheduleNotification(action: String, coinId: Int?) {

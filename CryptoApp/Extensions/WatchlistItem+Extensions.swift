@@ -63,7 +63,17 @@ extension WatchlistItem {
     }
     
     // Enhanced convert to Coin object with complete data
-    func toCoin() -> Coin {
+    func toCoin() -> Coin? {
+        // Validate essential data before creating Coin object
+        guard Int(id) > 0,
+              let coinName = name, !coinName.isEmpty,
+              let coinSymbol = symbol, !coinSymbol.isEmpty else {
+            #if DEBUG
+            print("⚠️ WatchlistItem.toCoin(): Skipping invalid watchlist item - ID: \(id), Name: '\(name ?? "nil")', Symbol: '\(symbol ?? "nil")'")
+            #endif
+            return nil
+        }
+        
         let additionalData = getAdditionalData()
         
         // Check if this is an old watchlist item without additional data
@@ -71,8 +81,8 @@ extension WatchlistItem {
         
         return Coin(
             id: Int(id),
-            name: name ?? "",
-            symbol: symbol ?? "",
+            name: coinName,
+            symbol: coinSymbol,
             slug: slug?.isEmpty == false ? slug : nil,
             numMarketPairs: hasAdditionalData ? (additionalData["numMarketPairs"] as? Int) : nil,
             dateAdded: hasAdditionalData ? (additionalData["dateAdded"] as? String) : nil,

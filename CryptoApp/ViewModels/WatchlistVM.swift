@@ -298,7 +298,7 @@ final class WatchlistVM: ObservableObject {
         watchlistManager.watchlistItemsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] items in
-                let coins = items.map { $0.toCoin() }
+                let coins = items.compactMap { $0.toCoin() }
                 self?.handleWatchlistChange(newCoins: coins)
             }
             .store(in: &cancellables)

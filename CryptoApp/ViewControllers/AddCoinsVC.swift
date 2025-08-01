@@ -52,6 +52,9 @@ final class AddCoinsVC: UIViewController {
     // Search debouncing
     private var searchWorkItem: DispatchWorkItem?
     
+    // Watchlist update debouncing
+    private var watchlistUpdateWorkItem: DispatchWorkItem?
+    
     // MARK: - Dependency Injection Initializer
     
     /**
@@ -91,6 +94,10 @@ final class AddCoinsVC: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         searchBarComponent.resignFirstResponder()
+        
+        // Cancel any pending work items
+        searchWorkItem?.cancel()
+        watchlistUpdateWorkItem?.cancel()
     }
     
     // MARK: - UI Setup
@@ -310,6 +317,20 @@ final class AddCoinsVC: UIViewController {
                 self?.showAlert(title: "Error", message: error)
             }
             .store(in: &cancellables)
+        
+        // Bind watchlist changes for smooth animations
+        let watchlistManager = Dependencies.container.watchlistManager()
+        watchlistManager.watchlistItemsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // Debounce rapid watchlist updates to prevent UI flicker
+                self?.watchlistUpdateWorkItem?.cancel()
+                self?.watchlistUpdateWorkItem = DispatchWorkItem {
+                    self?.updateDataSource()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: self?.watchlistUpdateWorkItem ?? DispatchWorkItem {})
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Data Management
@@ -340,17 +361,20 @@ final class AddCoinsVC: UIViewController {
         // Get ALL watchlisted coins directly (DOGE, ULTIMA, YFI, etc. - not just from API response)
         let allWatchlistedCoins = watchlistManager.getWatchlistCoins()
         
+        // Filter out invalid coins and ensure uniqueness
+        let validWatchlistedCoins = filterValidAndUniqueCoins(allWatchlistedCoins)
+        
         // Apply search filter to watchlisted coins
         let searchText = searchBarComponent.text?.lowercased() ?? ""
         let currentWatchlistedCoins = searchText.isEmpty 
-            ? allWatchlistedCoins
-            : allWatchlistedCoins.filter { coin in
+            ? validWatchlistedCoins
+            : validWatchlistedCoins.filter { coin in
                 coin.name.lowercased().contains(searchText) ||
                 coin.symbol.lowercased().contains(searchText)
             }
         
-        // Get available coins (not in watchlist)
-        let availableCoins = filteredCoins.filter { !watchlistManager.isInWatchlist(coinId: $0.id) }
+        // Get available coins (not in watchlist) and ensure they're valid
+        let availableCoins = filterValidAndUniqueCoins(filteredCoins.filter { !watchlistManager.isInWatchlist(coinId: $0.id) })
         
         // Update local watchlisted coins array
         watchlistedCoins = currentWatchlistedCoins
@@ -370,6 +394,35 @@ final class AddCoinsVC: UIViewController {
         }
         
         dataSource.apply(snapshot, animatingDifferences: true)
+    }
+    
+    // MARK: - Data Validation Helper
+    
+    private func filterValidAndUniqueCoins(_ coins: [Coin]) -> [Coin] {
+        var seenIds = Set<Int>()
+        var validCoins: [Coin] = []
+        
+        for coin in coins {
+            // Skip coins with invalid IDs or empty essential data
+            guard coin.id > 0,
+                  !coin.name.isEmpty,
+                  !coin.symbol.isEmpty,
+                  !seenIds.contains(coin.id) else {
+                #if DEBUG
+                if coin.id <= 0 || coin.name.isEmpty || coin.symbol.isEmpty {
+                    print("⚠️ AddCoinsVC: Filtering out invalid coin - ID: \(coin.id), Name: '\(coin.name)', Symbol: '\(coin.symbol)'")
+                } else if seenIds.contains(coin.id) {
+                    print("⚠️ AddCoinsVC: Filtering out duplicate coin - ID: \(coin.id), Name: '\(coin.name)', Symbol: '\(coin.symbol)'")
+                }
+                #endif
+                continue
+            }
+            
+            seenIds.insert(coin.id)
+            validCoins.append(coin)
+        }
+        
+        return validCoins
     }
     
     private func updateAddButtonTitle() {
@@ -438,16 +491,16 @@ final class AddCoinsVC: UIViewController {
         let message = messageComponents.joined(separator: " and ") + " from your watchlist"
         showSuccessFeedback(message: message)
         
-        // Manually post notification to ensure watchlist refreshes immediately
-        let actionType = addedCount > 0 && removedCount > 0 ? "batch_modify" : (addedCount > 0 ? "batch_add" : "batch_remove")
-        NotificationCenter.default.post(name: .watchlistDidUpdate, object: nil, userInfo: ["action": actionType])
-        
-        // Clear selections and update UI
+        // Clear selections and update UI state
         selectedCoinIds.removeAll()
         coinsToRemove.removeAll()
         updateAddButtonTitle()
-        collectionView.reloadData()
-        updateDataSource() // Refresh the entire list
+        
+        // Post notification to ensure other VCs refresh
+        // Note: updateDataSource() will be called automatically via watchlistItemsPublisher binding
+        // when the watchlist manager completes its database operations
+        let actionType = addedCount > 0 && removedCount > 0 ? "batch_modify" : (addedCount > 0 ? "batch_add" : "batch_remove")
+        NotificationCenter.default.post(name: .watchlistDidUpdate, object: nil, userInfo: ["action": actionType])
         
         // Dismiss after a longer delay to give WatchlistVC time to refresh
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
