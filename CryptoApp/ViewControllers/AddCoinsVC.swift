@@ -46,6 +46,7 @@ final class AddCoinsVC: UIViewController {
     private var selectedCoinIds: Set<Int> = []
     private var coinsToRemove: Set<Int> = [] // Track watchlisted coins selected for removal
     private var allCoins: [Coin] = []
+    private var cachedCoins: [Coin] = [] // All cached coins for comprehensive search
     private var filteredCoins: [Coin] = []
     private var watchlistedCoins: [Coin] = [] // Coins currently in watchlist
     
@@ -54,6 +55,8 @@ final class AddCoinsVC: UIViewController {
     
     // Watchlist update debouncing
     private var watchlistUpdateWorkItem: DispatchWorkItem?
+    private var dataSourceUpdateWorkItem: DispatchWorkItem?
+    private var lastSearchText = ""
     
     // MARK: - Dependency Injection Initializer
     
@@ -73,6 +76,20 @@ final class AddCoinsVC: UIViewController {
         super.init(coder: coder)
     }
     
+    deinit {
+        // Cancel all pending work items to prevent crashes
+        searchWorkItem?.cancel()
+        watchlistUpdateWorkItem?.cancel()
+        dataSourceUpdateWorkItem?.cancel()
+        
+        // Clear all subscriptions
+        cancellables.removeAll()
+        
+        #if DEBUG
+        print("🗑️ AddCoinsVC: Deallocated successfully")
+        #endif
+    }
+    
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
@@ -84,11 +101,19 @@ final class AddCoinsVC: UIViewController {
         configureDataSource()
         bindViewModel()
         
+        // Load cached coins for comprehensive search
+        loadCachedCoinsForSearch()
+        
         // Load many more coins for better selection
         loadMoreCoinsForSelection()
         
         // Ensure ALL watchlisted coins have their logos loaded
         loadWatchlistLogos()
+        
+        // Force initial update to show available coins section
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.updateFilteredCoins()
+        }
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -98,6 +123,7 @@ final class AddCoinsVC: UIViewController {
         // Cancel any pending work items
         searchWorkItem?.cancel()
         watchlistUpdateWorkItem?.cancel()
+        dataSourceUpdateWorkItem?.cancel()
     }
     
     // MARK: - UI Setup
@@ -195,7 +221,11 @@ final class AddCoinsVC: UIViewController {
                 return UICollectionViewCell()
             }
             
-            let section = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+            let snapshot = self.dataSource.snapshot()
+            guard indexPath.section < snapshot.sectionIdentifiers.count else {
+                return UICollectionViewCell()
+            }
+            let section = snapshot.sectionIdentifiers[indexPath.section]
             
             // Get logo URL: works for ALL coins (DOGE, ULTIMA, YFI, etc.)
             let logoURL: String?
@@ -255,7 +285,9 @@ final class AddCoinsVC: UIViewController {
             titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
             titleLabel.textColor = .label
             
-            let section = self?.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+            let snapshot = self?.dataSource.snapshot()
+            let section = (snapshot != nil && indexPath.section < snapshot!.sectionIdentifiers.count) 
+                ? snapshot!.sectionIdentifiers[indexPath.section] : nil
             titleLabel.text = section?.title
             
             headerView.addSubview(titleLabel)
@@ -277,6 +309,7 @@ final class AddCoinsVC: UIViewController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] coins in
                 self?.allCoins = coins
+                self?.updateCachedCoins(with: coins) // Update cache with new coins
                 self?.updateFilteredCoins()
             }
             .store(in: &cancellables)
@@ -328,7 +361,7 @@ final class AddCoinsVC: UIViewController {
                 self?.watchlistUpdateWorkItem = DispatchWorkItem {
                     self?.updateDataSource()
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: self?.watchlistUpdateWorkItem ?? DispatchWorkItem {})
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: self?.watchlistUpdateWorkItem ?? DispatchWorkItem {})
             }
             .store(in: &cancellables)
     }
@@ -338,18 +371,89 @@ final class AddCoinsVC: UIViewController {
     private func updateFilteredCoins() {
         let searchText = searchBarComponent.text?.lowercased() ?? ""
         
-        // Always filter API coins
+        // Prevent redundant updates during animations (but allow initial load)
+        if lastSearchText == searchText && !lastSearchText.isEmpty {
+            return
+        }
+        lastSearchText = searchText
+        
         if searchText.isEmpty {
-            filteredCoins = allCoins
+            // No search - show loaded API coins + cached coins as fallback
+            if !allCoins.isEmpty {
+                filteredCoins = allCoins
+                #if DEBUG
+                print("🔍 AddCoinsVC: No search - showing \(allCoins.count) loaded coins")
+                #endif
+            } else {
+                // Fallback to cached coins if API coins haven't loaded yet
+                filteredCoins = cachedCoins
+                #if DEBUG
+                print("🔍 AddCoinsVC: No search - falling back to \(cachedCoins.count) cached coins")
+                #endif
+            }
         } else {
-            filteredCoins = allCoins.filter { coin in
+            // Search in both loaded coins AND cached coins for comprehensive results
+            let loadedResults = allCoins.filter { coin in
                 coin.name.lowercased().contains(searchText) ||
                 coin.symbol.lowercased().contains(searchText)
+            }
+            
+            let cachedResults = cachedCoins.filter { coin in
+                (coin.name.lowercased().contains(searchText) ||
+                 coin.symbol.lowercased().contains(searchText)) &&
+                !allCoins.contains(where: { $0.id == coin.id }) // Avoid duplicates
+            }
+            
+            // Combine and sort with smart ranking (exact matches first, then by market cap)
+            let combinedResults = loadedResults + cachedResults
+            filteredCoins = combinedResults.sorted { coin1, coin2 in
+                // Prioritize exact symbol matches
+                let search = searchText.lowercased()
+                let symbol1 = coin1.symbol.lowercased()
+                let symbol2 = coin2.symbol.lowercased()
+                
+                let exactMatch1 = symbol1 == search
+                let exactMatch2 = symbol2 == search
+                
+                if exactMatch1 && !exactMatch2 { return true }
+                if !exactMatch1 && exactMatch2 { return false }
+                
+                // Then prioritize symbol prefix matches
+                let prefixMatch1 = symbol1.hasPrefix(search)
+                let prefixMatch2 = symbol2.hasPrefix(search)
+                
+                if prefixMatch1 && !prefixMatch2 { return true }
+                if !prefixMatch1 && prefixMatch2 { return false }
+                
+                // Finally sort by market cap
+                let marketCap1 = coin1.quote?["USD"]?.marketCap ?? 0
+                let marketCap2 = coin2.quote?["USD"]?.marketCap ?? 0
+                return marketCap1 > marketCap2
+            }
+            
+            #if DEBUG
+            if !cachedResults.isEmpty {
+                print("🔍 AddCoinsVC: Found \(cachedResults.count) additional matches in cache for '\(searchText)'")
+                cachedResults.prefix(3).forEach { coin in
+                    print("   • \(coin.symbol) - \(coin.name)")
+                }
+            }
+            #endif
+            
+            // Fetch logos for cached coins that don't have them yet
+            if !cachedResults.isEmpty {
+                let missingLogoIds = cachedResults.compactMap { coin in
+                    viewModel.currentCoinLogos[coin.id] == nil ? coin.id : nil
+                }
+                if !missingLogoIds.isEmpty {
+                    viewModel.fetchCoinLogos(forIDs: missingLogoIds)
+                }
             }
         }
         
         // Update data source (which handles both API coins and watchlisted coins search)
-        updateDataSource()
+        // Debounce this call to prevent race conditions during watchlist operations
+        debounceDataSourceUpdate()
     }
     
     private func updateDataSource() {
@@ -375,6 +479,10 @@ final class AddCoinsVC: UIViewController {
         
         // Get available coins (not in watchlist) and ensure they're valid
         let availableCoins = filterValidAndUniqueCoins(filteredCoins.filter { !watchlistManager.isInWatchlist(coinId: $0.id) })
+        
+        #if DEBUG
+        print("🔍 AddCoinsVC updateDataSource: filteredCoins=\(filteredCoins.count), availableCoins=\(availableCoins.count), watchlistCoins=\(currentWatchlistedCoins.count)")
+        #endif
         
         // Update local watchlisted coins array
         watchlistedCoins = currentWatchlistedCoins
@@ -425,6 +533,21 @@ final class AddCoinsVC: UIViewController {
         return validCoins
     }
     
+    private func debounceDataSourceUpdate() {
+        // Cancel any existing update
+        dataSourceUpdateWorkItem?.cancel()
+        
+        // Create new debounced update
+        dataSourceUpdateWorkItem = DispatchWorkItem { [weak self] in
+            self?.updateDataSource()
+        }
+        
+        // Execute after delay to allow watchlist operations to complete
+        if let workItem = dataSourceUpdateWorkItem {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+        }
+    }
+    
     private func updateAddButtonTitle() {
         let addCount = selectedCoinIds.count
         let removeCount = coinsToRemove.count
@@ -467,7 +590,11 @@ final class AddCoinsVC: UIViewController {
         
         // Handle additions
         for coinId in selectedCoinIds {
-            if let coin = allCoins.first(where: { $0.id == coinId }) {
+            // Look in both loaded coins and cached coins
+            let coin = allCoins.first(where: { $0.id == coinId }) ?? 
+                      filteredCoins.first(where: { $0.id == coinId })
+            
+            if let coin = coin {
                 let logoURL = viewModel.currentCoinLogos[coin.id]
                 watchlistManager.addToWatchlist(coin, logoURL: logoURL)
                 addedCount += 1
@@ -496,6 +623,16 @@ final class AddCoinsVC: UIViewController {
         coinsToRemove.removeAll()
         updateAddButtonTitle()
         
+        // Clear search to show all watchlist coins during animation
+        searchBarComponent.text = ""
+        searchBarComponent.setShowsCancelButton(false, animated: true)
+        lastSearchText = ""
+        
+        // Small delay to ensure search clearing takes effect before updating
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.updateFilteredCoins()
+        }
+        
         // Post notification to ensure other VCs refresh
         // Note: updateDataSource() will be called automatically via watchlistItemsPublisher binding
         // when the watchlist manager completes its database operations
@@ -503,8 +640,8 @@ final class AddCoinsVC: UIViewController {
         NotificationCenter.default.post(name: .watchlistDidUpdate, object: nil, userInfo: ["action": actionType])
         
         // Dismiss after a longer delay to give WatchlistVC time to refresh
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            self.dismiss(animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            self?.dismiss(animated: true)
         }
     }
     
@@ -521,8 +658,8 @@ final class AddCoinsVC: UIViewController {
         present(alert, animated: true)
         
         // Auto-dismiss after 1 second
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            alert.dismiss(animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak alert] in
+            alert?.dismiss(animated: true)
         }
     }
     
@@ -534,16 +671,16 @@ final class AddCoinsVC: UIViewController {
         viewModel.fetchCoins()
         
         // Load just 2 more pages initially (conservative approach)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.loadAdditionalCoins(pageCount: 2)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.loadAdditionalCoins(pageCount: 2)
         }
     }
     
     private func loadAdditionalCoins(pageCount: Int = 3) {
         // Load additional pages with rate limit consideration
         for i in 0..<pageCount {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.5) {
-                self.viewModel.loadMoreCoins()
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.5) { [weak self] in
+                self?.viewModel.loadMoreCoins()
             }
         }
     }
@@ -551,6 +688,45 @@ final class AddCoinsVC: UIViewController {
     private func loadMoreCoinsForSearch() {
         // Load more coins when user is actively searching
         loadAdditionalCoins(pageCount: 5) // Load more pages for search
+    }
+    
+    private func loadCachedCoinsForSearch() {
+        // Load cached coins from persistence service for comprehensive search
+        let persistenceService = Dependencies.container.persistenceService()
+        if let cached = persistenceService.loadCoinList() {
+            cachedCoins = cached
+            #if DEBUG
+            print("🔍 AddCoinsVC: Loaded \(cached.count) cached coins for search")
+            #endif
+        } else {
+            cachedCoins = []
+            #if DEBUG
+            print("⚠️ AddCoinsVC: No cached coins available for search")
+            #endif
+        }
+    }
+    
+    private func updateCachedCoins(with newCoins: [Coin]) {
+        // Merge new coins with cached coins to expand search database
+        var updatedCache = cachedCoins
+        
+        for newCoin in newCoins {
+            // Add coin if not already in cache
+            if !updatedCache.contains(where: { $0.id == newCoin.id }) {
+                updatedCache.append(newCoin)
+            } else {
+                // Update existing coin with fresh data
+                if let index = updatedCache.firstIndex(where: { $0.id == newCoin.id }) {
+                    updatedCache[index] = newCoin
+                }
+            }
+        }
+        
+        cachedCoins = updatedCache
+        
+        #if DEBUG
+        print("🔍 AddCoinsVC: Updated cache with \(newCoins.count) new coins, total cache: \(cachedCoins.count)")
+        #endif
     }
     
     private func loadWatchlistLogos() {
@@ -586,7 +762,9 @@ extension AddCoinsVC: SearchBarComponentDelegate {
         }
         
         // Execute after 0.3 seconds delay -> Debouncing 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: searchWorkItem!)
+        if let workItem = searchWorkItem {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        }
     }
     
     private func handleSearchWithNoResults(searchText: String) {
@@ -627,7 +805,9 @@ extension AddCoinsVC: UICollectionViewDelegate {
         guard let coin = dataSource.itemIdentifier(for: indexPath),
               let cell = collectionView.cellForItem(at: indexPath) as? AddCoinCell else { return }
         
-        let section = dataSource.snapshot().sectionIdentifiers[indexPath.section]
+        let snapshot = dataSource.snapshot()
+        guard indexPath.section < snapshot.sectionIdentifiers.count else { return }
+        let section = snapshot.sectionIdentifiers[indexPath.section]
         
         switch section {
         case .watchlisted:
