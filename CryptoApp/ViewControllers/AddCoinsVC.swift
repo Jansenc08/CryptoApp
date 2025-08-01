@@ -60,6 +60,10 @@ final class AddCoinsVC: UIViewController {
     private var dataSourceUpdateWorkItem: DispatchWorkItem?
     private var lastSearchText = ""
     
+    // Pagination tracking
+    private var isPaginating = false
+    private var lastContentOffset: CGPoint = .zero
+    
     // MARK: - Dependency Injection Initializer
     
     /**
@@ -415,6 +419,9 @@ final class AddCoinsVC: UIViewController {
     private func updateFilteredCoins() {
         let searchText = searchBarComponent.text?.lowercased() ?? ""
         
+        // Reset pagination flag when search changes to avoid conflicts
+        isPaginating = false
+        
         // Prevent redundant updates during animations (but allow initial load)
         if lastSearchText == searchText && !lastSearchText.isEmpty {
             return
@@ -547,6 +554,11 @@ final class AddCoinsVC: UIViewController {
         
         // Only update collection view data source if not showing empty state
         if !shouldShowEmptyState {
+            // Store current scroll position if we're paginating
+            if isPaginating {
+                lastContentOffset = collectionView.contentOffset
+            }
+            
             var snapshot = NSDiffableDataSourceSnapshot<AddCoinsSection, Coin>()
             
             // Add watchlisted section if there are any watchlisted coins
@@ -561,7 +573,17 @@ final class AddCoinsVC: UIViewController {
                 snapshot.appendItems(availableCoins)
             }
             
-            dataSource.apply(snapshot, animatingDifferences: true)
+            // Use non-animated updates during pagination to prevent scroll jumps
+            let shouldAnimate = !isPaginating
+            dataSource.apply(snapshot, animatingDifferences: shouldAnimate) { [weak self] in
+                // Restore scroll position if we were paginating
+                if let self = self, self.isPaginating {
+                    DispatchQueue.main.async {
+                        self.collectionView.setContentOffset(self.lastContentOffset, animated: false)
+                        self.isPaginating = false
+                    }
+                }
+            }
         }
     }
     
@@ -926,9 +948,17 @@ extension AddCoinsVC: UICollectionViewDelegate {
         // Load more coins when scrolling near the bottom (75% through content)
         if contentHeight > 0 {
             let scrollProgress = (offsetY + height) / contentHeight
-            if scrollProgress > 0.75 {
+            if scrollProgress > 0.75 && !isPaginating {
+                // Set pagination flag to preserve scroll position
+                isPaginating = true
+                
                 // Trigger loading more coins from the view model
                 viewModel.loadMoreCoins()
+                
+                // Safety timeout to reset pagination flag if it gets stuck
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                    self?.isPaginating = false
+                }
             }
         }
     }
