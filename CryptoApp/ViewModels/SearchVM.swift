@@ -148,6 +148,7 @@ final class SearchVM: ObservableObject {
     
     private let maxSearchResults = 50 // Limit results for performance
     private let minimumSearchLength = 1 // Start searching after 1 character
+    private var isLoadingMoreForSearch = false // Prevent concurrent API calls for search
     
     // MARK: - Lifecycle Management
     
@@ -354,8 +355,14 @@ final class SearchVM: ObservableObject {
                 
                 AppLogger.search("Search: Found \(results.count) results for '\(trimmedText)' (\(freshCount) with fresh prices)")
                 
-                // Fetch missing logos for search results
-                self.fetchLogosIfNeeded(for: results)
+                // 🚀 HYBRID APPROACH: Smart API loading when no results found
+                if results.isEmpty && trimmedText.count >= 2 && self.allCoins.count < 2000 {
+                    AppLogger.search("Search: No results found for '\(trimmedText)' - attempting to load more coins via API")
+                    self.loadMoreCoinsForSearch(searchText: trimmedText)
+                } else {
+                    // Fetch missing logos for search results
+                    self.fetchLogosIfNeeded(for: results)
+                }
             }
         }
     }
@@ -642,6 +649,52 @@ final class SearchVM: ObservableObject {
             searchResultsSubject.send([])
             popularCoinsSubject.send([])
         }
+    }
+    
+    /**
+     * HYBRID SEARCH: LOAD MORE COINS FOR SEARCH
+     * 
+     * Loads additional coins via API when no search results found.
+     * Uses separate pagination to avoid conflicts with main coin list.
+     */
+    private func loadMoreCoinsForSearch(searchText: String) {
+        // Prevent multiple concurrent API calls
+        guard !isLoadingMoreForSearch else { return }
+        isLoadingMoreForSearch = true
+        
+        let startIndex = allCoins.count + 1
+        AppLogger.search("Search: Loading more coins via API (start: \(startIndex)) for search term '\(searchText)'")
+        
+        // Use separate API call with lower priority to avoid conflicts
+        coinManager.getTopCoins(
+            limit: 500,  // Load substantial amount for better search coverage
+            convert: "USD",
+            start: startIndex,
+            sortType: "market_cap",
+            sortDir: "desc",
+            priority: .normal  // Lower priority than main list
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] completion in
+            self?.isLoadingMoreForSearch = false
+            if case .failure(let error) = completion {
+                AppLogger.error("Search: Failed to load more coins for search", error: error)
+            }
+        } receiveValue: { [weak self] newCoins in
+            guard let self = self else { return }
+            
+            AppLogger.search("Search: Loaded \(newCoins.count) additional coins for search")
+            
+            // Add new coins to search data
+            self.allCoins.append(contentsOf: newCoins)
+            
+            // Re-perform search with expanded dataset
+            self.performSearch(for: searchText)
+            
+            // Prefetch logos for new coins
+            self.fetchLogosIfNeeded(for: newCoins)
+        }
+        .store(in: &cancellables)
     }
     
     // MARK: - Logo Management

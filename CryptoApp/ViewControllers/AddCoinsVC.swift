@@ -52,8 +52,8 @@ final class AddCoinsVC: UIViewController {
     private var filteredCoins: [Coin] = []
     private var watchlistedCoins: [Coin] = [] // Coins currently in watchlist
     
-    // Search debouncing
-    private var searchWorkItem: DispatchWorkItem?
+    // Search debouncing with Combine
+    private let searchTextSubject = PassthroughSubject<String, Never>()
     
     // Watchlist update debouncing
     private var watchlistUpdateWorkItem: DispatchWorkItem?
@@ -84,11 +84,10 @@ final class AddCoinsVC: UIViewController {
     
     deinit {
         // Cancel all pending work items to prevent crashes
-        searchWorkItem?.cancel()
         watchlistUpdateWorkItem?.cancel()
         dataSourceUpdateWorkItem?.cancel()
         
-        // Clear all subscriptions
+        // Clear all subscriptions (includes search debouncing)
         cancellables.removeAll()
         
         #if DEBUG
@@ -107,6 +106,7 @@ final class AddCoinsVC: UIViewController {
         configureEmptyState()
         configureDataSource()
         bindViewModel()
+        setupSearchDebounce()
         
         // Load cached coins for comprehensive search
         loadCachedCoinsForSearch()
@@ -128,7 +128,6 @@ final class AddCoinsVC: UIViewController {
         searchBarComponent.resignFirstResponder()
         
         // Cancel any pending work items
-        searchWorkItem?.cancel()
         watchlistUpdateWorkItem?.cancel()
         dataSourceUpdateWorkItem?.cancel()
     }
@@ -412,6 +411,27 @@ final class AddCoinsVC: UIViewController {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: self?.watchlistUpdateWorkItem ?? DispatchWorkItem {})
             }
             .store(in: &cancellables)
+    }
+    
+    // MARK: - Search Debouncing
+    
+    private func setupSearchDebounce() {
+        searchTextSubject
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .removeDuplicates()
+            .sink { [weak self] searchText in
+                self?.performSearchActions(searchText)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func performSearchActions(_ searchText: String) {
+        updateFilteredCoins()
+        
+        // If searching and no results found, try loading more coins
+        if !searchText.isEmpty {
+            handleSearchWithNoResults(searchText: searchText)
+        }
     }
     
     // MARK: - Data Management
@@ -844,23 +864,8 @@ final class AddCoinsVC: UIViewController {
 extension AddCoinsVC: SearchBarComponentDelegate {
     
     func searchBarComponent(_ searchBar: SearchBarComponent, textDidChange searchText: String) {
-        // Cancel previous search work item
-        searchWorkItem?.cancel()
-        
-        // Create new work item with debouncing
-        searchWorkItem = DispatchWorkItem { [weak self] in
-            self?.updateFilteredCoins()
-            
-            // If searching and no results found, try loading more coins
-            if !searchText.isEmpty {
-                self?.handleSearchWithNoResults(searchText: searchText)
-            }
-        }
-        
-        // Execute after 0.3 seconds delay -> Debouncing 
-        if let workItem = searchWorkItem {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
-        }
+        // Send to Combine subject for debounced processing
+        searchTextSubject.send(searchText)
     }
     
     private func handleSearchWithNoResults(searchText: String) {
