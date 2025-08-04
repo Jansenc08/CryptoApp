@@ -323,8 +323,8 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         backToTopButton.layer.borderColor = UIColor.systemGray4.cgColor
         backToTopButton.layer.shadowColor = UIColor.label.cgColor
         backToTopButton.layer.shadowOffset = CGSize(width: 0, height: 2)
-        backToTopButton.layer.shadowOpacity = 0.4
-        backToTopButton.layer.shadowRadius = 8
+        backToTopButton.layer.shadowOpacity = 0.2
+        backToTopButton.layer.shadowRadius = 4
         backToTopButton.translatesAutoresizingMaskIntoConstraints = false
         
         // Set the up arrow icon
