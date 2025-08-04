@@ -110,10 +110,7 @@ class FilterModalVC: UIViewController {
         titleLabel.text = filterType.title
         
         view.addSubview(containerView)
-        containerView.addSubview(handleView)
-        containerView.addSubview(closeButton)
-        containerView.addSubview(titleLabel)
-        containerView.addSubview(tableView)
+        containerView.addSubviews(handleView, closeButton, titleLabel, tableView)
         
         NSLayoutConstraint.activate([
             // Container view

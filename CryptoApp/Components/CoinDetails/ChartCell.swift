@@ -69,8 +69,7 @@ final class ChartCell: UITableViewCell {
         ])
         
         // Add both chart views to container
-        containerView.addSubview(lineChartView)
-        containerView.addSubview(candlestickChartView)
+        containerView.addSubviews(lineChartView, candlestickChartView)
         
         lineChartView.translatesAutoresizingMaskIntoConstraints = false
         candlestickChartView.translatesAutoresizingMaskIntoConstraints = false

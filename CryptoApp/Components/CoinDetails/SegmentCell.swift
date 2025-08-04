@@ -40,9 +40,7 @@ final class SegmentCell: UITableViewCell {
         setupLandscapeToggle()
         
         // Add all views to container
-        container.addSubview(segmentView)
-        container.addSubview(landscapeToggle)
-        container.addSubview(chartTypeToggle)
+        container.addSubviews(segmentView, landscapeToggle, chartTypeToggle)
         
         segmentView.translatesAutoresizingMaskIntoConstraints = false
         landscapeToggle.translatesAutoresizingMaskIntoConstraints = false

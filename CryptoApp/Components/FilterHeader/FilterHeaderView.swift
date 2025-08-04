@@ -304,16 +304,14 @@ class PopularCoinsHeaderView: UIView {
         titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         titleLabel.textColor = .systemGray
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(titleLabel)
-        
         // Create styled buttons without arrows
         gainersButton = createStyledButton(title: PopularCoinsFilter.topGainers.shortDisplayName)
         gainersButton.addTarget(self, action: #selector(gainersButtonTapped), for: .touchUpInside)
-        addSubview(gainersButton)
         
         losersButton = createStyledButton(title: PopularCoinsFilter.topLosers.shortDisplayName)
         losersButton.addTarget(self, action: #selector(losersButtonTapped), for: .touchUpInside)
-        addSubview(losersButton)
+        
+        addSubviews(titleLabel, gainersButton, losersButton)
     }
     
     private func createStyledButton(title: String) -> UIButton {

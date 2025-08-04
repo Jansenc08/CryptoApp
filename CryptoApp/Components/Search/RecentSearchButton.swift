@@ -45,8 +45,6 @@ final class RecentSearchButton: UIButton {
         coinImageView.translatesAutoresizingMaskIntoConstraints = false
         coinImageView.layer.cornerRadius = 10
         coinImageView.layer.masksToBounds = true
-        addSubview(coinImageView)
-        
         // Create label for symbol
         symbolLabel = UILabel()
         symbolLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -54,7 +52,8 @@ final class RecentSearchButton: UIButton {
         symbolLabel.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
         symbolLabel.textColor = .label
         symbolLabel.textAlignment = .center
-        addSubview(symbolLabel)
+        
+        addSubviews(coinImageView, symbolLabel)
         
         // Layout constraints
         NSLayoutConstraint.activate([

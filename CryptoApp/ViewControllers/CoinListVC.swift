@@ -265,14 +265,14 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // Coins container view (contains existing filter + sort + collection view)
         coinsContainerView = UIView()
         coinsContainerView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(coinsContainerView)
         
         // Watchlist container view (hidden initially)
         watchlistContainerView = UIView()
         watchlistContainerView.backgroundColor = .systemBackground
         watchlistContainerView.translatesAutoresizingMaskIntoConstraints = false
         watchlistContainerView.isHidden = true
-        view.addSubview(watchlistContainerView)
+        
+        view.addSubviews(coinsContainerView, watchlistContainerView)
         
         NSLayoutConstraint.activate([
             // Coins container constraints

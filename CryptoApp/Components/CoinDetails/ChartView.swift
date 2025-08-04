@@ -291,7 +291,6 @@ final class ChartView: LineChartView {
         scrollHintLabel.alpha = 0
         scrollHintLabel.backgroundColor = .clear
         scrollHintLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(scrollHintLabel)
 
         // Animated arrow
         let arrowImage = UIImage(systemName: "arrow.right")?.withRenderingMode(.alwaysTemplate)
@@ -299,7 +298,8 @@ final class ChartView: LineChartView {
         arrowNudgeView.tintColor = .systemBlue
         arrowNudgeView.contentMode = .scaleAspectFit
         arrowNudgeView.alpha = 0.0
-        addSubview(arrowNudgeView)
+        
+        addSubviews(scrollHintLabel, arrowNudgeView)
 
         // Show animation after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in

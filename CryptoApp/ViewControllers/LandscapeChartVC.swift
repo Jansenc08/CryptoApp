@@ -215,8 +215,7 @@ final class LandscapeChartVC: UIViewController {
     
     private func setupCharts() {
         // Add both chart views to container
-        containerView.addSubview(lineChartView)
-        containerView.addSubview(candlestickChartView)
+        containerView.addSubviews(lineChartView, candlestickChartView)
         
         lineChartView.translatesAutoresizingMaskIntoConstraints = false
         candlestickChartView.translatesAutoresizingMaskIntoConstraints = false
@@ -264,8 +263,7 @@ final class LandscapeChartVC: UIViewController {
         setupChartTypeToggle()
         
         // Layout controls
-        controlsContainer.addSubview(rangeSegmentView)
-        controlsContainer.addSubview(chartTypeToggle)
+        controlsContainer.addSubviews(rangeSegmentView, chartTypeToggle)
         
         rangeSegmentView.translatesAutoresizingMaskIntoConstraints = false
         chartTypeToggle.translatesAutoresizingMaskIntoConstraints = false

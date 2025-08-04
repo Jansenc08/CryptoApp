@@ -39,13 +39,7 @@ final class ChartSkeleton: UIView {
         containerView.translatesAutoresizingMaskIntoConstraints = false
         
         // Add all skeleton components
-        containerView.addSubview(chartAreaSkeleton)
-        containerView.addSubview(yAxisLabelsSkeleton1)
-        containerView.addSubview(yAxisLabelsSkeleton2)
-        containerView.addSubview(yAxisLabelsSkeleton3)
-        containerView.addSubview(xAxisLabelsSkeleton1)
-        containerView.addSubview(xAxisLabelsSkeleton2)
-        containerView.addSubview(xAxisLabelsSkeleton3)
+        containerView.addSubviews(chartAreaSkeleton, yAxisLabelsSkeleton1, yAxisLabelsSkeleton2, yAxisLabelsSkeleton3, xAxisLabelsSkeleton1, xAxisLabelsSkeleton2, xAxisLabelsSkeleton3)
         
         setupConstraints()
     }

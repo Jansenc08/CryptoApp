@@ -318,8 +318,6 @@ import Combine
         recentSearchesLabel.text = "Recent Searches"
         recentSearchesLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         recentSearchesLabel.textColor = .systemGray
-        recentSearchesContainer.addSubview(recentSearchesLabel)
-        
         // Clear button
         clearRecentSearchesButton = UIButton(type: .system)
         clearRecentSearchesButton.translatesAutoresizingMaskIntoConstraints = false
@@ -327,14 +325,14 @@ import Combine
         clearRecentSearchesButton.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         clearRecentSearchesButton.setTitleColor(.systemRed, for: .normal)
         clearRecentSearchesButton.addTarget(self, action: #selector(clearRecentSearchesButtonTapped), for: .touchUpInside)
-        recentSearchesContainer.addSubview(clearRecentSearchesButton)
         
         // Horizontal scroll view for buttons
         recentSearchesScrollView = UIScrollView()
         recentSearchesScrollView.translatesAutoresizingMaskIntoConstraints = false
         recentSearchesScrollView.showsHorizontalScrollIndicator = false
         recentSearchesScrollView.showsVerticalScrollIndicator = false
-        recentSearchesContainer.addSubview(recentSearchesScrollView)
+        
+        recentSearchesContainer.addSubviews(recentSearchesLabel, clearRecentSearchesButton, recentSearchesScrollView)
         
         // Stack view to hold buttons
         recentSearchesStackView = UIStackView()

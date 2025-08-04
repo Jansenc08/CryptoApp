@@ -34,9 +34,7 @@ final class AddCoinCellSkeleton: UICollectionViewCell {
         layer.borderWidth = 1
         layer.borderColor = UIColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0).cgColor
         
-        contentView.addSubview(imageSkeleton)
-        contentView.addSubview(symbolSkeleton)
-        contentView.addSubview(nameSkeleton)
+        contentView.addSubviews(imageSkeleton, symbolSkeleton, nameSkeleton)
         
         // Layout to match AddCoinCell (horizontal layout with image on left, text on right)
         NSLayoutConstraint.activate([

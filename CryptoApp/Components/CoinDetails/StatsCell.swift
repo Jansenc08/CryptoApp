@@ -349,13 +349,8 @@ final class StatsCell: UITableViewCell {
         container.progressWidthConstraint = progressWidthConstraint
         
         // Add subviews
-        container.addSubview(titleLabel)
-        container.addSubview(lowLabel)
-        container.addSubview(highLabel)
-        container.addSubview(barView)
-        barView.addSubview(progressView)
-        barView.addSubview(loadingOverlay) // Add loading overlay on top
-        container.addSubview(priceIndicator)
+        container.addSubviews(titleLabel, lowLabel, highLabel, barView, priceIndicator)
+        barView.addSubviews(progressView, loadingOverlay) // Add loading overlay on top
         
         // Set up constraints
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
