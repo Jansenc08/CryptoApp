@@ -18,14 +18,8 @@ final class CandlestickChartView: CandleStickChartView {
     private var visibleDataPointsCount: Int = 50
     private var currentScrollPosition: CGFloat = 0
     
-    // Fading edge layers for visual effect
-    private let leftFade = CAGradientLayer()
-    private let rightFade = CAGradientLayer()
-    
-    // Scroll hint UI elements
-    private let scrollHintLabel = UILabel()
-    private let arrowNudgeView = UIImageView()
-    private var hintHasShown = false
+    // Common chart functionality helper
+    private let configurationHelper = ChartConfigurationHelper()
     
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
@@ -51,55 +45,19 @@ final class CandlestickChartView: CandleStickChartView {
     
     // MARK: - Chart Setup
     private func configure() {
-        backgroundColor = .systemBackground
+        // Use helper for basic configuration
+        ChartConfigurationHelper.configureBasicSettings(for: self)
+        ChartConfigurationHelper.configureAxes(for: self)
         
-        // Enhanced Interaction Settings - X-axis zoom only for consistent candle proportions
-        setScaleEnabled(true)
+        // Candlestick chart specific settings
         scaleYEnabled = false               // Disable Y-axis zoom to maintain consistent candle proportions
-        doubleTapToZoomEnabled = true       // Double-tap to zoom in/out
-        dragEnabled = true
-        pinchZoomEnabled = true             // Pinch to zoom for candle visibility (X-axis only)
-        legend.enabled = false
         
         // Set zoom limits optimized for candlestick analysis
         setVisibleXRangeMaximum(100)        // Max zoom out (show 100 candles)
         setVisibleXRangeMinimum(3)          // Max zoom in (show 3 candles for detail)
         
-        // Enable highlighting for tooltips
-        highlightPerTapEnabled = true
-        highlightPerDragEnabled = false
-        highlightValue(nil)
-        
-        // Force chart to render properly
-        isUserInteractionEnabled = true
-        backgroundColor = UIColor.systemBackground
-        
-        // Disable left axis
-        leftAxis.enabled = false
-        
-        // Y-axis Price (Right side)
-        rightAxis.enabled = true
-        rightAxis.labelTextColor = .secondaryLabel
-        rightAxis.labelFont = .systemFont(ofSize: 10)
-        rightAxis.drawGridLinesEnabled = true
-        rightAxis.gridColor = .systemGray5
-        rightAxis.gridLineWidth = 0.5
-        rightAxis.drawAxisLineEnabled = false
-        rightAxis.valueFormatter = PriceFormatter()
-        rightAxis.labelCount = 6
-        rightAxis.minWidth = 60
-        
-        // X axis - Time / Date
-        xAxis.labelPosition = .bottom
-        xAxis.labelTextColor = .secondaryLabel
-        xAxis.drawGridLinesEnabled = false
-        xAxis.drawAxisLineEnabled = false
-        xAxis.labelFont = .systemFont(ofSize: 10)
-        xAxis.granularity = 1
-        xAxis.valueFormatter = DateValueFormatter()
-        
-        // Add padding to chart edges (adjusted for right-side Y-axis)
-        setViewPortOffsets(left: 20, top: 20, right: 70, bottom: 40)
+        // Add gesture recognizers using helper
+        configurationHelper.addZoomGestures(to: self, target: self, resetAction: #selector(resetCandlestickZoom), showZoomAction: #selector(showZoomHint))
         
         // Tooltip marker when tapping a point in the chart
         let marker = CandlestickBalloonMarker(color: .tertiarySystemBackground,
@@ -114,29 +72,12 @@ final class CandlestickChartView: CandleStickChartView {
         dragDecelerationEnabled = true
         dragDecelerationFrictionCoef = 0.92
         
-        addFadingEdges()
-        addScrollHintLabel()
-        addZoomGestures()
-        
-        // Ensure gradients are properly set for current appearance
-        updateFadingEdgeColors()
+        // Set up visual effects using helper
+        configurationHelper.addFadingEdges(to: self)
+        configurationHelper.addScrollHintLabel(to: self)
     }
     
-    // MARK: - Zoom Gestures
-    
-    private func addZoomGestures() {
-        // Triple-tap to reset zoom
-        let tripleTapGesture = UITapGestureRecognizer(target: self, action: #selector(resetChartZoom))
-        tripleTapGesture.numberOfTapsRequired = 3
-        addGestureRecognizer(tripleTapGesture)
-        
-        // Long press to show zoom controls
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(showZoomControls(_:)))
-        longPressGesture.minimumPressDuration = 0.5
-        addGestureRecognizer(longPressGesture)
-    }
-    
-    @objc private func resetChartZoom() {
+    @objc private func resetCandlestickZoom() {
         // Animate back to fit all data with proper Y-axis reset
         fitScreen()
         
@@ -148,6 +89,17 @@ final class CandlestickChartView: CandleStickChartView {
         impactFeedback.impactOccurred()
         
         AppLogger.chart("Candlestick chart zoom reset with consistent Y-axis")
+    }
+    
+    @objc private func showZoomHint(_ gesture: UILongPressGestureRecognizer) {
+        if gesture.state == .began {
+            // Show temporary zoom level indicator
+            showZoomIndicator()
+            
+            // Haptic feedback
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+        }
     }
     
     private func resetYAxisToOriginalRange() {
@@ -240,8 +192,8 @@ final class CandlestickChartView: CandleStickChartView {
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        layoutFadingEdges()
-        layoutHintLabel()
+        configurationHelper.layoutFadingEdges(in: bounds)
+        configurationHelper.layoutHintLabel(in: bounds)
     }
     
     // MARK: - Dark Mode Support
@@ -251,101 +203,14 @@ final class CandlestickChartView: CandleStickChartView {
         
         // Update gradient colors when appearance changes
         if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            updateFadingEdgeColors()
+            configurationHelper.updateFadingEdgeColors()
             
             // Force background color update
             backgroundColor = .systemBackground
         }
     }
     
-    private func updateFadingEdgeColors() {
-        // Update left gradient colors
-        leftFade.colors = [
-            UIColor.systemBackground.cgColor,
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor
-        ]
-        
-        // Update right gradient colors  
-        rightFade.colors = [
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor,
-            UIColor.systemBackground.cgColor
-        ]
-    }
-    
-    // MARK: - Fading Edges
-    
-    private func addFadingEdges() {
-        // Left gradient
-        leftFade.colors = [
-            UIColor.systemBackground.cgColor,
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor
-        ]
-        
-        leftFade.startPoint = CGPoint(x: 0, y: 0.5)
-        leftFade.endPoint = CGPoint(x: 1, y: 0.5)
-        layer.addSublayer(leftFade)
-        
-        // Right gradient
-        rightFade.colors = [
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor,
-            UIColor.systemBackground.cgColor
-        ]
-        
-        rightFade.startPoint = CGPoint(x: 0, y: 0.5)
-        rightFade.endPoint = CGPoint(x: 1, y: 0.5)
-        layer.addSublayer(rightFade)
-    }
-    
-    private func layoutFadingEdges() {
-        let fadeWidth: CGFloat = 20
-        leftFade.frame = CGRect(x: 0, y: 0, width: fadeWidth, height: bounds.height)
-        rightFade.frame = CGRect(x: bounds.width - fadeWidth, y: 0, width: fadeWidth, height: bounds.height)
-    }
-    
-    // MARK: - Hint Label
-    
-    private func addScrollHintLabel() {
-        scrollHintLabel.text = "← Swipe to explore chart →"
-        scrollHintLabel.textAlignment = .center
-        scrollHintLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        scrollHintLabel.textColor = .secondaryLabel
-        scrollHintLabel.alpha = 0
-        scrollHintLabel.backgroundColor = .clear
-        scrollHintLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Animated arrow
-        let arrowImage = UIImage(systemName: "arrow.right")?.withRenderingMode(.alwaysTemplate)
-        arrowNudgeView.image = arrowImage
-        arrowNudgeView.tintColor = .systemBlue
-        arrowNudgeView.contentMode = .scaleAspectFit
-        arrowNudgeView.alpha = 0.0
-        
-        addSubviews(scrollHintLabel, arrowNudgeView)
-        
-        // Show animation after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.showHintLabel()
-        }
-    }
-    
-    private func layoutHintLabel() {
-        scrollHintLabel.frame = CGRect(
-            x: 0,
-            y: bounds.height - 24,
-            width: bounds.width,
-            height: 20
-        )
-        ChartScrollHintAnimator.layoutArrow(arrowNudgeView, in: bounds)
-    }
-    
-    private func showHintLabel() {
-        guard !hintHasShown else { return }
-        hintHasShown = true
-        
-        ChartScrollHintAnimator.fadeIn(label: scrollHintLabel, arrow: arrowNudgeView)
-        ChartScrollHintAnimator.animateBounce(for: arrowNudgeView)
-        ChartScrollHintAnimator.fadeOut(label: scrollHintLabel, arrow: arrowNudgeView)
-    }
+
     
     // MARK: - Public Update Method
     
@@ -354,20 +219,10 @@ final class CandlestickChartView: CandleStickChartView {
         
         self.allOHLCData = ohlcData
         self.currentRange = range
-        self.visibleDataPointsCount = calculateVisiblePoints(for: range)
+        self.visibleDataPointsCount = ChartConfigurationHelper.calculateVisiblePoints(for: range, dataCount: ohlcData.count)
         self.allDates = ohlcData.map { $0.timestamp }
         self.currentScrollPosition = 0
         updateChart()
-    }
-    
-    private func calculateVisiblePoints(for range: String) -> Int {
-        switch range {
-        case "24h": return min(24, allOHLCData.count)
-        case "7d": return min(50, allOHLCData.count)
-        case "30d": return min(60, allOHLCData.count)
-        case "All", "365d": return min(100, allOHLCData.count)
-        default: return min(50, allOHLCData.count)
-        }
     }
     
     // MARK: - Chart Rendering

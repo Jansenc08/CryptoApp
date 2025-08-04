@@ -19,14 +19,8 @@ final class ChartView: LineChartView {
     private var visibleDataPointsCount: Int = 50
     private var currentScrollPosition: CGFloat = 0
 
-    // Fading edge layers for viual vue
-    private let leftFade = CAGradientLayer()
-    private let rightFade = CAGradientLayer()
-    
-    // Scroll hint UI elements
-    private let scrollHintLabel = UILabel()
-    private let arrowNudgeView = UIImageView()
-    private var hintHasShown = false
+    // Common chart functionality helper
+    private let configurationHelper = ChartConfigurationHelper()
 
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
@@ -52,51 +46,19 @@ final class ChartView: LineChartView {
 
     // MARK: -Chart Setup
     private func configure() {
-        backgroundColor = .systemBackground
-
-        // Enhanced Interaction Settings with Zoom
-        setScaleEnabled(true)
+        // Use helper for basic configuration
+        ChartConfigurationHelper.configureBasicSettings(for: self)
+        ChartConfigurationHelper.configureAxes(for: self)
+        
+        // Line chart specific settings
         scaleYEnabled = true  // Allow Y-axis zoom for price analysis
-        doubleTapToZoomEnabled = true  // Double-tap to zoom in/out
-        dragEnabled = true
-        pinchZoomEnabled = true  // Pinch to zoom
-        legend.enabled = false
         
         // Set zoom limits for better UX
         setVisibleXRangeMaximum(200)  // Max zoom out
         setVisibleXRangeMinimum(5)    // Max zoom in (show 5 data points)
-
-        // Highlight Behavior
-        highlightPerTapEnabled = true
-        highlightPerDragEnabled = false
-        highlightValue(nil)
         
-        // Add zoom gesture recognizers
-        addZoomGestures()
-        
-        // Disable left axis
-        leftAxis.enabled = false
-        
-        // Y-axis Price (moved to right side)
-        rightAxis.enabled = true
-        rightAxis.labelTextColor = .secondaryLabel
-        rightAxis.labelFont = .systemFont(ofSize: 10)
-        rightAxis.drawGridLinesEnabled = true
-        rightAxis.gridColor = .systemGray5
-        rightAxis.gridLineWidth = 0.5
-        rightAxis.drawAxisLineEnabled = false
-        rightAxis.valueFormatter = PriceFormatter()
-        rightAxis.labelCount = 6
-        rightAxis.minWidth = 60
-
-        // X axis - Time / Date
-        xAxis.labelPosition = .bottom
-        xAxis.labelTextColor = .secondaryLabel
-        xAxis.drawGridLinesEnabled = false
-        xAxis.drawAxisLineEnabled = false
-        xAxis.labelFont = .systemFont(ofSize: 10)
-        xAxis.granularity = 1
-        xAxis.valueFormatter = DateValueFormatter()
+        // Add gesture recognizers using helper
+        configurationHelper.addZoomGestures(to: self, target: self, resetAction: #selector(resetChartZoom), showZoomAction: #selector(showZoomHint))
 
         
         // Add padding to chart edges (adjusted for right-side Y-axis)
@@ -116,26 +78,12 @@ final class ChartView: LineChartView {
         dragDecelerationEnabled = true
         dragDecelerationFrictionCoef = 0.92
 
-        addFadingEdges()
-        addScrollHintLabel()
-        
-        // Ensure gradients are properly set for current appearance
-        updateFadingEdgeColors()
+        // Set up visual effects using helper
+        configurationHelper.addFadingEdges(to: self)
+        configurationHelper.addScrollHintLabel(to: self)
     }
     
-    // MARK: - Zoom Gestures
-    
-    private func addZoomGestures() {
-        // Triple-tap to reset zoom
-        let tripleTapGesture = UITapGestureRecognizer(target: self, action: #selector(resetChartZoom))
-        tripleTapGesture.numberOfTapsRequired = 3
-        addGestureRecognizer(tripleTapGesture)
-        
-        // Long press to show zoom controls
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(showZoomControls(_:)))
-        longPressGesture.minimumPressDuration = 0.5
-        addGestureRecognizer(longPressGesture)
-    }
+
     
     @objc private func resetChartZoom() {
         // Animate back to fit all data
@@ -148,7 +96,7 @@ final class ChartView: LineChartView {
         AppLogger.chart("Chart zoom reset")
     }
     
-    @objc private func showZoomControls(_ gesture: UILongPressGestureRecognizer) {
+    @objc private func showZoomHint(_ gesture: UILongPressGestureRecognizer) {
         if gesture.state == .began {
             // Show temporary zoom level indicator
             showZoomIndicator()
@@ -218,8 +166,8 @@ final class ChartView: LineChartView {
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        layoutFadingEdges()
-        layoutHintLabel()
+        configurationHelper.layoutFadingEdges(in: bounds)
+        configurationHelper.layoutHintLabel(in: bounds)
     }
     
     // MARK: - Dark Mode Support
@@ -229,102 +177,14 @@ final class ChartView: LineChartView {
         
         // Update gradient colors when appearance changes
         if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            updateFadingEdgeColors()
+            configurationHelper.updateFadingEdgeColors()
             
             // Force background color update
             backgroundColor = .systemBackground
         }
     }
     
-    private func updateFadingEdgeColors() {
-        // Update left gradient colors
-        leftFade.colors = [
-            UIColor.systemBackground.cgColor,
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor
-        ]
-        
-        // Update right gradient colors  
-        rightFade.colors = [
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor,
-            UIColor.systemBackground.cgColor
-        ]
-    }
 
-    // MARK: - Fading Edges
-
-    private func addFadingEdges() {
-        // Left gradient
-        leftFade.colors = [
-            UIColor.systemBackground.cgColor,
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor
-        ]
-        
-        leftFade.startPoint = CGPoint(x: 0, y: 0.5)
-        leftFade.endPoint = CGPoint(x: 1, y: 0.5)
-        layer.addSublayer(leftFade)
-
-        // Right gradient
-        rightFade.colors = [
-            UIColor.systemBackground.withAlphaComponent(0.0).cgColor,
-            UIColor.systemBackground.cgColor
-        ]
-        
-        rightFade.startPoint = CGPoint(x: 0, y: 0.5)
-        rightFade.endPoint = CGPoint(x: 1, y: 0.5)
-        layer.addSublayer(rightFade)
-    }
-
-    private func layoutFadingEdges() {
-        let fadeWidth: CGFloat = 20
-        leftFade.frame = CGRect(x: 0, y: 0, width: fadeWidth, height: bounds.height)
-        rightFade.frame = CGRect(x: bounds.width - fadeWidth, y: 0, width: fadeWidth, height: bounds.height)
-    }
-
-    // MARK: - Hint Label
-
-    // Animated hint
-    private func addScrollHintLabel() {
-        scrollHintLabel.text = "← Swipe to explore chart →"
-        scrollHintLabel.textAlignment = .center
-        scrollHintLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        scrollHintLabel.textColor = .secondaryLabel
-        scrollHintLabel.alpha = 0
-        scrollHintLabel.backgroundColor = .clear
-        scrollHintLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        // Animated arrow
-        let arrowImage = UIImage(systemName: "arrow.right")?.withRenderingMode(.alwaysTemplate)
-        arrowNudgeView.image = arrowImage
-        arrowNudgeView.tintColor = .systemBlue
-        arrowNudgeView.contentMode = .scaleAspectFit
-        arrowNudgeView.alpha = 0.0
-        
-        addSubviews(scrollHintLabel, arrowNudgeView)
-
-        // Show animation after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.showHintLabel()
-        }
-    }
-
-    private func layoutHintLabel() {
-        scrollHintLabel.frame = CGRect(
-            x: 0,
-            y: bounds.height - 24,
-            width: bounds.width,
-            height: 20
-        )
-        ChartScrollHintAnimator.layoutArrow(arrowNudgeView, in: bounds)
-    }
-
-    private func showHintLabel() {
-        guard !hintHasShown else { return }
-        hintHasShown = true
-
-        ChartScrollHintAnimator.fadeIn(label: scrollHintLabel, arrow: arrowNudgeView)
-        ChartScrollHintAnimator.animateBounce(for: arrowNudgeView)
-        ChartScrollHintAnimator.fadeOut(label: scrollHintLabel, arrow: arrowNudgeView)
-    }
 
     // MARK: - Public Update Method
 
@@ -333,21 +193,13 @@ final class ChartView: LineChartView {
 
         self.allDataPoints = dataPoints
         self.currentRange = range
-        self.visibleDataPointsCount = calculateVisiblePoints(for: range)
+        self.visibleDataPointsCount = ChartConfigurationHelper.calculateVisiblePoints(for: range, dataCount: dataPoints.count)
         generateDates(for: dataPoints, range: range)
         self.currentScrollPosition = 0
         updateChart()
     }
 
-    private func calculateVisiblePoints(for range: String) -> Int {
-        switch range {
-        case "24h": return min(24, allDataPoints.count)
-        case "7d": return min(50, allDataPoints.count)
-        case "30d": return min(60, allDataPoints.count)
-        case "All", "365d": return min(100, allDataPoints.count)
-        default: return min(50, allDataPoints.count)
-        }
-    }
+
 
     private func generateDates(for dataPoints: [Double], range: String) {
         let now = Date()
