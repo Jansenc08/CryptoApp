@@ -161,12 +161,12 @@ final class WatchlistVM: ObservableObject {
         setupOptimizedBindings()
         
         // 🌐 SUBSCRIBE TO SHARED DATA: Use same data as CoinListVM for consistency
-        sharedCoinDataManager.allCoins
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] allCoins in
+        sharedCoinDataManager.allCoins.sinkForUI(
+            { [weak self] allCoins in
                 self?.handleSharedDataUpdate(allCoins)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         loadInitialData()
         startOptimizedPeriodicUpdates()
@@ -295,13 +295,13 @@ final class WatchlistVM: ObservableObject {
      */
     private func setupOptimizedBindings() {
         // Direct binding to optimized manager's watchlist items
-        watchlistManager.watchlistItemsPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] items in
+        watchlistManager.watchlistItemsPublisher.sinkForUI(
+            { [weak self] items in
                 let coins = items.compactMap { $0.toCoin() }
                 self?.handleWatchlistChange(newCoins: coins)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Listen to optimized notifications (debounced)
         NotificationCenter.default.publisher(for: .watchlistDidUpdate)

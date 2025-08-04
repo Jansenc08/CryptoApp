@@ -179,17 +179,17 @@ final class CoinDetailsVM: ObservableObject {
      * and triggers price change animations when prices change
      */
     private func setupSharedCoinDataListener() {
-        sharedCoinDataManager.allCoins
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] allCoins in
+        sharedCoinDataManager.allCoins.sinkForUI(
+            { [weak self] allCoins in
                 guard let self = self else { return }
                 
                 // Find updated data for this specific coin
                 if let freshCoin = allCoins.first(where: { $0.id == self.coin.id }) {
                     self.handleFreshCoinData(freshCoin)
                 }
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     /**

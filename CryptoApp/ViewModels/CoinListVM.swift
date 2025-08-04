@@ -210,20 +210,20 @@ final class CoinListVM: ObservableObject {
         }
         
         // 🌐 SUBSCRIBE TO SHARED DATA: Listen to shared coin data for consistency
-        sharedCoinDataManager.allCoins
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] allCoins in
+        sharedCoinDataManager.allCoins.sinkForUI(
+            { [weak self] allCoins in
                 self?.handleSharedDataUpdate(allCoins)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // 🚨 SUBSCRIBE TO SHARED ERRORS: Listen to errors from shared data manager
-        sharedCoinDataManager.errors
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] error in
+        sharedCoinDataManager.errors.sinkForUI(
+            { [weak self] error in
                 self?.handleSharedDataError(error)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     // MARK: - Utility Methods
@@ -1044,9 +1044,8 @@ final class CoinListVM: ObservableObject {
 
         isUpdatingPrices = true  // 🔒 Lock to prevent race conditions
         
-        coinManager.getQuotes(for: ids, convert: "USD", priority: .low)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] completionResult in
+        coinManager.getQuotes(for: ids, convert: "USD", priority: .low).sinkForUI(
+            receiveCompletion: { [weak self] completionResult in
                 self?.isUpdatingPrices = false  // 🔓 Unlock after completion
                 if case .failure(let error) = completionResult {
                     if !error.localizedDescription.contains("throttled") {
@@ -1056,10 +1055,12 @@ final class CoinListVM: ObservableObject {
                     }
                 }
                 completion()
-            } receiveValue: { [weak self] updatedQuotes in
+            },
+            receiveValue: { [weak self] updatedQuotes in
                 self?.updateCoinPrices(updatedQuotes)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     /**
@@ -1171,9 +1172,8 @@ final class CoinListVM: ObservableObject {
         isUpdatingPrices = true  // 🔒 Lock to prevent race conditions
         
         // Use low priority for background updates
-        coinManager.getQuotes(for: visibleIds, convert: "USD", priority: .low)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] completionResult in
+        coinManager.getQuotes(for: visibleIds, convert: "USD", priority: .low).sinkForUI(
+            receiveCompletion: { [weak self] completionResult in
                 self?.isUpdatingPrices = false  // 🔓 Unlock after completion
                 if case .failure(let error) = completionResult {
                     //  QUIET ERROR HANDLING
@@ -1182,7 +1182,8 @@ final class CoinListVM: ObservableObject {
                     }
                 }
                 completion()
-            } receiveValue: { [weak self] updatedQuotes in
+            },
+            receiveValue: { [weak self] updatedQuotes in
                 guard let self = self else { return }
 
                 var changedCoinIds = Set<Int>()
@@ -1250,8 +1251,9 @@ final class CoinListVM: ObservableObject {
                 }
                 
                 completion()
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     // MARK: - Manual Retry Functionality

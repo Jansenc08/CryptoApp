@@ -146,45 +146,43 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
             
             let coinIds = Array(currentCoins.prefix(200).map { $0.id }) // Update top 200 coins
             
-            coinManager.getQuotes(for: coinIds, convert: "USD", priority: .high)
-                .receive(on: DispatchQueue.main)
-                .sink(
-                    receiveCompletion: { [weak self] completion in
-                        self?.isUpdating = false
-                        self?.isLoadingSubject.send(false)
-                        if case .failure(let error) = completion {
-                            print("❌ SharedCoinDataManager: Failed to fetch quotes - \(error)")
-                            self?.errorSubject.send(error)
-                        }
-                    },
-                    receiveValue: { [weak self] updatedQuotes in
-                        guard let self = self else { return }
-                        
-                        self.isUpdating = false
-                        self.isLoadingSubject.send(false)
-                        
-                        // Update existing coins with fresh quotes
-                        var updatedCoins = self.currentCoins
-                        for i in 0..<updatedCoins.count {
-                            let coinId = updatedCoins[i].id
-                            if let newQuote = updatedQuotes[coinId] {
-                                updatedCoins[i].quote?["USD"] = newQuote
-                            }
-                        }
-                        
-                        self.coinDataSubject.send(updatedCoins)
-                        
-                        print("✅ SharedCoinDataManager: Updated prices for \(updatedQuotes.count) coins with FRESH quotes")
-                        
-                        // Log verification that market cap data is present
-                        if let btc = updatedCoins.first(where: { $0.symbol == "BTC" }),
-                           let quote = btc.quote?["USD"],
-                           let marketCap = quote.marketCap {
-                            print("📊 SharedCoinDataManager: BTC updated with market cap: $\(String(format: "%.0f", marketCap))")
+            coinManager.getQuotes(for: coinIds, convert: "USD", priority: .high).sinkForUI(
+                receiveCompletion: { [weak self] completion in
+                    self?.isUpdating = false
+                    self?.isLoadingSubject.send(false)
+                    if case .failure(let error) = completion {
+                        print("❌ SharedCoinDataManager: Failed to fetch quotes - \(error)")
+                        self?.errorSubject.send(error)
+                    }
+                },
+                receiveValue: { [weak self] updatedQuotes in
+                    guard let self = self else { return }
+                    
+                    self.isUpdating = false
+                    self.isLoadingSubject.send(false)
+                    
+                    // Update existing coins with fresh quotes
+                    var updatedCoins = self.currentCoins
+                    for i in 0..<updatedCoins.count {
+                        let coinId = updatedCoins[i].id
+                        if let newQuote = updatedQuotes[coinId] {
+                            updatedCoins[i].quote?["USD"] = newQuote
                         }
                     }
-                )
-                .store(in: &cancellables)
+                    
+                    self.coinDataSubject.send(updatedCoins)
+                    
+                    print("✅ SharedCoinDataManager: Updated prices for \(updatedQuotes.count) coins with FRESH quotes")
+                    
+                    // Log verification that market cap data is present
+                    if let btc = updatedCoins.first(where: { $0.symbol == "BTC" }),
+                       let quote = btc.quote?["USD"],
+                       let marketCap = quote.marketCap {
+                        print("📊 SharedCoinDataManager: BTC updated with market cap: $\(String(format: "%.0f", marketCap))")
+                    }
+                },
+                storeIn: &cancellables
+            )
         } else {
             // Initial fetch - show skeleton loading for fresh API data
             isFetchingFreshDataSubject.send(true)
@@ -198,9 +196,7 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                 sortType: "market_cap",
                 sortDir: "desc",
                 priority: .high
-            )
-            .receive(on: DispatchQueue.main)
-            .sink(
+            ).sinkForUI(
                 receiveCompletion: { [weak self] completion in
                     self?.isUpdating = false
                     self?.isLoadingSubject.send(false)
@@ -229,9 +225,9 @@ final class SharedCoinDataManager: SharedCoinDataManagerProtocol {
                             print("🖼️ SharedCoinDataManager: Logo fetch completed for top 50 coins")
                         }
                         .store(in: &self.cancellables)
-                }
+                },
+                storeIn: &cancellables
             )
-            .store(in: &cancellables)
         }
     }
 } 
