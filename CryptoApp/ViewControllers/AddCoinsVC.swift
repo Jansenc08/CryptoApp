@@ -187,8 +187,8 @@ final class AddCoinsVC: UIViewController {
         let layout = UICollectionViewFlowLayout()
         layout.itemSize = CGSize(width: view.bounds.width - 32, height: 70)
         layout.minimumLineSpacing = 8
-        layout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 100, right: 16)
-        layout.headerReferenceSize = CGSize(width: view.bounds.width, height: 40)
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 16, bottom: 100, right: 16)
+        layout.headerReferenceSize = CGSize(width: view.bounds.width, height: 32)
         
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
@@ -980,5 +980,24 @@ extension AddCoinsVC: UICollectionViewDelegateFlowLayout {
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         return CGSize(width: view.bounds.width - 32, height: 70)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
+        return 8 // Spacing between cells within a section
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
+        return 0 // No horizontal spacing needed
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, insetForSectionAt section: Int) -> UIEdgeInsets {
+        // Add space between sections, but keep header close to its content
+        if section == 0 {
+            // First section (watchlisted) - extra bottom spacing to separate from Available Coins section
+            return UIEdgeInsets(top: 0, left: 16, bottom: 50, right: 16)
+        } else {
+            // Available coins section - minimal top so header stays close to first coin
+            return UIEdgeInsets(top: 0, left: 16, bottom: 100, right: 16)
+        }
     }
 } 
