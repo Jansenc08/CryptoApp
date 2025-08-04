@@ -163,7 +163,7 @@ final class CoinDetailsVM: ObservableObject {
             self.geckoID = nil
         }
         
-        // 🌐 SUBSCRIBE TO SHARED DATA: Get real-time price updates
+        // SUBSCRIBE TO SHARED DATA: Get real-time price updates
         setupSharedCoinDataListener()
         
         // Fetch initial OHLC data for default stats range (24h)
@@ -543,70 +543,77 @@ final class CoinDetailsVM: ObservableObject {
 
     
     private func getStats(for range: String) -> [StatItem] {
-        var items: [StatItem] = []
-        
         let currentCoinData = coinDataSubject.value
         guard let quote = currentCoinData.quote?["USD"] else { 
-            return items 
+            return []
         }
+        
+        var items: [StatItem] = []
         
         // High/Low prices for selected time range - FIRST ITEM
         addHighLowStats(to: &items, for: range)
         
-        // Core metrics
-        if let marketCap = quote.marketCap {
-            items.append(StatItem(title: "Market Cap", value: marketCap.abbreviatedString()))
+        // Core metrics using configuration-driven approach
+        // Create an array of stat configurations
+        // addStatIfAvailable handles common patterns
+        // statConfigs array defines each stat with: Title, getValue, getColor
+        // addStatIfAvailable handles the common pattern of "if value exists, add it to the array.
+        let statConfigs: [(title: String, getValue: () -> String?, getColor: () -> UIColor?)] = [
+            ("Market Cap", { quote.marketCap?.abbreviatedString() }, { nil }),
+            ("Volume (24h)", { quote.volume24h?.abbreviatedString() }, { nil }),
+            ("Volume Change (24h)", { 
+                quote.volumeChange24h.map { String(format: "%.2f%%", $0) }
+            }, { 
+                quote.volumeChange24h.map { $0 >= 0 ? UIColor.systemGreen : UIColor.systemRed }
+            }),
+            ("Fully Diluted Market Cap", { quote.fullyDilutedMarketCap?.abbreviatedString() }, { nil }),
+            ("Market Dominance", { 
+                quote.marketCapDominance.map { String(format: "%.2f%%", $0) }
+            }, { nil }),
+            ("Circulating Supply", { currentCoinData.circulatingSupply?.abbreviatedString() }, { nil }),
+            ("Total Supply", { currentCoinData.totalSupply?.abbreviatedString() }, { nil }),
+            ("Market Pairs", { 
+                currentCoinData.numMarketPairs.map { "\($0)" }
+            }, { nil }),
+            ("Rank", { "#\(currentCoinData.cmcRank)" }, { nil })
+        ]
+        
+        // Add stats using configuration
+        for config in statConfigs {
+            addStatIfAvailable(to: &items, title: config.title, getValue: config.getValue, getColor: config.getColor)
         }
         
-        if let volume24h = quote.volume24h {
-            items.append(StatItem(title: "Volume (24h)", value: volume24h.abbreviatedString()))
-        }
-        
-        // Volume change (24h)
-        if let volumeChange24h = quote.volumeChange24h {
-            let changeString = String(format: "%.2f%%", volumeChange24h)
-            let color = volumeChange24h >= 0 ? UIColor.systemGreen : UIColor.systemRed
-            items.append(StatItem(title: "Volume Change (24h)", value: changeString, valueColor: color))
-        }
-        
-        // Fully Diluted Market Cap
-        if let fullyDilutedMarketCap = quote.fullyDilutedMarketCap {
-            items.append(StatItem(title: "Fully Diluted Market Cap", value: fullyDilutedMarketCap.abbreviatedString()))
-        }
-        
-        // Market Cap Dominance
-        if let dominance = quote.marketCapDominance {
-            items.append(StatItem(title: "Market Dominance", value: String(format: "%.2f%%", dominance)))
-        }
-        
-        // Supply information
-        if let circulating = currentCoinData.circulatingSupply {
-            items.append(StatItem(title: "Circulating Supply", value: circulating.abbreviatedString()))
-        }
-        
-        // Total Supply
-        if let totalSupply = currentCoinData.totalSupply {
-            items.append(StatItem(title: "Total Supply", value: totalSupply.abbreviatedString()))
-        }
-        
-        // Max Supply - Always show this field
-        if let maxSupply = currentCoinData.maxSupply {
-            items.append(StatItem(title: "Max Supply", value: maxSupply.abbreviatedString()))
-        } else if currentCoinData.infiniteSupply == true {
-            items.append(StatItem(title: "Max Supply", value: "∞ (Infinite)", valueColor: .systemBlue))
-        } else {
-            items.append(StatItem(title: "Max Supply", value: "N/A", valueColor: .secondaryLabel))
-        }
-        
-        // Market pairs
-        if let numMarketPairs = currentCoinData.numMarketPairs {
-            items.append(StatItem(title: "Market Pairs", value: "\(numMarketPairs)"))
-        }
-        
-        // Rank
-        items.append(StatItem(title: "Rank", value: "#\(currentCoinData.cmcRank)"))
+        // Special case for Max Supply (always show)
+        addMaxSupplyStat(to: &items, coinData: currentCoinData)
         
         return items
+    }
+
+    // MARK: - Helper Methods
+
+    private func addStatIfAvailable(
+        to items: inout [StatItem], 
+        title: String, 
+        getValue: () -> String?, 
+        getColor: () -> UIColor?
+    ) {
+        guard let value = getValue() else { return }
+        let color = getColor()
+        items.append(StatItem(title: title, value: value, valueColor: color))
+    }
+
+    private func addMaxSupplyStat(to items: inout [StatItem], coinData: Coin) {
+        let (value, color): (String, UIColor?) = {
+            if let maxSupply = coinData.maxSupply {
+                return (maxSupply.abbreviatedString(), nil)
+            } else if coinData.infiniteSupply == true {
+                return ("∞ (Infinite)", .systemBlue)
+            } else {
+                return ("N/A", .secondaryLabel)
+            }
+        }()
+        
+        items.append(StatItem(title: "Max Supply", value: value, valueColor: color))
     }
     
     private func addPercentageChangeStats(to items: inout [StatItem], from quote: Quote, for range: String) {

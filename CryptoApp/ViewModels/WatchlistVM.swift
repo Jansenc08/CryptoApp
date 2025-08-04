@@ -372,26 +372,25 @@ final class WatchlistVM: ObservableObject {
     }
     
     /**
-     * PRICE FETCHING
-     * 
+     * PRICE UPDATES - SharedCoinDataManager Architecture
+     *
      * Performance Improvements:
-     * - Background processing
+     * - Uses SharedCoinDataManager (no direct API calls)
+     * - Filters shared data for watchlist coins
      * - Smart change detection
-     * - Reduced API calls through caching
      * - Non-blocking UI updates
      */
-    
-    // Triggers background API call for price updates
-    // Updates watchlistCoins with fresh quotes
+
+    // Subscribes to SharedCoinDataManager updates
+    // Filters shared coin data for watchlist IDs
     // Calls applySortingToWatchlist()
     // Triggers logo fetching in background
-    
-    // REMOVED: Old price fetching methods - now using SharedCoinDataManager exclusively
-    
-    
-    // Uses Combine to fetch prices from coinManager.getQuotes
-    // Handles error fallback to show old data if needed
-    // Injects the new quotes into existing Coin models
+
+    // PRICE UPDATES: Now using SharedCoinDataManager exclusively
+
+    // Gets pre-fetched coin data from SharedCoinDataManager
+    // Handles filtering for watchlist-specific coins
+    // Receives complete Coin objects with fresh quotes
     
     /// Handle updates from SharedCoinDataManager
     private func handleSharedDataUpdate(_ allCoins: [Coin]) {
@@ -440,7 +439,7 @@ final class WatchlistVM: ObservableObject {
         // Apply current sorting
         applySortingToWatchlist()
         
-        // 🖼️ FETCH LOGOS: Fetch missing logos efficiently
+        // FETCH LOGOS: Fetch missing logos
         fetchMissingLogos(for: watchlistCoins)
         
         // Log verification that market cap data is present
