@@ -242,13 +242,12 @@ final class SearchVM: ObservableObject {
      * - Updates UI on main queue
      */
     private func setupSearchDebounce() {
-        searchTextSubject
-            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main) // Direct value instead of conversion
-            .removeDuplicates()
-            .sink { [weak self] searchText in
+        searchTextSubject.debounceForSearch(
+            performSearch: { [weak self] searchText in
                 self?.performSearch(for: searchText)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     // MARK: - Data Loading
@@ -493,17 +492,10 @@ final class SearchVM: ObservableObject {
             sortDir: "desc",
             priority: .normal
         )
-        .receive(on: DispatchQueue.main)
-        .sink(
-            receiveCompletion: { [weak self] completion in
-                self?.isLoadingSubject.send(false)
-                if case .failure(let error) = completion {
-                    print("❌ Popular Coins: Failed to fetch fresh data: \(error)")
-                    // Don't fallback to cached data - keep empty to avoid showing stale data
-                    self?.popularCoinsSubject.send([])
-                }
-            },
-            receiveValue: { [weak self] freshCoins in
+        .handleNetworkWithLoading(
+            operation: "Popular Coins: Fetch fresh data",
+            loadingSubject: isLoadingSubject,
+            onSuccess: { [weak self] freshCoins in
                 guard let self = self else { return }
                 print("🌟 Popular Coins: Received \(freshCoins.count) fresh coins")
                 
@@ -514,9 +506,13 @@ final class SearchVM: ObservableObject {
                 
                 // Use fresh data for popular coins calculation
                 self.calculatePopularCoins(from: freshCoins, filter: filter)
-            }
+            },
+            onError: { [weak self] _ in
+                // Don't fallback to cached data - keep empty to avoid showing stale data
+                self?.popularCoinsSubject.send([])
+            },
+            storeIn: &apiRequestCancellables
         )
-        .store(in: &apiRequestCancellables)
     }
     
     /**

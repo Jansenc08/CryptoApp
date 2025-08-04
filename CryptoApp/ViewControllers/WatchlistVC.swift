@@ -261,28 +261,27 @@ final class WatchlistVC: UIViewController {
     
     private func bindViewModel() {
         // Bind watchlist coins
-        viewModel.watchlistCoins
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] coins in
+        viewModel.watchlistCoins.sinkForUI(
+            { [weak self] coins in
                 self?.updateDataSource(coins)
                 self?.updateEmptyState(isEmpty: coins.isEmpty)
                 self?.updateNavigationItems(hasCoins: !coins.isEmpty)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind logo updates
-        viewModel.coinLogos
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+        viewModel.coinLogos.sinkForUI(
+            { [weak self] _ in
                 // Reload visible cells to update logos
                 self?.collectionView.reloadData()
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind loading state
-        viewModel.isLoading
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isLoading in
+        viewModel.isLoading.sinkForUI(
+            { [weak self] isLoading in
                 guard let self = self else { return }
                 
                 if isLoading {
@@ -301,26 +300,29 @@ final class WatchlistVC: UIViewController {
                     }
                     self.refreshControl.endRefreshing()
                 }
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind error messages
         viewModel.errorMessage
             .compactMap { $0 }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] error in
-                self?.showAlert(title: "Error", message: error)
-            }
-            .store(in: &cancellables)
+            .sinkForUI(
+                { [weak self] error in
+                    self?.showAlert(title: "Error", message: error)
+                },
+                storeIn: &cancellables
+            )
         
         // Bind price updates
         viewModel.updatedCoinIds
-            .receive(on: DispatchQueue.main)
             .filter { !$0.isEmpty }
-            .sink { [weak self] updatedCoinIds in
-                self?.updateCellsForChangedCoins(updatedCoinIds)
-            }
-            .store(in: &cancellables)
+            .sinkForUI(
+                { [weak self] updatedCoinIds in
+                    self?.updateCellsForChangedCoins(updatedCoinIds)
+                },
+                storeIn: &cancellables
+            )
     }
     
     private func updateDataSource(_ coins: [Coin]) {

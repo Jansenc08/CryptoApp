@@ -584,9 +584,8 @@ import Combine
     
     private func bindViewModel() {
         // Bind search results
-        viewModel.searchResults
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] results in
+        viewModel.searchResults.sinkForUI(
+            { [weak self] results in
                 // Track current search results for saving recent searches
                 self?.currentSearchResults = results
                 
@@ -594,13 +593,13 @@ import Combine
                 // Get current search text from the search controller instead of ViewModel
                 let currentSearchText = self?.searchBarComponent.text ?? ""
                 self?.updateEmptyState(results, searchText: currentSearchText)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind loading state for popular coins
-        viewModel.isLoading
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isLoading in
+        viewModel.isLoading.sinkForUI(
+            { [weak self] isLoading in
                 guard let self = self else { return }
                 
                 self.isPopularCoinsLoading = isLoading // Track loading state
@@ -637,47 +636,50 @@ import Combine
                         }
                     }
                 }
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind error messages
         viewModel.errorMessage
             .compactMap { $0 }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] error in
-                self?.showAlert(title: "Search Error", message: error)
-            }
-            .store(in: &cancellables)
+            .sinkForUI(
+                { [weak self] error in
+                    self?.showAlert(title: "Search Error", message: error)
+                },
+                storeIn: &cancellables
+            )
         
         // Bind logo updates
-        viewModel.coinLogos
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+        viewModel.coinLogos.sinkForUI(
+            { [weak self] _ in
                 // Reload visible cells to update logos
                 DispatchQueue.main.async {
                     self?.collectionView.reloadData()
                 }
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind popular coins data
         viewModel.popularCoins
-            .receive(on: DispatchQueue.main)
             .removeDuplicates() // Prevent duplicate updates
-            .sink { [weak self] popularCoins in
-                guard let self = self else { return }
-                AppLogger.ui("Popular Coins: Received \(popularCoins.count) coins, loading: \(self.isPopularCoinsLoading)")
-                self.updatePopularCoinsDataSource(popularCoins)
-            }
-            .store(in: &cancellables)
+            .sinkForUI(
+                { [weak self] popularCoins in
+                    guard let self = self else { return }
+                    AppLogger.ui("Popular Coins: Received \(popularCoins.count) coins, loading: \(self.isPopularCoinsLoading)")
+                    self.updatePopularCoinsDataSource(popularCoins)
+                },
+                storeIn: &cancellables
+            )
         
         // Bind popular coins state
-        viewModel.popularCoinsState
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
+        viewModel.popularCoinsState.sinkForUI(
+            { [weak self] state in
                 self?.popularCoinsHeaderView.updatePopularCoinsState(state)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     // MARK: - Data Source Updates

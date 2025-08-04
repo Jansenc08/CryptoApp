@@ -352,27 +352,26 @@ final class AddCoinsVC: UIViewController {
     
     private func bindViewModel() {
         // Bind coin list changes
-        viewModel.coins
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] coins in
+        viewModel.coins.sinkForUI(
+            { [weak self] coins in
                 self?.allCoins = coins
                 self?.updateCachedCoins(with: coins) // Update cache with new coins
                 self?.updateFilteredCoins()
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind logo updates
-        viewModel.coinLogos
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+        viewModel.coinLogos.sinkForUI(
+            { [weak self] _ in
                 self?.collectionView.reloadData()
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind loading state
-        viewModel.isLoading
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isLoading in
+        viewModel.isLoading.sinkForUI(
+            { [weak self] isLoading in
                 guard let self = self else { return }
                 
                 if isLoading {
@@ -386,43 +385,44 @@ final class AddCoinsVC: UIViewController {
                     // Force update data source with current data after skeleton is dismissed
                     self.updateDataSource()
                 }
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind error messages
         viewModel.errorMessage
             .compactMap { $0 }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] error in
-                self?.showAlert(title: "Error", message: error)
-            }
-            .store(in: &cancellables)
+            .sinkForUI(
+                { [weak self] error in
+                    self?.showAlert(title: "Error", message: error)
+                },
+                storeIn: &cancellables
+            )
         
         // Bind watchlist changes for smooth animations
         let watchlistManager = Dependencies.container.watchlistManager()
-        watchlistManager.watchlistItemsPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+        watchlistManager.watchlistItemsPublisher.sinkForUI(
+            { [weak self] _ in
                 // Debounce rapid watchlist updates to prevent UI flicker
                 self?.watchlistUpdateWorkItem?.cancel()
                 self?.watchlistUpdateWorkItem = DispatchWorkItem {
                     self?.updateDataSource()
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: self?.watchlistUpdateWorkItem ?? DispatchWorkItem {})
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     // MARK: - Search Debouncing
     
     private func setupSearchDebounce() {
-        searchTextSubject
-            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-            .removeDuplicates()
-            .sink { [weak self] searchText in
+        searchTextSubject.debounceForSearch(
+            performSearch: { [weak self] searchText in
                 self?.performSearchActions(searchText)
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     private func performSearchActions(_ searchText: String) {

@@ -711,9 +711,8 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     // Combine uses GCD queues
     private func bindViewModel() {
         // Bind coin list changes
-        viewModel.coins
-            .receive(on: DispatchQueue.main) // ensures UI updates happens on the main thread
-            .sink { [weak self] coins in // Creates a combine subscription
+        viewModel.coins.sinkForUI(
+            { [weak self] coins in
                 guard let self = self else { return }
                 
                 // Don't apply snapshot if skeleton loading is active
@@ -731,39 +730,41 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                     snapshot.appendItems(coins)
                     self.dataSource.apply(snapshot, animatingDifferences: true)
                 }
-            }
-            .store(in: &cancellables) // Keeps this subscription alive
+            },
+            storeIn: &cancellables
+        )
         
         // Bind logo updates (e.g fetched after coin data)
-        viewModel.coinLogos
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+        viewModel.coinLogos.sinkForUI(
+            { [weak self] _ in
                 self?.collectionView.reloadData()
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // Bind error message to show alert with retry option
         viewModel.errorMessage
             .compactMap { $0 }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] error in
-                self?.showRetryAlert(title: "Error", message: error)
-            }
-            .store(in: &cancellables)
+            .sinkForUI(
+                { [weak self] error in
+                    self?.showRetryAlert(title: "Error", message: error)
+                },
+                storeIn: &cancellables
+            )
         
         // Bind price updates - only update cells that actually changed
         viewModel.updatedCoinIds
-            .receive(on: DispatchQueue.main)
             .filter { !$0.isEmpty }  // Only process when there are actual changes
-            .sink { [weak self] updatedCoinIds in
-                self?.updateCellsForChangedCoins(updatedCoinIds)
-            }
-            .store(in: &cancellables)
+            .sinkForUI(
+                { [weak self] updatedCoinIds in
+                    self?.updateCellsForChangedCoins(updatedCoinIds)
+                },
+                storeIn: &cancellables
+            )
         
         // Bind loading state to show/hide skeleton screens in collection view
-        Dependencies.container.sharedCoinDataManager().isFetchingFreshData
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isFetchingFresh in
+        Dependencies.container.sharedCoinDataManager().isFetchingFreshData.sinkForUI(
+            { [weak self] isFetchingFresh in
                 guard let self = self else { return }
                 
                 if isFetchingFresh {
@@ -796,8 +797,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                     }
                     AppLogger.ui("Loading | Hiding skeleton screens - using cached data or fetch complete")
                 }
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
     }
     
     private func showAlert(title: String, message: String) {

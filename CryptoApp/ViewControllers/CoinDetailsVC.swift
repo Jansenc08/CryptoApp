@@ -260,17 +260,16 @@ final class CoinDetailsVC: UIViewController {
             .store(in: &cancellables)
         
         // Stats updates with reactive high/low data
-        viewModel.stats
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+        viewModel.stats.sinkForUI(
+            { [weak self] _ in
                 self?.updateStatsCell()
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // OHLC data updates for candlestick charts and Low/High section
-        viewModel.ohlcData
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] newOHLCData in
+        viewModel.ohlcData.sinkForUI(
+            { [weak self] newOHLCData in
                 guard let self = self else { return }
                 self.updateChartCellWithOHLC(newOHLCData)
                 // Update StatsCell when OHLC data becomes available for Low/High section
@@ -282,19 +281,20 @@ final class CoinDetailsVC: UIViewController {
                 } else {
                     AppLogger.data("[Low/High] OHLC data is empty - Low/High section won't show", level: .warning)
                 }
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // 🌐 REAL-TIME COIN DATA: Listen for fresh coin data from SharedCoinDataManager
-        viewModel.coinData
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] updatedCoin in
+        viewModel.coinData.sinkForUI(
+            { [weak self] updatedCoin in
                 guard let self = self else { return }
                 self.updateInfoCellWithRealTimeData(updatedCoin)
                 self.updatePriceChangeOverviewCell(updatedCoin) // Update price change overview
                 self.updateStatsCell() // Also update stats with fresh data
-            }
-            .store(in: &cancellables)
+            },
+            storeIn: &cancellables
+        )
         
         // 💰 PRICE CHANGE ANIMATIONS: Listen for price change indicators
         viewModel.priceChange
