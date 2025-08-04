@@ -102,6 +102,12 @@ final class WatchlistVC: UIViewController {
         AppLogger.performance("WatchlistVC: Resumed periodic updates for seamless tab switch")
     }
     
+    func scrollToTop() {
+        // Scroll to the top of the watchlist collection view
+        guard !viewModel.currentWatchlistCoins.isEmpty else { return }
+        collectionView.setContentOffset(.zero, animated: true)
+    }
+    
     // MARK: - UI Setup
     
     private func configureView() {

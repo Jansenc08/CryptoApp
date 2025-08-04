@@ -28,6 +28,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     // MARK: - Empty State Properties
     private var emptyStateView: UIContentUnavailableView!                   // Empty state view for when no coins are available
     
+    // MARK: - Back to Top Button
+    private var backToTopButton: UIButton!                                  // Floating action button to scroll back to top
+    
     var autoRefreshTimer: Timer?                                            // Timer to refresh visible cells every few seconds
     let autoRefreshInterval: TimeInterval = 15                              //  Interval: 15 seconds
     
@@ -147,6 +150,20 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         }
     }
     
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        
+        // Update button border color when switching between light/dark mode
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            updateBackToTopButtonAppearance()
+        }
+    }
+    
+    private func updateBackToTopButtonAppearance() {
+        backToTopButton?.layer.borderColor = UIColor.systemGray4.cgColor
+        backToTopButton?.layer.shadowColor = UIColor.label.cgColor
+    }
+    
     deinit {
         AppLogger.performance("🧹 CoinListVC deinit - cleaning up all resources")
         
@@ -173,6 +190,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         setupContainerViews()
         setupFilterHeaderView()
         setupSortHeaderView()
+        setupBackToTopButton()
         // setupSwipeGestures() is already called in setupContainerViews()
     }
     
@@ -293,6 +311,86 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         ])
         
         watchlistVC.didMove(toParent: self)
+    }
+    
+    private func setupBackToTopButton() {
+        // Create a circular floating action button
+        backToTopButton = UIButton(type: .system)
+        backToTopButton.backgroundColor = .systemBackground
+        backToTopButton.tintColor = .systemBlue
+        backToTopButton.layer.cornerRadius = 25
+        backToTopButton.layer.borderWidth = 1
+        backToTopButton.layer.borderColor = UIColor.systemGray4.cgColor
+        backToTopButton.layer.shadowColor = UIColor.label.cgColor
+        backToTopButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        backToTopButton.layer.shadowOpacity = 0.4
+        backToTopButton.layer.shadowRadius = 8
+        backToTopButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Set the up arrow icon
+        let chevronUp = UIImage(systemName: "chevron.up")
+        backToTopButton.setImage(chevronUp, for: .normal)
+        backToTopButton.imageView?.contentMode = .scaleAspectFit
+        
+        // Add target for tap action
+        backToTopButton.addTarget(self, action: #selector(backToTopButtonTapped), for: .touchUpInside)
+        
+        // Start hidden
+        backToTopButton.alpha = 0
+        backToTopButton.isHidden = true
+        
+        // Add to the main view (not the container views so it shows on both tabs)
+        view.addSubview(backToTopButton)
+        
+        // Set constraints
+        NSLayoutConstraint.activate([
+            backToTopButton.widthAnchor.constraint(equalToConstant: 50),
+            backToTopButton.heightAnchor.constraint(equalToConstant: 50),
+            backToTopButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            backToTopButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20)
+        ])
+    }
+    
+    @objc private func backToTopButtonTapped() {
+        // Get the appropriate scroll view based on current tab
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
+        
+        if currentIndex == 0 {
+            // Coins tab - scroll collection view to top
+            collectionView.setContentOffset(.zero, animated: true)
+        } else {
+            // Watchlist tab - let the watchlist VC handle scrolling to top
+            watchlistVC?.scrollToTop()
+        }
+        
+        // Hide the button after use since we're now at the top
+        hideBackToTopButton()
+    }
+    
+    private func showBackToTopButton() {
+        guard backToTopButton.isHidden else { return }
+        
+        backToTopButton.isHidden = false
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
+            self.backToTopButton.alpha = 1
+            self.backToTopButton.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+        } completion: { _ in
+            UIView.animate(withDuration: 0.1) {
+                self.backToTopButton.transform = .identity
+            }
+        }
+    }
+    
+    private func hideBackToTopButton() {
+        guard !backToTopButton.isHidden else { return }
+        
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseIn) {
+            self.backToTopButton.alpha = 0
+            self.backToTopButton.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+        } completion: { _ in
+            self.backToTopButton.isHidden = true
+            self.backToTopButton.transform = .identity
+        }
     }
     
     private func setupSwipeGestures() {
@@ -440,6 +538,11 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 self.coinsContainerView.isHidden = false
                 self.navigationItem.title = "Markets"
                 
+                // Show back to top button on coins tab (if user has scrolled)
+                if self.collectionView.contentOffset.y > 200 {
+                    self.showBackToTopButton()
+                }
+                
                 // Seamless tab resource management
                 self.startAutoRefresh()
                 self.watchlistVC?.pausePeriodicUpdates()
@@ -447,6 +550,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 self.coinsContainerView.isHidden = true
                 self.watchlistContainerView.isHidden = false
                 self.navigationItem.title = "Watchlist"
+                
+                // Hide back to top button on watchlist tab
+                self.hideBackToTopButton()
                 
                 // Seamless tab resource management
                 self.stopAutoRefresh()
@@ -1036,9 +1142,21 @@ extension CoinListVC: UICollectionViewDelegate {
     // Implement infinite scroll thresholding with optimizations
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         
-        // Load more coins when scrolling near the bottom
+        // Handle back to top button visibility based on scroll position (only on coins tab)
         let offsetY = scrollView.contentOffset.y
+        let currentIndex = segmentControl?.selectedSegmentIndex ?? 0
         
+        // Only show/hide button on coins tab (index 0)
+        if currentIndex == 0 {
+            // Show button when scrolled down more than 200 points, hide when near top
+            if offsetY > 200 {
+                showBackToTopButton()
+            } else if offsetY < 100 {
+                hideBackToTopButton()
+            }
+        }
+        
+        // Load more coins when scrolling near the bottom
         // The current vertical position the user has scrolled from the top.
         let contentHeight = scrollView.contentSize.height
         
