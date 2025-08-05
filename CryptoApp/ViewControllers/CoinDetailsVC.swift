@@ -179,9 +179,11 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     
     private func bindViewModel() {
         
-        // Chart updates with throttling
+        // Chart updates with throttling and debouncing to reduce flashing
         viewModel.chartPoints
             .receive(on: DispatchQueue.main)
+            .removeDuplicates()
+            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main) // Debounce rapid changes
             .throttle(for: .seconds(1), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] newPoints in
                 guard let self = self else { return }
@@ -195,18 +197,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             }
             .store(in: &cancellables)
         
-        // Loading state updates
-        viewModel.isLoading
-            .receive(on: DispatchQueue.main)
-            .removeDuplicates()
-            .sink { [weak self] isLoading in
-                guard let self = self else { return }
-                
-                if let chartCell = self.getChartCell() {
-                    chartCell.updateLoadingState(isLoading)
-                }
-            }
-            .store(in: &cancellables)
+
         
         // Error handling
         viewModel.errorMessage
@@ -267,9 +258,11 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             storeIn: &cancellables
         )
         
-        // OHLC data updates for candlestick charts and Low/High section
-        viewModel.ohlcData.sinkForUI(
-            { [weak self] newOHLCData in
+        // OHLC data updates for candlestick charts and Low/High section with debouncing
+        viewModel.ohlcData
+            .receive(on: DispatchQueue.main)
+            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main) // Debounce rapid changes
+            .sink { [weak self] newOHLCData in
                 guard let self = self else { return }
                 self.updateChartCellWithOHLC(newOHLCData)
                 // Update StatsCell when OHLC data becomes available for Low/High section
@@ -281,9 +274,8 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 } else {
                     AppLogger.data("[Low/High] OHLC data is empty - Low/High section won't show", level: .warning)
                 }
-            },
-            storeIn: &cancellables
-        )
+            }
+            .store(in: &cancellables)
         
         // 🌐 REAL-TIME COIN DATA: Listen for fresh coin data from SharedCoinDataManager
         viewModel.coinData.sinkForUI(
@@ -327,11 +319,13 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             return
         }
         
-        chartCell.updateChartData(points: points, ohlcData: nil, range: selectedRange.value)
-        
-        // IMPORTANT: Reapply settings after chart data update
-        // Ensures settings persist when data comes from view model
-        applyChartSettings(to: chartCell)
+        // ATOMIC UPDATE: Combine data update + settings application to prevent double flash
+        chartCell.updateChartDataWithSettings(
+            points: points, 
+            ohlcData: nil, 
+            range: selectedRange.value,
+            settings: getCurrentChartSettings()
+        )
     }
     
     private func updateChartCellWithOHLC(_ ohlcData: [OHLCData]) {
@@ -340,11 +334,13 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             return
         }
         
-        chartCell.updateChartData(points: nil, ohlcData: ohlcData, range: selectedRange.value)
-        
-        // IMPORTANT: Reapply settings after OHLC data update
-        // Ensures settings persist when candlestick data comes from view model
-        applyChartSettings(to: chartCell)
+        // ATOMIC UPDATE: Combine OHLC data update + settings application to prevent double flash
+        chartCell.updateChartDataWithSettings(
+            points: nil, 
+            ohlcData: ohlcData, 
+            range: selectedRange.value,
+            settings: getCurrentChartSettings()
+        )
     }
     
     private func getChartCell() -> ChartCell? {
@@ -374,11 +370,11 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // MARK: - Filter Binding with Debouncing
     
     private func bindFilter() {
-        // Debounced filter changes
+        // Debounced filter changes (including initial load)
         selectedRange
             .receive(on: DispatchQueue.main)
             .removeDuplicates()
-            .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)
+            .debounce(for: .seconds(0.1), scheduler: DispatchQueue.main) // Shorter debounce for initial load
             .sink { [weak self] range in
                 guard let self = self else { return }
                 
@@ -388,7 +384,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                     return
                 }
                 
-                AppLogger.ui("Debounced filter change executing: \(range)")
+                AppLogger.ui("Filter change executing: \(range)")
                 self.viewModel.fetchChartData(for: range)
             }
             .store(in: &cancellables)
@@ -409,7 +405,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             }
             .store(in: &cancellables)
         
-        // Chart type changes
+        // Chart type changes (UI only - data fetching handled by selectedRange)
         selectedChartType
             .receive(on: DispatchQueue.main)
             .removeDuplicates()
@@ -418,7 +414,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 
                 AppLogger.ui("Chart type changed to: \(chartType)")
                 
-                // Update ViewModel
+                // Update ViewModel (this uses cached data, doesn't fetch)
                 self.viewModel.setChartType(chartType, for: self.selectedRange.value)
                 
                 // Update UI cells
@@ -429,9 +425,8 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 if let chartCell = self.getChartCell() {
                     chartCell.switchChartType(to: chartType)
                     
-                    // IMPORTANT: Reapply settings after chart type switch
-                    // Ensures settings persist between line ↔ candlestick charts
-                    self.applyChartSettings(to: chartCell)
+                    // ATOMIC: Apply settings without triggering multiple redraws
+                    chartCell.applySettingsAtomically(self.getCurrentChartSettings())
                 }
             }
             .store(in: &cancellables)
@@ -772,6 +767,18 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     
     // MARK: - Chart Settings Application
     
+    /// Gets current chart settings as a dictionary for atomic updates
+    private func getCurrentChartSettings() -> [String: Any] {
+        return [
+            "gridEnabled": UserDefaults.standard.bool(forKey: "ChartGridLinesEnabled"),
+            "labelsEnabled": UserDefaults.standard.bool(forKey: "ChartPriceLabelsEnabled"),
+            "autoScaleEnabled": UserDefaults.standard.bool(forKey: "ChartAutoScaleEnabled"),
+            "colorTheme": UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic",
+            "lineThickness": UserDefaults.standard.double(forKey: "ChartLineThickness"),
+            "animationSpeed": UserDefaults.standard.double(forKey: "ChartAnimationSpeed")
+        ]
+    }
+    
     /// Applies all chart settings to the given chart cell
     /// This ensures settings persist across time range changes and chart type switches
     private func applyChartSettings(to chartCell: ChartCell) {
@@ -924,9 +931,8 @@ extension CoinDetailsVC: UITableViewDataSource {
             // Switch to current chart type
             cell.switchChartType(to: selectedChartType.value)
             
-            // IMPORTANT: Apply chart settings after configuration
-            // This ensures settings persist across time range changes
-            applyChartSettings(to: cell)
+            // ATOMIC: Apply chart settings after configuration to prevent double redraw
+            cell.applySettingsAtomically(getCurrentChartSettings())
             
             // Set up retry callback
             cell.onRetryRequested = { [weak self] in

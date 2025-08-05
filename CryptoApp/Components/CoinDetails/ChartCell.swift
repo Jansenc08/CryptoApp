@@ -18,14 +18,26 @@ final class ChartCell: UITableViewCell {
     private var currentRange: String = "24h"
     
     // Chart state tracking
-    private enum ChartState {
+    private enum ChartState: Equatable {
+        case ready          // OPTIMAL: Ready to receive data - no loading shown yet
         case loading
         case data
         case error(RetryErrorInfo)
         case nonRetryableError(String)
+        
+        static func == (lhs: ChartState, rhs: ChartState) -> Bool {
+            switch (lhs, rhs) {
+            case (.ready, .ready), (.loading, .loading), (.data, .data):
+                return true
+            case (.error(_), .error(_)), (.nonRetryableError(_), .nonRetryableError(_)):
+                return true
+            default:
+                return false
+            }
+        }
     }
     
-    private var currentState: ChartState = .loading
+    private var currentState: ChartState = .ready  // Start ready - follow SharedCoinDataManager pattern
     private var isSetupComplete: Bool = false
     
     // Retry callback
@@ -39,8 +51,8 @@ final class ChartCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         
-        // Reset to loading state on reuse to prevent flashing
-        currentState = .loading
+        // Reset to ready state - prepared to receive new data
+        currentState = .ready
         updateViewsForState()
         
         // Reset retry button to prevent constraint conflicts
@@ -195,6 +207,16 @@ final class ChartCell: UITableViewCell {
     
     private func updateViewsForState() {
         switch currentState {
+        case .ready:
+            // OPTIMAL: Show chart area ready for data - like SharedCoinDataManager pattern
+            loadingView.isHidden = true
+            errorView.isHidden = true
+            // Show chart views but they'll be empty until data arrives
+            let showLineChart = (currentChartType == .line)
+            lineChartView.isHidden = !showLineChart
+            candlestickChartView.isHidden = showLineChart
+            print("📊 Chart cell ready for data - following SharedCoinDataManager pattern")
+            
         case .loading:
             // Show chart skeleton, hide charts and error
             loadingView.isHidden = false
@@ -331,6 +353,43 @@ final class ChartCell: UITableViewCell {
         }
         
         AppLogger.chart("Updated chart: \(currentChartType) | Range: \(range)")
+    }
+    
+    // ATOMIC UPDATE: Combines chart data update + settings application to prevent flashing
+    func updateChartDataWithSettings(points: [Double]? = nil, ohlcData: [OHLCData]? = nil, range: String, settings: [String: Any]) {
+        // Update data first
+        updateChartData(points: points, ohlcData: ohlcData, range: range)
+        
+        // Only apply settings if we have actual chart data to avoid unnecessary redraws
+        guard currentState == .data else { return }
+        
+        // Apply all settings atomically
+        applySettingsAtomically(settings)
+    }
+    
+    // Applies settings without triggering multiple redraws
+    func applySettingsAtomically(_ settings: [String: Any]) {
+        let gridEnabled = settings["gridEnabled"] as? Bool ?? false
+        let labelsEnabled = settings["labelsEnabled"] as? Bool ?? false
+        let autoScaleEnabled = settings["autoScaleEnabled"] as? Bool ?? false
+        let colorTheme = settings["colorTheme"] as? String ?? "classic"
+        let lineThickness = settings["lineThickness"] as? Double ?? 0
+        let animationSpeed = settings["animationSpeed"] as? Double ?? 0
+        
+        // Apply all settings in one go using existing methods
+        toggleGridLines(gridEnabled)
+        togglePriceLabels(labelsEnabled)
+        toggleAutoScale(autoScaleEnabled)
+        
+        if let theme = ChartColorTheme(rawValue: colorTheme) {
+            applyColorTheme(theme)
+        }
+        
+        if lineThickness > 0 {
+            updateLineThickness(lineThickness)
+        }
+        
+        setAnimationSpeed(animationSpeed)
     }
     
     // New method to handle loading state

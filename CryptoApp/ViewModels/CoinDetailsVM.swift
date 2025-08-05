@@ -296,7 +296,9 @@ final class CoinDetailsVM: ObservableObject {
             
             let processedData = processChartData(cachedChartData, for: days)
             chartPointsSubject.send(processedData)
+            // Clear all error states when using cached data
             errorMessageSubject.send(nil)
+            lastErrorSubject.send(nil)
             
             // FIXED: Always fetch OHLC data for Low/High section, regardless of chart type
             if let cachedOHLCData = CacheService.shared.getOHLCData(for: geckoID, currency: "usd", days: days),
@@ -327,7 +329,9 @@ final class CoinDetailsVM: ObservableObject {
             .receive(on: DispatchQueue.main) // UI updates on main thread
             .handleEvents(
                 receiveOutput: { [weak self] processedData in
+                    // Clear all error states when data loads successfully
                     self?.errorMessageSubject.send(nil)
+                    self?.lastErrorSubject.send(nil)
                 }
             )
             .sink(
@@ -777,12 +781,13 @@ final class CoinDetailsVM: ObservableObject {
             lastErrorSubject.eraseToAnyPublisher()
         )
         .map { [weak self] isLoading, hasData, hasError, lastError in
-            if isLoading {
+            // FIXED: Prioritize data over errors to prevent stale error states
+            if hasData {
+                return .loaded  // Data wins - even if there were old errors
+            } else if isLoading {
                 return .loading
-            } else if hasData {
-                return .loaded
             } else if hasError, let error = lastError {
-                // Generate retry information for the error
+                // Only show errors if we don't have data
                 let symbol = self?.coin.symbol ?? "Unknown"
                 let retryInfo = ErrorMessageProvider.shared.getChartRetryInfo(for: error, symbol: symbol)
                 
@@ -817,6 +822,8 @@ final class CoinDetailsVM: ObservableObject {
         errorMessageSubject.send(nil)
         lastErrorSubject.send(nil)
     }
+    
+
     
     func cancelAllRequests() {
         
