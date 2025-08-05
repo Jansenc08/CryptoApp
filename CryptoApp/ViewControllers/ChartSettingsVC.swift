@@ -44,8 +44,16 @@ final class ChartSettingsVC: UIViewController {
     private let analysisPresetButton = UIButton(type: .system)
     
     // Current settings
-    private var currentSmoothingEnabled: Bool = false
-    private var currentSmoothingType: ChartSmoothingHelper.SmoothingType = .adaptive
+    private var currentSmoothingEnabled: Bool = {
+        if UserDefaults.standard.object(forKey: "ChartSmoothingEnabled") == nil {
+            UserDefaults.standard.set(true, forKey: "ChartSmoothingEnabled") // Default enabled
+        }
+        return UserDefaults.standard.bool(forKey: "ChartSmoothingEnabled")
+    }()
+    private var currentSmoothingType: ChartSmoothingHelper.SmoothingType = {
+        let savedType = UserDefaults.standard.string(forKey: "ChartSmoothingType") ?? "adaptive"
+        return ChartSmoothingHelper.SmoothingType(rawValue: savedType) ?? .adaptive
+    }()
     
     // MARK: - Lifecycle
     

@@ -119,9 +119,18 @@ final class CoinDetailsVM: ObservableObject {
 
     // MARK: - Core Dependencies
     
-    // Chart configuration
-    private var isSmoothingEnabled: Bool = true // Toggle for chart smoothing
-    private var smoothingType: ChartSmoothingHelper.SmoothingType = .adaptive // Current smoothing algorithm
+    // Chart configuration - Load from UserDefaults for persistence across coin changes
+    private var isSmoothingEnabled: Bool = {
+        if UserDefaults.standard.object(forKey: "ChartSmoothingEnabled") == nil {
+            UserDefaults.standard.set(true, forKey: "ChartSmoothingEnabled") // Default enabled
+        }
+        return UserDefaults.standard.bool(forKey: "ChartSmoothingEnabled")
+    }()
+    
+    private var smoothingType: ChartSmoothingHelper.SmoothingType = {
+        let savedType = UserDefaults.standard.string(forKey: "ChartSmoothingType") ?? "adaptive"
+        return ChartSmoothingHelper.SmoothingType(rawValue: savedType) ?? .adaptive
+    }()
     
     // MARK: - State Management
     
@@ -527,6 +536,8 @@ final class CoinDetailsVM: ObservableObject {
     // Toggle chart data smoothing on/off
     func setSmoothingEnabled(_ enabled: Bool) {
         isSmoothingEnabled = enabled
+        // FIXED: Save smoothing setting to UserDefaults for persistence across coin changes
+        UserDefaults.standard.set(enabled, forKey: "ChartSmoothingEnabled")
         // Refresh current chart data with new smoothing setting
         fetchChartData(for: currentRange)
     }
@@ -534,6 +545,8 @@ final class CoinDetailsVM: ObservableObject {
     // Change smoothing algorithm
     func setSmoothingType(_ type: ChartSmoothingHelper.SmoothingType) {
         smoothingType = type
+        // FIXED: Save smoothing type to UserDefaults for persistence across coin changes
+        UserDefaults.standard.set(type.rawValue, forKey: "ChartSmoothingType")
         // Refresh current chart data with new smoothing algorithm
         fetchChartData(for: currentRange)
     }
