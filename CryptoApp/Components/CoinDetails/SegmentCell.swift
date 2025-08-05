@@ -151,9 +151,9 @@ final class SegmentCell: UITableViewCell {
         chartSettingsToggle.layer.cornerRadius = 12
         chartSettingsToggle.layer.masksToBounds = true
         
-        // Settings gear icon
+        // Settings slider icon
         let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        let image = UIImage(systemName: "gearshape", withConfiguration: config)
+        let image = UIImage(systemName: "slider.horizontal.3", withConfiguration: config)
         
         chartSettingsToggle.setImage(image, for: .normal)
         chartSettingsToggle.tintColor = .systemBlue
