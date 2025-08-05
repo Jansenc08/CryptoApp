@@ -12,11 +12,14 @@ final class SegmentCell: UITableViewCell {
     private let segmentView = SegmentView()
     private let chartTypeToggle = UIButton(type: .system)
     private let landscapeToggle = UIButton(type: .system)
+    private let chartSettingsToggle = UIButton(type: .system)
     
     // Chart type callback
     var onChartTypeToggle: ((ChartType) -> Void)?
     // Landscape toggle callback
     var onLandscapeToggle: (() -> Void)?
+    // Chart settings callback
+    var onChartSettingsToggle: (() -> Void)?
     private var currentChartType: ChartType = .line
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -38,13 +41,15 @@ final class SegmentCell: UITableViewCell {
         // Setup toggle buttons
         setupChartTypeToggle()
         setupLandscapeToggle()
+        setupChartSettingsToggle()
         
         // Add all views to container
-        container.addSubviews(segmentView, landscapeToggle, chartTypeToggle)
+        container.addSubviews(segmentView, landscapeToggle, chartTypeToggle, chartSettingsToggle)
         
         segmentView.translatesAutoresizingMaskIntoConstraints = false
         landscapeToggle.translatesAutoresizingMaskIntoConstraints = false
         chartTypeToggle.translatesAutoresizingMaskIntoConstraints = false
+        chartSettingsToggle.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
             // Segment view - independent height, centered vertically
@@ -60,10 +65,16 @@ final class SegmentCell: UITableViewCell {
             landscapeToggle.heightAnchor.constraint(equalToConstant: 40),
             
             // Chart type toggle button - maintains 40x40 size
-            chartTypeToggle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            chartTypeToggle.trailingAnchor.constraint(equalTo: chartSettingsToggle.leadingAnchor, constant: -8),
             chartTypeToggle.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             chartTypeToggle.widthAnchor.constraint(equalToConstant: 40),
-            chartTypeToggle.heightAnchor.constraint(equalToConstant: 40)
+            chartTypeToggle.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Chart settings toggle button - maintains 40x40 size
+            chartSettingsToggle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            chartSettingsToggle.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            chartSettingsToggle.widthAnchor.constraint(equalToConstant: 40),
+            chartSettingsToggle.heightAnchor.constraint(equalToConstant: 40)
         ])
     }
     
@@ -134,6 +145,24 @@ final class SegmentCell: UITableViewCell {
         landscapeToggle.addTarget(self, action: #selector(landscapeToggleTapped), for: .touchUpInside)
     }
     
+    private func setupChartSettingsToggle() {
+        // Clean, minimalist settings button design
+        chartSettingsToggle.backgroundColor = .systemGray6
+        chartSettingsToggle.layer.cornerRadius = 12
+        chartSettingsToggle.layer.masksToBounds = true
+        
+        // Settings gear icon
+        let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        let image = UIImage(systemName: "gearshape", withConfiguration: config)
+        
+        chartSettingsToggle.setImage(image, for: .normal)
+        chartSettingsToggle.tintColor = .systemBlue
+        chartSettingsToggle.imageView?.contentMode = .scaleAspectFit
+        
+        // Add action
+        chartSettingsToggle.addTarget(self, action: #selector(chartSettingsToggleTapped), for: .touchUpInside)
+    }
+    
     @objc private func landscapeToggleTapped() {
         // Provide haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
@@ -164,6 +193,24 @@ final class SegmentCell: UITableViewCell {
         // Notify callback
         onChartTypeToggle?(currentChartType)
     }
+    
+    @objc private func chartSettingsToggleTapped() {
+        // Provide haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        // Brief animation
+        UIView.animate(withDuration: 0.1) {
+            self.chartSettingsToggle.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+        } completion: { _ in
+            UIView.animate(withDuration: 0.1) {
+                self.chartSettingsToggle.transform = .identity
+            }
+        }
+        
+        // Notify callback
+        onChartSettingsToggle?()
+    }
 
     func configure(items: [String], chartType: ChartType = .line, onTimeRangeSelect: @escaping (String) -> Void) {
         segmentView.configure(withItems: items)
@@ -180,6 +227,10 @@ final class SegmentCell: UITableViewCell {
     
     func setLandscapeToggleCallback(_ callback: @escaping () -> Void) {
         onLandscapeToggle = callback
+    }
+    
+    func setChartSettingsCallback(_ callback: @escaping () -> Void) {
+        onChartSettingsToggle = callback
     }
     
     func setChartType(_ chartType: ChartType) {
@@ -209,6 +260,7 @@ final class SegmentCell: UITableViewCell {
         // Clean up closure properties to prevent memory leaks
         onChartTypeToggle = nil
         onLandscapeToggle = nil
+        onChartSettingsToggle = nil
         AppLogger.ui("SegmentCell deinit - cleaned up closures")
     }
 }

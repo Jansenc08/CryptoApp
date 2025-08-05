@@ -396,3 +396,38 @@ final class ChartCell: UITableViewCell {
         }
     }
 }
+
+// MARK: - Chart Settings Support
+
+extension ChartCell {
+    
+    func updateLineThickness(_ thickness: CGFloat) {
+        lineChartView.updateLineThickness(thickness)
+        candlestickChartView.updateLineThickness(thickness)
+    }
+    
+    func toggleGridLines(_ enabled: Bool) {
+        lineChartView.toggleGridLines(enabled)
+        candlestickChartView.toggleGridLines(enabled)
+    }
+    
+    func togglePriceLabels(_ enabled: Bool) {
+        lineChartView.togglePriceLabels(enabled)
+        candlestickChartView.togglePriceLabels(enabled)
+    }
+    
+    func toggleAutoScale(_ enabled: Bool) {
+        lineChartView.toggleAutoScale(enabled)
+        candlestickChartView.toggleAutoScale(enabled)
+    }
+    
+    func applyColorTheme(_ theme: ChartColorTheme) {
+        lineChartView.applyColorTheme(theme)
+        candlestickChartView.applyColorTheme(theme)
+    }
+    
+    func setAnimationSpeed(_ speed: Double) {
+        lineChartView.setAnimationSpeed(speed)
+        candlestickChartView.setAnimationSpeed(speed)
+    }
+}

@@ -261,6 +261,16 @@ final class CoinDetailsVM: ObservableObject {
             
             // Only fetch if we don't have cached data
             fetchOHLCDataCombine(for: targetRange)
+        } else if chartType == .line {
+            // IMPORTANT: Reprocess line chart data when switching from candlestick
+            // This ensures smoothing settings are properly applied to avoid NaN issues
+            if let geckoID = geckoID,
+               let cachedChartData = CacheService.shared.getChartData(for: geckoID, currency: "usd", days: mapRangeToDays(targetRange)),
+               !cachedChartData.isEmpty {
+                let processedData = processChartData(cachedChartData, for: mapRangeToDays(targetRange))
+                chartPointsSubject.send(processedData)
+                errorMessageSubject.send(nil)
+            }
         }
         // NOTE: Keep OHLC data available even in line chart mode for Low/High section
     }

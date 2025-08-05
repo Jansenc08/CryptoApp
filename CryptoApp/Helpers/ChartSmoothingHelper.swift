@@ -24,14 +24,14 @@ final class ChartSmoothingHelper {
     
     // MARK: - Smoothing Algorithm Types
     
-    enum SmoothingType {
-        case basic          // Simple moving average
-        case adaptive       // Range-based adaptive smoothing
-        case gaussian       // Gaussian smoothing (very smooth)
-        case savitzkyGolay  // Preserves peaks (great for crypto)
-        case median         // Removes spikes
-        case loess          // Local regression (follows trends)
-        case bollinger      // Crypto-specific band smoothing
+    enum SmoothingType: String {
+        case basic = "basic"              // Simple moving average
+        case adaptive = "adaptive"        // Range-based adaptive smoothing
+        case gaussian = "gaussian"        // Gaussian smoothing (very smooth)
+        case savitzkyGolay = "savitzkyGolay"  // Preserves peaks (great for crypto)
+        case median = "median"            // Removes spikes
+        case loess = "loess"              // Local regression (follows trends)
+        case bollinger = "bollinger"      // Crypto-specific band smoothing
     }
     
     // MARK: - Main Smoothing Function

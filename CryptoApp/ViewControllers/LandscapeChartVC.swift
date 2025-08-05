@@ -319,6 +319,10 @@ final class LandscapeChartVC: UIViewController {
                 guard let self = self else { return }
                 self.currentPoints = points
                 self.lineChartView.update(points, range: self.selectedRange)
+                
+                // Apply chart settings after line chart update
+                self.applyChartSettingsToLineChart()
+                
                 print("📊 Landscape: Updated line chart with \(points.count) points")
             }
             .store(in: &cancellables)
@@ -330,6 +334,10 @@ final class LandscapeChartVC: UIViewController {
                 guard let self = self else { return }
                 self.currentOHLCData = ohlcData
                 self.candlestickChartView.update(ohlcData, range: self.selectedRange)
+                
+                // Apply chart settings after candlestick chart update
+                self.applyChartSettingsToCandlestickChart()
+                
                 print("📊 Landscape: Updated candlestick chart with \(ohlcData.count) OHLC entries")
             }
             .store(in: &cancellables)
@@ -384,10 +392,24 @@ final class LandscapeChartVC: UIViewController {
             UIView.transition(with: containerView, duration: 0.3, options: .transitionCrossDissolve) {
                 self.lineChartView.isHidden = !showLineChart
                 self.candlestickChartView.isHidden = showLineChart
+            } completion: { _ in
+                // Apply settings after transition completes
+                if showLineChart {
+                    self.applyChartSettingsToLineChart()
+                } else {
+                    self.applyChartSettingsToCandlestickChart()
+                }
             }
         } else {
             lineChartView.isHidden = !showLineChart
             candlestickChartView.isHidden = showLineChart
+            
+            // Apply settings immediately for non-animated transitions
+            if showLineChart {
+                applyChartSettingsToLineChart()
+            } else {
+                applyChartSettingsToCandlestickChart()
+            }
         }
     }
     
@@ -417,5 +439,63 @@ final class LandscapeChartVC: UIViewController {
         
         // Notify parent about chart type change
         onStateChanged?(selectedRange, selectedChartType)
+    }
+    
+    // MARK: - Chart Settings Application
+    
+    /// Applies all chart settings to the line chart view
+    /// Ensures settings persist in landscape mode
+    private func applyChartSettingsToLineChart() {
+        // Apply visual settings
+        let gridEnabled = UserDefaults.standard.bool(forKey: "ChartGridLinesEnabled")
+        lineChartView.toggleGridLines(gridEnabled)
+        
+        let labelsEnabled = UserDefaults.standard.bool(forKey: "ChartPriceLabelsEnabled")
+        lineChartView.togglePriceLabels(labelsEnabled)
+        
+        let autoScaleEnabled = UserDefaults.standard.bool(forKey: "ChartAutoScaleEnabled")
+        lineChartView.toggleAutoScale(autoScaleEnabled)
+        
+        // Apply appearance settings
+        let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+        if let theme = ChartColorTheme(rawValue: themeRawValue) {
+            lineChartView.applyColorTheme(theme)
+        }
+        
+        let thickness = UserDefaults.standard.double(forKey: "ChartLineThickness")
+        if thickness > 0 {
+            lineChartView.updateLineThickness(thickness)
+        }
+        
+        let animationSpeed = UserDefaults.standard.double(forKey: "ChartAnimationSpeed")
+        lineChartView.setAnimationSpeed(animationSpeed)
+    }
+    
+    /// Applies all chart settings to the candlestick chart view
+    /// Ensures settings persist in landscape mode
+    private func applyChartSettingsToCandlestickChart() {
+        // Apply visual settings
+        let gridEnabled = UserDefaults.standard.bool(forKey: "ChartGridLinesEnabled")
+        candlestickChartView.toggleGridLines(gridEnabled)
+        
+        let labelsEnabled = UserDefaults.standard.bool(forKey: "ChartPriceLabelsEnabled")
+        candlestickChartView.togglePriceLabels(labelsEnabled)
+        
+        let autoScaleEnabled = UserDefaults.standard.bool(forKey: "ChartAutoScaleEnabled")
+        candlestickChartView.toggleAutoScale(autoScaleEnabled)
+        
+        // Apply appearance settings
+        let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+        if let theme = ChartColorTheme(rawValue: themeRawValue) {
+            candlestickChartView.applyColorTheme(theme)
+        }
+        
+        let thickness = UserDefaults.standard.double(forKey: "ChartLineThickness")
+        if thickness > 0 {
+            candlestickChartView.updateLineThickness(thickness)
+        }
+        
+        let animationSpeed = UserDefaults.standard.double(forKey: "ChartAnimationSpeed")
+        candlestickChartView.setAnimationSpeed(animationSpeed)
     }
 } 

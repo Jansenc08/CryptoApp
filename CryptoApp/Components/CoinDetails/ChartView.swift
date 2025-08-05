@@ -369,3 +369,85 @@ extension ChartView: ChartViewDelegate {
         }
     }
 }
+
+// MARK: - Chart Settings Support
+
+extension ChartView {
+    
+    func updateLineThickness(_ thickness: CGFloat) {
+        guard let dataSet = data?.dataSets.first as? LineChartDataSet else { return }
+        
+        // Preserve viewport state
+        let savedScaleX = scaleX
+        let savedScaleY = scaleY
+        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
+        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        
+        dataSet.lineWidth = thickness
+        notifyDataSetChanged()
+        
+        // Restore viewport state
+        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+    }
+    
+    func toggleGridLines(_ enabled: Bool) {
+        rightAxis.drawGridLinesEnabled = enabled
+        xAxis.drawGridLinesEnabled = enabled
+        // Grid lines don't require data set change, just redraw
+        setNeedsDisplay()
+    }
+    
+    func togglePriceLabels(_ enabled: Bool) {
+        rightAxis.enabled = enabled
+        xAxis.enabled = enabled
+        // Axis changes don't require data set change, just redraw
+        setNeedsDisplay()
+    }
+    
+    func toggleAutoScale(_ enabled: Bool) {
+        autoScaleMinMaxEnabled = enabled
+        // Auto scale doesn't require data set change
+        setNeedsDisplay()
+    }
+    
+    func applyColorTheme(_ theme: ChartColorTheme) {
+        guard let dataSet = data?.dataSets.first as? LineChartDataSet else { return }
+        
+        // Preserve viewport state
+        let savedScaleX = scaleX
+        let savedScaleY = scaleY
+        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
+        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        
+        // Determine if current trend is positive or negative
+        let firstPrice = allDataPoints.first ?? 0
+        let lastPrice = allDataPoints.last ?? 0
+        let isPositive = lastPrice >= firstPrice
+        
+        let color = isPositive ? theme.positiveColor : theme.negativeColor
+        
+        dataSet.setColor(color)
+        dataSet.highlightColor = color.withAlphaComponent(0.8)
+        
+        // Update gradient fill
+        let gradientColors = [color.withAlphaComponent(0.3).cgColor,
+                              color.withAlphaComponent(0.0).cgColor]
+        let gradient = CGGradient(colorsSpace: nil, colors: gradientColors as CFArray, locations: nil)!
+        dataSet.fill = LinearGradientFill(gradient: gradient, angle: 90)
+        
+        notifyDataSetChanged()
+        
+        // Restore viewport state
+        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+    }
+    
+    func setAnimationSpeed(_ speed: Double) {
+        // Store for future animations
+        UserDefaults.standard.set(speed, forKey: "ChartAnimationSpeed")
+        
+        // Apply to current animation if updating chart
+        if speed > 0 {
+            animate(xAxisDuration: speed, yAxisDuration: speed, easingOption: .easeInOutQuart)
+        }
+    }
+}

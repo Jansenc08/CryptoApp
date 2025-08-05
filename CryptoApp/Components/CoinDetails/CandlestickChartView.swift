@@ -53,7 +53,7 @@ final class CandlestickChartView: CandleStickChartView {
         scaleYEnabled = false               // Disable Y-axis zoom to maintain consistent candle proportions
         
         // Set zoom limits optimized for candlestick analysis
-        setVisibleXRangeMaximum(100)        // Max zoom out (show 100 candles)
+        setVisibleXRangeMaximum(200)        // Max zoom out (show 200 candles) - increased for monthly/all views
         setVisibleXRangeMinimum(3)          // Max zoom in (show 3 candles for detail)
         
         // Add gesture recognizers using helper
@@ -264,11 +264,11 @@ final class CandlestickChartView: CandleStickChartView {
         dataSet.decreasingFilled = true
         
         // Shadow (wick) styling - SAME COLOR as candle bodies
-        dataSet.shadowWidth = 1.0
+        dataSet.shadowWidth = 1.5  // Increased for better visibility when zoomed out
         dataSet.shadowColorSameAsCandle = true  // Wicks match their candle color
         
-        // Balanced spacing between bars
-        dataSet.barSpace = 0.2 
+        // Minimal spacing between bars for better visibility when zoomed out
+        dataSet.barSpace = 0.05  // Reduced from 0.2 to 0.05 for tighter candlesticks 
         
         let chartData = CandleChartData(dataSet: dataSet)
         self.data = chartData
@@ -403,6 +403,79 @@ extension CandlestickChartView: ChartViewDelegate {
         // Notify when close to RIGHT edge
         if highestVisibleX >= data.xMax - (data.xMax - data.xMin) * 0.1 {
             onScrollToEdge?(.right)
+        }
+    }
+}
+
+// MARK: - Chart Settings Support
+
+extension CandlestickChartView {
+    
+    func updateLineThickness(_ thickness: CGFloat) {
+        guard let dataSet = data?.dataSets.first as? CandleChartDataSet else { return }
+        
+        // Preserve viewport state
+        let savedScaleX = scaleX
+        let savedScaleY = scaleY
+        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
+        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        
+        // For candlestick charts, we can adjust the shadow width
+        dataSet.shadowWidth = thickness
+        notifyDataSetChanged()
+        
+        // Restore viewport state
+        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+    }
+    
+    func toggleGridLines(_ enabled: Bool) {
+        rightAxis.drawGridLinesEnabled = enabled
+        xAxis.drawGridLinesEnabled = enabled
+        // Grid lines don't require data set change, just redraw
+        setNeedsDisplay()
+    }
+    
+    func togglePriceLabels(_ enabled: Bool) {
+        rightAxis.enabled = enabled
+        xAxis.enabled = enabled
+        // Axis changes don't require data set change, just redraw
+        setNeedsDisplay()
+    }
+    
+    func toggleAutoScale(_ enabled: Bool) {
+        autoScaleMinMaxEnabled = enabled
+        // Auto scale doesn't require data set change
+        setNeedsDisplay()
+    }
+    
+    func applyColorTheme(_ theme: ChartColorTheme) {
+        guard let dataSet = data?.dataSets.first as? CandleChartDataSet else { return }
+        
+        // Preserve viewport state
+        let savedScaleX = scaleX
+        let savedScaleY = scaleY
+        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
+        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        
+        // Apply colors to candlestick chart
+        dataSet.increasingColor = theme.positiveColor
+        dataSet.decreasingColor = theme.negativeColor
+        dataSet.shadowColor = .label
+        dataSet.neutralColor = .systemGray
+        
+        notifyDataSetChanged()
+        
+        // Restore viewport state
+        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+    }
+    
+    func setAnimationSpeed(_ speed: Double) {
+        // Store for future animations
+        UserDefaults.standard.set(speed, forKey: "ChartAnimationSpeed")
+        
+        // Apply to current animation if updating chart
+        if speed > 0 {
+            animate(xAxisDuration: speed, yAxisDuration: speed, easingOption: .easeInOutQuart)
         }
     }
 } 

@@ -8,7 +8,7 @@
 import UIKit
 import Combine
 
-final class CoinDetailsVC: UIViewController {
+final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     
     // MARK: - Properties
     
@@ -328,6 +328,10 @@ final class CoinDetailsVC: UIViewController {
         }
         
         chartCell.updateChartData(points: points, ohlcData: nil, range: selectedRange.value)
+        
+        // IMPORTANT: Reapply settings after chart data update
+        // Ensures settings persist when data comes from view model
+        applyChartSettings(to: chartCell)
     }
     
     private func updateChartCellWithOHLC(_ ohlcData: [OHLCData]) {
@@ -337,6 +341,10 @@ final class CoinDetailsVC: UIViewController {
         }
         
         chartCell.updateChartData(points: nil, ohlcData: ohlcData, range: selectedRange.value)
+        
+        // IMPORTANT: Reapply settings after OHLC data update
+        // Ensures settings persist when candlestick data comes from view model
+        applyChartSettings(to: chartCell)
     }
     
     private func getChartCell() -> ChartCell? {
@@ -420,6 +428,10 @@ final class CoinDetailsVC: UIViewController {
                 
                 if let chartCell = self.getChartCell() {
                     chartCell.switchChartType(to: chartType)
+                    
+                    // IMPORTANT: Reapply settings after chart type switch
+                    // Ensures settings persist between line ↔ candlestick charts
+                    self.applyChartSettings(to: chartCell)
                 }
             }
             .store(in: &cancellables)
@@ -727,6 +739,72 @@ final class CoinDetailsVC: UIViewController {
         present(landscapeVC, animated: true)
     }
     
+    private func presentChartSettings() {
+        let settingsVC = ChartSettingsVC()
+        settingsVC.delegate = self
+        settingsVC.configure(
+            smoothingEnabled: viewModel.smoothingEnabled,
+            smoothingType: viewModel.currentSmoothingType
+        )
+        
+        // Present as modal sheet
+        if let presentationController = settingsVC.presentationController as? UISheetPresentationController {
+            presentationController.detents = [.medium(), .large()]
+            presentationController.prefersGrabberVisible = true
+            presentationController.preferredCornerRadius = 20
+        }
+        
+        present(settingsVC, animated: true)
+    }
+    
+    // MARK: - ChartSettingsDelegate
+    
+    func smoothingSettingsChanged(enabled: Bool, type: ChartSmoothingHelper.SmoothingType) {
+        viewModel.setSmoothingEnabled(enabled)
+        viewModel.setSmoothingType(type)
+    }
+    
+    func chartSettingsDidUpdate() {
+        // Update chart with new settings
+        guard let chartCell = getChartCell() else { return }
+        applyChartSettings(to: chartCell)
+    }
+    
+    // MARK: - Chart Settings Application
+    
+    /// Applies all chart settings to the given chart cell
+    /// This ensures settings persist across time range changes and chart type switches
+    private func applyChartSettings(to chartCell: ChartCell) {
+        // Apply visual settings
+        let gridEnabled = UserDefaults.standard.bool(forKey: "ChartGridLinesEnabled")
+        chartCell.toggleGridLines(gridEnabled)
+        
+        let labelsEnabled = UserDefaults.standard.bool(forKey: "ChartPriceLabelsEnabled")
+        chartCell.togglePriceLabels(labelsEnabled)
+        
+        let autoScaleEnabled = UserDefaults.standard.bool(forKey: "ChartAutoScaleEnabled")
+        chartCell.toggleAutoScale(autoScaleEnabled)
+        
+        // Apply appearance settings
+        let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+        if let theme = ChartColorTheme(rawValue: themeRawValue) {
+            chartCell.applyColorTheme(theme)
+        }
+        
+        let thickness = UserDefaults.standard.double(forKey: "ChartLineThickness")
+        if thickness > 0 {
+            chartCell.updateLineThickness(thickness)
+        }
+        
+        let animationSpeed = UserDefaults.standard.double(forKey: "ChartAnimationSpeed")
+        chartCell.setAnimationSpeed(animationSpeed)
+    }
+    
+
+    
+
+
+    
     // MARK: - Parent Timer Management
     
     private func stopParentTimers() {
@@ -829,6 +907,10 @@ extension CoinDetailsVC: UITableViewDataSource {
                 self?.presentLandscapeChart()
             }
             
+            cell.onChartSettingsToggle = { [weak self] in
+                self?.presentChartSettings()
+            }
+            
             cell.selectionStyle = .none
             return cell
             
@@ -841,6 +923,10 @@ extension CoinDetailsVC: UITableViewDataSource {
             
             // Switch to current chart type
             cell.switchChartType(to: selectedChartType.value)
+            
+            // IMPORTANT: Apply chart settings after configuration
+            // This ensures settings persist across time range changes
+            applyChartSettings(to: cell)
             
             // Set up retry callback
             cell.onRetryRequested = { [weak self] in
