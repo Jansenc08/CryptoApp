@@ -245,7 +245,10 @@ final class CandlestickChartView: CandleStickChartView {
         
         // Setup y-axis with LARGER range to make candles appear smaller
         let range = maxY - minY
-        let buffer = range * 0.25  // Much larger buffer to create more price context
+        // FIXED: Prevent NaN in CoreGraphics when all OHLC values are identical
+        let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
+        let minRange = max(range, fallbackRange) // Ensure at least 1% range
+        let buffer = minRange * 0.25  // Much larger buffer to create more price context
         
         // Show wider price range
         rightAxis.axisMinimum = minY - buffer

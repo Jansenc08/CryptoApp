@@ -229,7 +229,10 @@ final class ChartView: LineChartView {
 
         // Setup y-axis buffer (using right axis)
         let range = maxY - minY
-        let buffer = range * 0.05
+        // FIXED: Prevent NaN in CoreGraphics when all values are identical
+        let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
+        let minRange = max(range, fallbackRange) // Ensure at least 1% range
+        let buffer = minRange * 0.05
         rightAxis.axisMinimum = minY - buffer
         rightAxis.axisMaximum = maxY + buffer
 
