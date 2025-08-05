@@ -62,6 +62,13 @@ final class ChartSettingsVC: UIViewController {
         setupUI()
         loadCurrentSettings()
         setupActions()
+        
+        // Add close button
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .close,
+            target: self,
+            action: #selector(closeButtonTapped)
+        )
     }
     
     // MARK: - UI Setup
@@ -560,6 +567,10 @@ final class ChartSettingsVC: UIViewController {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+    
+    @objc private func closeButtonTapped() {
+        dismiss(animated: true)
     }
 }
 

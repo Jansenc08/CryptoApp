@@ -742,14 +742,17 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             smoothingType: viewModel.currentSmoothingType
         )
         
+        // Embed in navigation controller
+        let navigationController = UINavigationController(rootViewController: settingsVC)
+        
         // Present as modal sheet
-        if let presentationController = settingsVC.presentationController as? UISheetPresentationController {
+        if let presentationController = navigationController.presentationController as? UISheetPresentationController {
             presentationController.detents = [.medium(), .large()]
             presentationController.prefersGrabberVisible = true
             presentationController.preferredCornerRadius = 20
         }
         
-        present(settingsVC, animated: true)
+        present(navigationController, animated: true)
     }
     
     // MARK: - ChartSettingsDelegate
