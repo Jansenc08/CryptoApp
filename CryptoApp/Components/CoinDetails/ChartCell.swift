@@ -17,6 +17,10 @@ final class ChartCell: UITableViewCell {
     private var currentOHLCData: [OHLCData] = []
     private var currentRange: String = "24h"
     
+    // Technical Indicators Pending Settings
+    private var pendingIndicatorSettings: TechnicalIndicators.IndicatorSettings?
+    private var pendingIndicatorTheme: ChartColorTheme?
+    
     // Chart state tracking
     private enum ChartState: Equatable {
         case ready          // OPTIMAL: Ready to receive data - no loading shown yet
@@ -274,9 +278,11 @@ final class ChartCell: UITableViewCell {
             if case .loading = currentState {
                 // Keep loading state - will be updated by view controller bindings
                 lineChartView.update(points, range: range)
+                reapplyTechnicalIndicators()
             } else {
                 currentState = .data
                 lineChartView.update(points, range: range)
+                reapplyTechnicalIndicators()
                 updateViewsForState()
             }
         }
@@ -293,9 +299,11 @@ final class ChartCell: UITableViewCell {
             if case .loading = currentState {
                 // Keep loading state - will be updated by view controller bindings
                 candlestickChartView.update(ohlcData, range: range)
+                reapplyTechnicalIndicators()
             } else {
                 currentState = .data
                 candlestickChartView.update(ohlcData, range: range)
+                reapplyTechnicalIndicators()
                 updateViewsForState()
             }
         }
@@ -304,11 +312,24 @@ final class ChartCell: UITableViewCell {
     // Switch chart type
     func switchChartType(to chartType: ChartType) {
         guard chartType != currentChartType else { return }
+        
+        let previousChartType = currentChartType
         currentChartType = chartType
         
         // Only update views if we're in data state
         if case .data = currentState {
             updateViewsForState()
+            
+            // TECHNICAL INDICATORS: Handle chart type switching
+            if chartType == .line && previousChartType == .candlestick {
+                // Clear technical indicators when switching FROM candlestick TO line chart
+                lineChartView.clearTechnicalIndicators()
+                AppLogger.ui("Cleared technical indicators when switching to line chart")
+            } else if chartType == .candlestick {
+                // Reapply technical indicators when switching TO candlestick chart
+                reapplyTechnicalIndicators()
+                AppLogger.ui("Reapplied technical indicators on candlestick chart")
+            }
         }
     }
     
@@ -322,6 +343,7 @@ final class ChartCell: UITableViewCell {
             self.currentPoints = points
             if !points.isEmpty {
                 lineChartView.update(points, range: range)
+                reapplyTechnicalIndicators()
                 hasData = true
             }
         }
@@ -330,6 +352,8 @@ final class ChartCell: UITableViewCell {
             self.currentOHLCData = ohlcData
             if !ohlcData.isEmpty {
                 candlestickChartView.update(ohlcData, range: range)
+                reapplyTechnicalIndicators()
+                applyPendingIndicatorSettings() // Apply any pending settings after data is loaded
                 hasData = true
             } else {
                 // FIXED: Only clear and show loading if we're actually in candlestick mode and expecting data
@@ -488,5 +512,92 @@ extension ChartCell {
     func setAnimationSpeed(_ speed: Double) {
         lineChartView.setAnimationSpeed(speed)
         candlestickChartView.setAnimationSpeed(speed)
+    }
+    
+    func applyTechnicalIndicators(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme) {
+        // TECHNICAL INDICATORS: Only apply to candlestick charts
+        // Line charts don't have OHLC data needed for proper technical analysis
+        switch currentChartType {
+        case .line:
+            // DO NOT apply technical indicators to line charts
+            // Clear any existing indicators from line chart
+            lineChartView.clearTechnicalIndicators()
+            AppLogger.ui("Technical indicators not supported on line chart - use candlestick view")
+            return
+        case .candlestick:
+            // ONLY CANDLESTICK: Apply technical indicators where they belong
+            AppLogger.ui("Applying technical indicators to candlestick chart...")
+            AppLogger.ui("OHLC data count: \(currentOHLCData.count)")
+            AppLogger.ui("Current state: \(currentState)")
+            AppLogger.ui("Settings - SMA: \(settings.showSMA), EMA: \(settings.showEMA), RSI: \(settings.showRSI)")
+            
+            // ENSURE DATA AVAILABILITY: Only apply if we have data
+            if currentOHLCData.isEmpty {
+                AppLogger.ui("⚠️ No OHLC data available - storing settings for later application")
+                // Store the settings for when data becomes available
+                storePendingIndicatorSettings(settings, theme: theme)
+                return
+            }
+            
+            // Apply indicators - the chart will handle its own refresh
+            candlestickChartView.updateWithTechnicalIndicators(settings, theme: theme)
+            
+            AppLogger.ui("✅ Finished applying technical indicators to candlestick chart")
+        }
+    }
+    
+    // MARK: - Pending Indicator Settings
+    
+    private func storePendingIndicatorSettings(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme) {
+        pendingIndicatorSettings = settings
+        pendingIndicatorTheme = theme
+        AppLogger.ui("📝 Stored pending technical indicator settings")
+    }
+    
+    private func applyPendingIndicatorSettings() {
+        guard let settings = pendingIndicatorSettings,
+              let theme = pendingIndicatorTheme,
+              currentChartType == .candlestick,
+              !currentOHLCData.isEmpty else {
+            return
+        }
+        
+        AppLogger.ui("🔄 Applying pending technical indicator settings")
+        candlestickChartView.updateWithTechnicalIndicators(settings, theme: theme)
+        
+        // Clear pending settings after successful application
+        pendingIndicatorSettings = nil
+        pendingIndicatorTheme = nil
+    }
+    
+    // MARK: - Technical Indicators Persistence
+    
+    /// Reapplies any active technical indicator settings after chart data updates
+    /// CANDLESTICK ONLY: Technical indicators are only supported on candlestick charts
+    private func reapplyTechnicalIndicators() {
+        // Technical indicators only work on candlestick charts
+        guard currentChartType == .candlestick else {
+            AppLogger.ui("Skipping technical indicators reapply - not on candlestick chart")
+            return
+        }
+        
+        // Load current indicator settings from UserDefaults
+        let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+        
+        // Only reapply if any indicators are enabled
+        guard indicatorSettings.showSMA || 
+              indicatorSettings.showEMA || 
+              indicatorSettings.showRSI else {
+            return
+        }
+        
+        // Get current color theme
+        let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+        let theme = ChartColorTheme(rawValue: themeRawValue) ?? .classic
+        
+        // Apply indicators to the candlestick chart only
+        applyTechnicalIndicators(indicatorSettings, theme: theme)
+        
+        AppLogger.ui("🔄 Reapplied technical indicators after data update")
     }
 }

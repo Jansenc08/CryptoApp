@@ -8,7 +8,7 @@
 import UIKit
 import DGCharts
 
-final class CandlestickChartView: CandleStickChartView {
+final class CandlestickChartView: CombinedChartView {
     
     // MARK: - Properties
     
@@ -45,19 +45,53 @@ final class CandlestickChartView: CandleStickChartView {
     
     // MARK: - Chart Setup
     private func configure() {
-        // Use helper for basic configuration
-        ChartConfigurationHelper.configureBasicSettings(for: self)
-        ChartConfigurationHelper.configureAxes(for: self)
+        // DIRECT CONFIGURATION: Since we're now using CombinedChartView
+        // Basic chart settings
+        backgroundColor = .systemBackground
+        legend.enabled = false
+        dragEnabled = true
+        setScaleEnabled(true)
+        pinchZoomEnabled = true
+        doubleTapToZoomEnabled = true
+        highlightPerTapEnabled = true
         
-        // Candlestick chart specific settings
+        // Configure axes for combined chart
+        leftAxis.enabled = false
+        rightAxis.enabled = true
+        rightAxis.labelFont = .systemFont(ofSize: 9)
+        rightAxis.labelTextColor = .tertiaryLabel
+        rightAxis.drawGridLinesEnabled = true
+        rightAxis.gridColor = .systemGray5
+        rightAxis.gridLineWidth = 0.5
+        
+        xAxis.enabled = true
+        xAxis.labelPosition = .bottom
+        xAxis.labelFont = .systemFont(ofSize: 9)
+        xAxis.labelTextColor = .tertiaryLabel
+        xAxis.drawGridLinesEnabled = true
+        xAxis.gridColor = .systemGray5
+        xAxis.gridLineWidth = 0.5
+        
+        // Candlestick chart specific settings  
+        scaleXEnabled = true                // ENABLE X-axis zoom for proper zoom out functionality
         scaleYEnabled = false               // Disable Y-axis zoom to maintain consistent candle proportions
         
         // Set zoom limits optimized for candlestick analysis
         setVisibleXRangeMaximum(200)        // Max zoom out (show 200 candles) - increased for monthly/all views
         setVisibleXRangeMinimum(3)          // Max zoom in (show 3 candles for detail)
         
-        // Add gesture recognizers using helper
-        configurationHelper.addZoomGestures(to: self, target: self, resetAction: #selector(resetCandlestickZoom), showZoomAction: #selector(showZoomHint))
+        // ZOOM GESTURES: Add the zoom functionality that was missing
+        isUserInteractionEnabled = true
+        
+        // Triple-tap to reset zoom
+        let tripleTapGesture = UITapGestureRecognizer(target: self, action: #selector(resetCandlestickZoom))
+        tripleTapGesture.numberOfTapsRequired = 3
+        addGestureRecognizer(tripleTapGesture)
+        
+        // Long press to show zoom hint  
+        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(showZoomHint))
+        longPressGesture.minimumPressDuration = 0.5
+        addGestureRecognizer(longPressGesture)
         
         // Tooltip marker when tapping a point in the chart
         let marker = CandlestickBalloonMarker(color: .tertiarySystemBackground,
@@ -230,29 +264,39 @@ final class CandlestickChartView: CandleStickChartView {
     private func updateChart() {
         guard !allOHLCData.isEmpty, !allDates.isEmpty else { return }
         
-        // Create candlestick entries using INTEGER indices instead of timestamps
-        let entries = allOHLCData.enumerated().map { index, ohlc in
-            CandleChartDataEntry(x: Double(index),  // X-axis position
-                               shadowH: ohlc.high,  // Top wick
-                               shadowL: ohlc.low,   // Bottom wick
-                               open: ohlc.open,     // Open Price
-                               close: ohlc.close,   // Close Price
-                               icon: nil)
+        // Create candlestick entries using INTEGER indices instead of timestamps, filtering out NaN values
+        let entries = allOHLCData.enumerated().compactMap { index, ohlc -> CandleChartDataEntry? in
+            // Check for NaN values in OHLC data
+            guard ohlc.open.isFinite && ohlc.high.isFinite && ohlc.low.isFinite && ohlc.close.isFinite else {
+                return nil
+            }
+            
+            return CandleChartDataEntry(x: Double(index),  // X-axis position
+                                      shadowH: ohlc.high,  // Top wick
+                                      shadowL: ohlc.low,   // Bottom wick
+                                      open: ohlc.open,     // Open Price
+                                      close: ohlc.close,   // Close Price
+                                      icon: nil)
         }
+        
+        guard !entries.isEmpty else { return }
         
         guard let minY = allOHLCData.map({ min($0.low, min($0.open, $0.close)) }).min(),
               let maxY = allOHLCData.map({ max($0.high, max($0.open, $0.close)) }).max() else { return }
         
-        // Setup y-axis with LARGER range to make candles appear smaller
+        // Setup y-axis with EXPANDED range to accommodate technical indicators
         let range = maxY - minY
         // FIXED: Prevent NaN in CoreGraphics when all OHLC values are identical
         let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
         let minRange = max(range, fallbackRange) // Ensure at least 1% range
-        let buffer = minRange * 0.25  // Much larger buffer to create more price context
         
-        // Show wider price range
-        rightAxis.axisMinimum = minY - buffer
-        rightAxis.axisMaximum = maxY + buffer
+        // REDUCED RANGE: Only need space for RSI below price action
+        let baseBuffer = minRange * 0.25  // Base buffer for price context
+        let rsiBuffer = minRange * 0.20   // Space for RSI below (reduced from 0.35)
+        
+        // Extended range to show RSI below price action
+        rightAxis.axisMinimum = minY - baseBuffer - rsiBuffer  // RSI area below
+        rightAxis.axisMaximum = maxY + baseBuffer              // No MACD above
         
         let dataSet = CandleChartDataSet(entries: entries, label: "")
         
@@ -273,8 +317,10 @@ final class CandlestickChartView: CandleStickChartView {
         // Minimal spacing between bars for better visibility when zoomed out
         dataSet.barSpace = 0.05  // Reduced from 0.2 to 0.05 for tighter candlesticks 
         
-        let chartData = CandleChartData(dataSet: dataSet)
-        self.data = chartData
+        // UPDATED: Use CombinedChartData for consistency with technical indicators
+        let combinedData = CombinedChartData()
+        combinedData.candleData = CandleChartData(dataSet: dataSet)
+        self.data = combinedData
         
         // Force immediate render
         invalidateIntrinsicContentSize()
@@ -481,4 +527,212 @@ extension CandlestickChartView {
             animate(xAxisDuration: speed, yAxisDuration: speed, easingOption: .easeInOutQuart)
         }
     }
+}
+
+// MARK: - Technical Indicators Support
+
+extension CandlestickChartView {
+    
+    /// Updates chart with technical indicators overlays
+    func updateWithTechnicalIndicators(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme = .classic) {
+        guard !allOHLCData.isEmpty else { 
+            AppLogger.ui("❌ Cannot apply technical indicators - no OHLC data available")
+            return 
+        }
+        
+        AppLogger.ui("🔧 Applying technical indicators to chart with \(allOHLCData.count) data points")
+        
+        // DEBUG: Log price range for normalization
+        let allPrices = allOHLCData.flatMap { [$0.open, $0.high, $0.low, $0.close] }
+        if let minPrice = allPrices.min(), let maxPrice = allPrices.max() {
+            AppLogger.ui("📊 Price range: $\(String(format: "%.2f", minPrice)) - $\(String(format: "%.2f", maxPrice))")
+        }
+        
+        // Extract closing prices for indicator calculations
+        let closingPrices = allOHLCData.map { $0.close }
+        
+        // Get existing candlestick data - handle both CombinedChartData and direct access
+        guard let existingData = data else { 
+            AppLogger.ui("❌ No existing chart data found")
+            return 
+        }
+        
+        // Extract candlestick data from either CombinedChartData or direct CandleChartData
+        let candlestickDataSet: CandleChartDataSet?
+        if let combinedData = existingData as? CombinedChartData,
+           let candleData = combinedData.candleData,
+           let firstDataSet = candleData.dataSets.first as? CandleChartDataSet {
+            candlestickDataSet = firstDataSet
+        } else if let directDataSet = existingData.dataSets.first as? CandleChartDataSet {
+            candlestickDataSet = directDataSet
+        } else {
+            AppLogger.ui("❌ Cannot extract candlestick data set")
+            return
+        }
+        
+        guard let candleDataSet = candlestickDataSet else {
+            AppLogger.ui("❌ No valid candlestick data set found")
+            return
+        }
+        
+        // Create combined chart data to overlay line indicators on candlestick chart
+        let combinedData = CombinedChartData()
+        
+        // Add the candlestick data
+        combinedData.candleData = CandleChartData(dataSet: candleDataSet)
+        
+        // Add technical indicators as line overlays
+        var lineDataSets: [LineChartDataSet] = []
+        
+        // Add moving averages if enabled
+        if settings.showSMA {
+            if let smaDataSet = createSMADataSet(prices: closingPrices, period: settings.smaPeriod, theme: theme) {
+                lineDataSets.append(smaDataSet)
+            }
+        }
+        
+        if settings.showEMA {
+            if let emaDataSet = createEMADataSet(prices: closingPrices, period: settings.emaPeriod, theme: theme) {
+                lineDataSets.append(emaDataSet)
+            }
+        }
+        
+        // Add RSI if enabled (normalized to price range)
+        if settings.showRSI {
+            if let rsiDataSet = createRSIDataSet(prices: closingPrices, period: settings.rsiPeriod, theme: theme) {
+                lineDataSets.append(rsiDataSet)
+            }
+        }
+        
+        // FIXED: Now using CombinedChartView - we can properly display technical indicators!
+        if !lineDataSets.isEmpty {
+            combinedData.lineData = LineChartData(dataSets: lineDataSets)
+            AppLogger.ui("✅ Applied \(lineDataSets.count) technical indicators to candlestick chart")
+        } else {
+            AppLogger.ui("No technical indicators to display")
+        }
+        
+        // FORCE CHART REFRESH: Ensure everything happens on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Apply the combined data (candlesticks + technical indicators)
+            self.data = combinedData
+            
+            // Force immediate visual update with proper sequence
+            self.notifyDataSetChanged()
+            self.setNeedsDisplay()
+            self.setNeedsLayout()
+            self.layoutIfNeeded()
+            
+            // Force chart to recognize the data change
+            self.invalidateIntrinsicContentSize()
+            
+            // Additional DGCharts refresh methods
+            if let data = self.data, data.entryCount > 0 {
+                self.fitScreen()
+                self.setVisibleXRangeMaximum(Double(min(20, data.entryCount)))
+            }
+            
+            AppLogger.ui("🔄 Chart refreshed with technical indicators - data applied on main thread")
+        }
+    }
+    
+    private func createSMADataSet(prices: [Double], period: Int, theme: ChartColorTheme) -> LineChartDataSet? {
+        let smaResult = TechnicalIndicators.calculateSMA(prices: prices, period: period)
+        
+        let entries = smaResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
+            guard let value = value else { return nil }
+            // Additional NaN check for safety
+            guard value.isFinite else { return nil }
+            return ChartDataEntry(x: Double(index), y: value)
+        }
+        
+        guard !entries.isEmpty else { return nil }
+        
+        let dataSet = LineChartDataSet(entries: entries, label: "SMA(\(period))")
+        dataSet.setColor(TechnicalIndicators.getIndicatorColor(for: "sma", theme: theme))
+        dataSet.lineWidth = 1.5
+        dataSet.drawCirclesEnabled = false
+        dataSet.drawValuesEnabled = false
+        dataSet.drawFilledEnabled = false
+        dataSet.highlightEnabled = false
+        
+        return dataSet
+    }
+    
+    private func createEMADataSet(prices: [Double], period: Int, theme: ChartColorTheme) -> LineChartDataSet? {
+        let emaResult = TechnicalIndicators.calculateEMA(prices: prices, period: period)
+        
+        let entries = emaResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
+            guard let value = value else { return nil }
+            // Additional NaN check for safety
+            guard value.isFinite else { return nil }
+            return ChartDataEntry(x: Double(index), y: value)
+        }
+        
+        guard !entries.isEmpty else { return nil }
+        
+        let dataSet = LineChartDataSet(entries: entries, label: "EMA(\(period))")
+        dataSet.setColor(TechnicalIndicators.getIndicatorColor(for: "ema", theme: theme))
+        dataSet.lineWidth = 1.5
+        dataSet.drawCirclesEnabled = false
+        dataSet.drawValuesEnabled = false
+        dataSet.drawFilledEnabled = false
+        dataSet.highlightEnabled = false
+        
+        return dataSet
+    }
+    
+
+    
+    private func createRSIDataSet(prices: [Double], period: Int, theme: ChartColorTheme) -> LineChartDataSet? {
+        let rsiResult = TechnicalIndicators.calculateRSI(prices: prices, period: period)
+        
+        // Get price range for better normalization
+        guard !allOHLCData.isEmpty else { return nil }
+        let allPrices = allOHLCData.flatMap { [$0.open, $0.high, $0.low, $0.close] }
+        guard let minPrice = allPrices.min(), let maxPrice = allPrices.max(), maxPrice > minPrice else { return nil }
+        
+        // DEBUG: Log RSI calculation details
+        let validRSIValues = rsiResult.values.compactMap { $0 }
+        if let minRSI = validRSIValues.min(), let maxRSI = validRSIValues.max() {
+            AppLogger.ui("📈 RSI range: \(String(format: "%.1f", minRSI)) - \(String(format: "%.1f", maxRSI))")
+        }
+        
+        let entries = rsiResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
+            guard let value = value else { return nil }
+            guard value.isFinite else { return nil }
+            
+            // IMPROVED NORMALIZATION: Map RSI (0-100) to a smaller range in the lower part of the chart
+            // Place RSI in the bottom 15% of the chart area
+            let chartBottom = minPrice - (maxPrice - minPrice) * 0.05  // Slightly below chart
+            let rsiRange = (maxPrice - minPrice) * 0.15  // Use 15% of chart height
+            let normalizedValue = chartBottom - rsiRange + (value / 100.0) * rsiRange
+            
+            return ChartDataEntry(x: Double(index), y: normalizedValue)
+        }
+        
+        guard !entries.isEmpty else { return nil }
+        
+        let dataSet = LineChartDataSet(entries: entries, label: "RSI(\(period))")
+        dataSet.setColor(TechnicalIndicators.getIndicatorColor(for: "rsi", theme: theme))
+        dataSet.lineWidth = 2.0
+        dataSet.drawCirclesEnabled = false
+        dataSet.drawValuesEnabled = false
+        dataSet.drawFilledEnabled = false
+        dataSet.highlightEnabled = false
+        dataSet.lineDashLengths = [5, 5] // Dashed line to distinguish from price
+        
+        return dataSet
+    }
+    
+
+    
+    /// Clears all technical indicator overlays, keeping only the candlestick data
+    func clearTechnicalIndicators() {
+        // For candlestick charts, we'll focus on the core candlestick display
+        // Technical indicators are better suited for line charts
+        notifyDataSetChanged()
+    } 
 } 

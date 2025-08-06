@@ -54,12 +54,31 @@ extension Array where Element == [Double] {
         return self.compactMap { item in
             guard item.count >= 5 else { return nil }
             
-            let timestamp = Date(timeIntervalSince1970: item[0] / 1000) // Convert from milliseconds
+            let timestampValue = item[0]
             let open = item[1]
             let high = item[2]
             let low = item[3]
             let close = item[4]
             
+            // VALIDATE: Ensure all OHLC values are finite and valid
+            guard timestampValue.isFinite && timestampValue > 0,
+                  open.isFinite && open >= 0,
+                  high.isFinite && high >= 0,
+                  low.isFinite && low >= 0,
+                  close.isFinite && close >= 0 else {
+                return nil
+            }
+            
+            // VALIDATE: Ensure OHLC relationships are logical
+            guard high >= low,
+                  high >= open,
+                  high >= close,
+                  low <= open,
+                  low <= close else {
+                return nil
+            }
+            
+            let timestamp = Date(timeIntervalSince1970: timestampValue / 1000) // Convert from milliseconds
             return OHLCData(timestamp: timestamp, open: open, high: high, low: low, close: close)
         }
     }

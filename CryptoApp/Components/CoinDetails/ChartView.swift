@@ -220,10 +220,13 @@ final class ChartView: LineChartView {
     private func updateChart() {
         guard !allDataPoints.isEmpty, !allDates.isEmpty else { return }
 
-        // Combine data and dates into chart entries
-        let entries = zip(allDates, allDataPoints).map { date, value in
-            ChartDataEntry(x: date.timeIntervalSince1970, y: value)
+        // Combine data and dates into chart entries, filtering out any NaN values
+        let entries = zip(allDates, allDataPoints).compactMap { date, value -> ChartDataEntry? in
+            guard value.isFinite else { return nil }
+            return ChartDataEntry(x: date.timeIntervalSince1970, y: value)
         }
+        
+        guard !entries.isEmpty else { return }
 
         guard let minY = allDataPoints.min(), let maxY = allDataPoints.max() else { return }
 
@@ -452,5 +455,145 @@ extension ChartView {
         if speed > 0 {
             animate(xAxisDuration: speed, yAxisDuration: speed, easingOption: .easeInOutQuart)
         }
+    }
+}
+
+// MARK: - Technical Indicators Support
+
+extension ChartView {
+    
+    /// Updates chart with technical indicators overlays
+    func updateWithTechnicalIndicators(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme = .classic) {
+        guard !allDataPoints.isEmpty else { return }
+        
+        // Clear existing additional datasets (keep main price line)
+        let existingData = data
+        var dataSets: [ChartDataSet] = []
+        
+        // Keep the main price dataset (first one)
+        if let priceDataSet = existingData?.dataSets.first as? ChartDataSet {
+            dataSets.append(priceDataSet)
+        }
+        
+        // Add moving averages if enabled
+        if settings.showSMA {
+            if let smaDataSet = createSMADataSet(period: settings.smaPeriod, theme: theme) {
+                dataSets.append(smaDataSet)
+            }
+        }
+        
+        if settings.showEMA {
+            if let emaDataSet = createEMADataSet(period: settings.emaPeriod, theme: theme) {
+                dataSets.append(emaDataSet)
+            }
+        }
+        
+        // Add RSI if enabled (normalized to price range)
+        if settings.showRSI {
+            if let rsiDataSet = createRSIDataSet(period: settings.rsiPeriod, theme: theme) {
+                dataSets.append(rsiDataSet)
+            }
+        }
+        
+        // Update chart with all datasets
+        self.data = LineChartData(dataSets: dataSets)
+        notifyDataSetChanged()
+    }
+    
+    private func createSMADataSet(period: Int, theme: ChartColorTheme) -> LineChartDataSet? {
+        let smaResult = TechnicalIndicators.calculateSMA(prices: allDataPoints, period: period)
+        
+        let entries = smaResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
+            guard let value = value, index < allDates.count else { return nil }
+            // Additional NaN check for safety
+            guard value.isFinite else { return nil }
+            return ChartDataEntry(x: allDates[index].timeIntervalSince1970, y: value)
+        }
+        
+        guard !entries.isEmpty else { return nil }
+        
+        let dataSet = LineChartDataSet(entries: entries, label: "SMA(\(period))")
+        dataSet.setColor(TechnicalIndicators.getIndicatorColor(for: "sma", theme: theme))
+        dataSet.lineWidth = 1.5
+        dataSet.drawCirclesEnabled = false
+        dataSet.drawValuesEnabled = false
+        dataSet.drawFilledEnabled = false
+        dataSet.highlightEnabled = false
+        
+        return dataSet
+    }
+    
+    private func createEMADataSet(period: Int, theme: ChartColorTheme) -> LineChartDataSet? {
+        let emaResult = TechnicalIndicators.calculateEMA(prices: allDataPoints, period: period)
+        
+        let entries = emaResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
+            guard let value = value, index < allDates.count else { return nil }
+            // Additional NaN check for safety
+            guard value.isFinite else { return nil }
+            return ChartDataEntry(x: allDates[index].timeIntervalSince1970, y: value)
+        }
+        
+        guard !entries.isEmpty else { return nil }
+        
+        let dataSet = LineChartDataSet(entries: entries, label: "EMA(\(period))")
+        dataSet.setColor(TechnicalIndicators.getIndicatorColor(for: "ema", theme: theme))
+        dataSet.lineWidth = 1.5
+        dataSet.drawCirclesEnabled = false
+        dataSet.drawValuesEnabled = false
+        dataSet.drawFilledEnabled = false
+        dataSet.highlightEnabled = false
+        
+        return dataSet
+    }
+    
+
+    
+    private func createRSIDataSet(period: Int, theme: ChartColorTheme) -> LineChartDataSet? {
+        let rsiResult = TechnicalIndicators.calculateRSI(prices: allDataPoints, period: period)
+        
+        // Get price range for normalization
+        guard let minPrice = allDataPoints.min(), let maxPrice = allDataPoints.max(), maxPrice > minPrice else { return nil }
+        let priceRange = maxPrice - minPrice
+        
+        let entries = rsiResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
+            guard let value = value, index < allDates.count else { return nil }
+            guard value.isFinite else { return nil }
+            
+            // Normalize RSI (0-100) to price range
+            let normalizedValue = minPrice + (value / 100.0) * priceRange
+            // SAFETY: Check normalized value is finite before creating entry
+            guard normalizedValue.isFinite else { return nil }
+            return ChartDataEntry(x: allDates[index].timeIntervalSince1970, y: normalizedValue)
+        }
+        
+        guard !entries.isEmpty else { return nil }
+        
+        let dataSet = LineChartDataSet(entries: entries, label: "RSI(\(period))")
+        dataSet.setColor(TechnicalIndicators.getIndicatorColor(for: "rsi", theme: theme))
+        dataSet.lineWidth = 2.0
+        dataSet.drawCirclesEnabled = false
+        dataSet.drawValuesEnabled = false
+        dataSet.drawFilledEnabled = false
+        dataSet.highlightEnabled = false
+        dataSet.lineDashLengths = [5, 5] // Dashed line to distinguish from price
+        
+        return dataSet
+    }
+    
+
+    
+    /// Clears all technical indicator overlays, keeping only the main price line
+    func clearTechnicalIndicators() {
+        guard let existingData = data,
+              let priceDataSet = existingData.dataSets.first else { return }
+        
+        // Keep only the first dataset (main price line)
+        self.data = LineChartData(dataSet: priceDataSet)
+        notifyDataSetChanged()
+    }
+    
+    /// Gets the main price dataset for modifications
+    private func getMainPriceDataSet() -> LineChartDataSet? {
+        return data?.dataSets.first as? LineChartDataSet
     }
 }

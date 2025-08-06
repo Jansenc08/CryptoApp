@@ -4,6 +4,8 @@ import Combine
 protocol ChartSettingsDelegate: AnyObject {
     func chartSettingsDidUpdate()
     func smoothingSettingsChanged(enabled: Bool, type: ChartSmoothingHelper.SmoothingType)
+    func technicalIndicatorsSettingsChanged(_ settings: TechnicalIndicators.IndicatorSettings)
+    func volumeSettingsChanged(showVolume: Bool, showVolumeMA: Bool)
 }
 
 final class ChartSettingsVC: UIViewController {
@@ -37,6 +39,21 @@ final class ChartSettingsVC: UIViewController {
     private let animationSectionLabel = UILabel()
     private let animationSpeedSegmentedControl = UISegmentedControl(items: ["Instant", "Fast", "Normal", "Smooth"])
     
+    // Technical Indicators Section
+    private let indicatorsSectionLabel = UILabel()
+    private let showSMASwitch = UISwitch()
+    private let smaPeriodButton = UIButton(type: .system)
+    private let showEMASwitch = UISwitch()
+    private let emaPeriodButton = UIButton(type: .system)
+    private let showRSISwitch = UISwitch()
+    private let rsiSettingsButton = UIButton(type: .system)
+    
+    // Volume Section
+    private let volumeSectionLabel = UILabel()
+    private let showVolumeSwitch = UISwitch()
+    private let showVolumeSMASwitch = UISwitch()
+    private let volumeSMAPeriodButton = UIButton(type: .system)
+    
     // Presets Section
     private let presetsSectionLabel = UILabel()
     private let tradingPresetButton = UIButton(type: .system)
@@ -54,6 +71,9 @@ final class ChartSettingsVC: UIViewController {
         let savedType = UserDefaults.standard.string(forKey: "ChartSmoothingType") ?? "adaptive"
         return ChartSmoothingHelper.SmoothingType(rawValue: savedType) ?? .adaptive
     }()
+    
+    // Technical Indicators Settings
+    private var indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
     
     // MARK: - Lifecycle
     
@@ -98,6 +118,8 @@ final class ChartSettingsVC: UIViewController {
         setupSectionLabel(visualSectionLabel, text: "Display")
         setupSectionLabel(appearanceSectionLabel, text: "Appearance")
         setupSectionLabel(animationSectionLabel, text: "Animation")
+        setupSectionLabel(indicatorsSectionLabel, text: "Technical Indicators")
+        setupSectionLabel(volumeSectionLabel, text: "Volume Analysis")
         setupSectionLabel(presetsSectionLabel, text: "Quick Presets")
         
         // Configure switches
@@ -106,6 +128,15 @@ final class ChartSettingsVC: UIViewController {
         setupSwitch(priceLabelsSwitch)
         setupSwitch(autoScaleSwitch)
         
+        // Configure technical indicator switches
+        setupSwitch(showSMASwitch)
+        setupSwitch(showEMASwitch)
+        setupSwitch(showRSISwitch)
+        
+        // Configure volume switches
+        setupSwitch(showVolumeSwitch)
+        setupSwitch(showVolumeSMASwitch)
+        
         // Configure segmented controls
         setupSegmentedControl(colorThemeSegmentedControl)
         setupSegmentedControl(lineThicknessSegmentedControl)
@@ -113,6 +144,15 @@ final class ChartSettingsVC: UIViewController {
         
         // Configure buttons
         setupButton(smoothingAlgorithmButton, title: "Algorithm: Adaptive")
+        
+        // Configure technical indicator buttons
+        setupButton(smaPeriodButton, title: "Period: 20")
+        setupButton(emaPeriodButton, title: "Period: 12")
+        setupButton(rsiSettingsButton, title: "RSI: 14, 70/30")
+        
+        // Configure volume buttons
+        setupButton(volumeSMAPeriodButton, title: "Period: 20")
+        
         setupPresetButton(tradingPresetButton, title: "Trading View", subtitle: "Professional analysis")
         setupPresetButton(simplePresetButton, title: "Simple View", subtitle: "Clean and minimal")
         setupPresetButton(analysisPresetButton, title: "Analysis View", subtitle: "Raw data focus")
@@ -223,6 +263,23 @@ final class ChartSettingsVC: UIViewController {
             createLabeledControl(label: "Speed", control: animationSpeedSegmentedControl),
             createSpacing(24),
             
+            // Technical Indicators Section
+            indicatorsSectionLabel,
+            createSettingRow(label: "Simple Moving Average", control: showSMASwitch),
+            smaPeriodButton,
+            createSettingRow(label: "Exponential Moving Average", control: showEMASwitch),
+            emaPeriodButton,
+            createSettingRow(label: "RSI (Relative Strength Index)", control: showRSISwitch),
+            rsiSettingsButton,
+            createSpacing(24),
+            
+            // Volume Analysis Section
+            volumeSectionLabel,
+            createSettingRow(label: "Show Volume Bars", control: showVolumeSwitch),
+            createSettingRow(label: "Volume Moving Average", control: showVolumeSMASwitch),
+            volumeSMAPeriodButton,
+            createSpacing(24),
+            
             // Presets Section
             presetsSectionLabel,
             tradingPresetButton,
@@ -231,7 +288,7 @@ final class ChartSettingsVC: UIViewController {
             createSpacing(40)
         ])
         
-        stackView.axis = .vertical
+        stackView.axis = NSLayoutConstraint.Axis.vertical
         stackView.spacing = 12
         stackView.translatesAutoresizingMaskIntoConstraints = false
         
@@ -288,7 +345,7 @@ final class ChartSettingsVC: UIViewController {
         titleLabel.textColor = .secondaryLabel  // Gray color for subtler appearance
         
         let stackView = UIStackView(arrangedSubviews: [titleLabel, control])
-        stackView.axis = .vertical
+        stackView.axis = NSLayoutConstraint.Axis.vertical
         stackView.spacing = 8
         stackView.translatesAutoresizingMaskIntoConstraints = false
         
@@ -352,6 +409,12 @@ final class ChartSettingsVC: UIViewController {
         case 1.0: animationSpeedSegmentedControl.selectedSegmentIndex = 3
         default: animationSpeedSegmentedControl.selectedSegmentIndex = 2
         }
+        
+        // Load technical indicator settings
+        loadIndicatorSettings()
+        
+        // Load volume settings
+        loadVolumeSettings()
     }
     
     private func updateSmoothingAlgorithmButton() {
@@ -372,6 +435,48 @@ final class ChartSettingsVC: UIViewController {
         }
     }
     
+    // MARK: - Technical Indicators & Volume Settings
+    
+    private func loadIndicatorSettings() {
+        indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+        
+        // Update UI with loaded settings
+        showSMASwitch.isOn = indicatorSettings.showSMA
+        showEMASwitch.isOn = indicatorSettings.showEMA
+        showRSISwitch.isOn = indicatorSettings.showRSI
+        
+        updateIndicatorButtons()
+    }
+    
+    private func loadVolumeSettings() {
+        showVolumeSwitch.isOn = indicatorSettings.showVolume
+        showVolumeSMASwitch.isOn = indicatorSettings.showVolumeMA
+        updateVolumeButtons()
+    }
+    
+    private func updateIndicatorButtons() {
+        smaPeriodButton.setTitle("Period: \(indicatorSettings.smaPeriod)", for: .normal)
+        smaPeriodButton.alpha = indicatorSettings.showSMA ? 1.0 : 0.5
+        
+        emaPeriodButton.setTitle("Period: \(indicatorSettings.emaPeriod)", for: .normal)
+        emaPeriodButton.alpha = indicatorSettings.showEMA ? 1.0 : 0.5
+        
+        rsiSettingsButton.setTitle("RSI: \(indicatorSettings.rsiPeriod), \(Int(indicatorSettings.rsiOverbought))/\(Int(indicatorSettings.rsiOversold))", for: .normal)
+        rsiSettingsButton.alpha = indicatorSettings.showRSI ? 1.0 : 0.5
+
+    }
+    
+    private func updateVolumeButtons() {
+        volumeSMAPeriodButton.setTitle("Period: \(indicatorSettings.volumeMAPeriod)", for: .normal)
+        volumeSMAPeriodButton.alpha = indicatorSettings.showVolumeMA ? 1.0 : 0.5
+    }
+    
+    private func saveIndicatorSettings() {
+        TechnicalIndicators.saveIndicatorSettings(indicatorSettings)
+        delegate?.technicalIndicatorsSettingsChanged(indicatorSettings)
+        delegate?.chartSettingsDidUpdate()
+    }
+    
     // MARK: - Actions
     
     private func setupActions() {
@@ -385,6 +490,19 @@ final class ChartSettingsVC: UIViewController {
         colorThemeSegmentedControl.addTarget(self, action: #selector(colorThemeChanged), for: .valueChanged)
         lineThicknessSegmentedControl.addTarget(self, action: #selector(lineThicknessChanged), for: .valueChanged)
         animationSpeedSegmentedControl.addTarget(self, action: #selector(animationSpeedChanged), for: .valueChanged)
+        
+        // Technical Indicators actions
+        showSMASwitch.addTarget(self, action: #selector(smaSwitchChanged), for: .valueChanged)
+        smaPeriodButton.addTarget(self, action: #selector(smaPeriodTapped), for: .touchUpInside)
+        showEMASwitch.addTarget(self, action: #selector(emaSwitchChanged), for: .valueChanged)
+        emaPeriodButton.addTarget(self, action: #selector(emaPeriodTapped), for: .touchUpInside)
+        showRSISwitch.addTarget(self, action: #selector(rsiSwitchChanged), for: .valueChanged)
+        rsiSettingsButton.addTarget(self, action: #selector(rsiSettingsTapped), for: .touchUpInside)
+        
+        // Volume actions
+        showVolumeSwitch.addTarget(self, action: #selector(volumeSwitchChanged), for: .valueChanged)
+        showVolumeSMASwitch.addTarget(self, action: #selector(volumeSMASwitchChanged), for: .valueChanged)
+        volumeSMAPeriodButton.addTarget(self, action: #selector(volumeSMAPeriodTapped), for: .touchUpInside)
         
         tradingPresetButton.addTarget(self, action: #selector(tradingPresetTapped), for: .touchUpInside)
         simplePresetButton.addTarget(self, action: #selector(simplePresetTapped), for: .touchUpInside)
@@ -461,6 +579,75 @@ final class ChartSettingsVC: UIViewController {
     
     @objc private func analysisPresetTapped() {
         applyAnalysisPreset()
+    }
+    
+    // MARK: - Technical Indicators Actions
+    
+    @objc private func smaSwitchChanged() {
+        indicatorSettings.showSMA = showSMASwitch.isOn
+        updateIndicatorButtons()
+        saveIndicatorSettings()
+    }
+    
+    @objc private func smaPeriodTapped() {
+        guard indicatorSettings.showSMA else { return }
+        presentPeriodPicker(title: "SMA Period", currentValue: indicatorSettings.smaPeriod, range: 5...200) { [weak self] newPeriod in
+            self?.indicatorSettings.smaPeriod = newPeriod
+            self?.updateIndicatorButtons()
+            self?.saveIndicatorSettings()
+        }
+    }
+    
+    @objc private func emaSwitchChanged() {
+        indicatorSettings.showEMA = showEMASwitch.isOn
+        updateIndicatorButtons()
+        saveIndicatorSettings()
+    }
+    
+    @objc private func emaPeriodTapped() {
+        guard indicatorSettings.showEMA else { return }
+        presentPeriodPicker(title: "EMA Period", currentValue: indicatorSettings.emaPeriod, range: 5...200) { [weak self] newPeriod in
+            self?.indicatorSettings.emaPeriod = newPeriod
+            self?.updateIndicatorButtons()
+            self?.saveIndicatorSettings()
+        }
+    }
+    
+    @objc private func rsiSwitchChanged() {
+        indicatorSettings.showRSI = showRSISwitch.isOn
+        updateIndicatorButtons()
+        saveIndicatorSettings()
+    }
+    
+    @objc private func rsiSettingsTapped() {
+        guard indicatorSettings.showRSI else { return }
+        presentRSISettingsPicker()
+    }
+    
+
+    
+    // MARK: - Volume Actions
+    
+    @objc private func volumeSwitchChanged() {
+        indicatorSettings.showVolume = showVolumeSwitch.isOn
+        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
+        delegate?.chartSettingsDidUpdate()
+    }
+    
+    @objc private func volumeSMASwitchChanged() {
+        indicatorSettings.showVolumeMA = showVolumeSMASwitch.isOn
+        updateVolumeButtons()
+        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
+        delegate?.chartSettingsDidUpdate()
+    }
+    
+    @objc private func volumeSMAPeriodTapped() {
+        guard indicatorSettings.showVolumeMA else { return }
+        presentPeriodPicker(title: "Volume SMA Period", currentValue: indicatorSettings.volumeMAPeriod, range: 5...100) { [weak self] newPeriod in
+            self?.indicatorSettings.volumeMAPeriod = newPeriod
+            self?.updateVolumeButtons()
+            self?.saveIndicatorSettings()
+        }
     }
     
     // MARK: - Smoothing Algorithm Picker
@@ -567,6 +754,93 @@ final class ChartSettingsVC: UIViewController {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+    
+    // MARK: - Settings Pickers
+    
+    private func presentPeriodPicker(title: String, currentValue: Int, range: ClosedRange<Int>, completion: @escaping (Int) -> Void) {
+        let alert = UIAlertController(title: title, message: "Select period", preferredStyle: .actionSheet)
+        
+        let commonPeriods = [5, 10, 12, 14, 20, 26, 30, 50, 100, 200].filter { range.contains($0) }
+        
+        for period in commonPeriods {
+            let isSelected = period == currentValue
+            let actionTitle = "\(period) \(isSelected ? "✓" : "")"
+            
+            alert.addAction(UIAlertAction(title: actionTitle, style: .default) { _ in
+                completion(period)
+            })
+        }
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        if let button = getCurrentButtonForAlert() {
+            if let popover = alert.popoverPresentationController {
+                popover.sourceView = button
+                popover.sourceRect = button.bounds
+            }
+        }
+        
+        present(alert, animated: true)
+    }
+    
+    private func presentRSISettingsPicker() {
+        let alert = UIAlertController(title: "RSI Settings", message: "Configure RSI parameters", preferredStyle: .actionSheet)
+        
+        // Period options
+        let periods = [7, 14, 21]
+        for period in periods {
+            let isSelected = period == indicatorSettings.rsiPeriod
+            alert.addAction(UIAlertAction(title: "Period: \(period) \(isSelected ? "✓" : "")", style: .default) { [weak self] _ in
+                self?.indicatorSettings.rsiPeriod = period
+                self?.updateIndicatorButtons()
+                self?.saveIndicatorSettings()
+            })
+        }
+        
+        alert.addAction(UIAlertAction(title: "Overbought/Oversold Levels", style: .default) { [weak self] _ in
+            self?.presentRSILevelsPicker()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = rsiSettingsButton
+            popover.sourceRect = rsiSettingsButton.bounds
+        }
+        
+        present(alert, animated: true)
+    }
+    
+    private func presentRSILevelsPicker() {
+        let alert = UIAlertController(title: "RSI Levels", message: "Select overbought/oversold levels", preferredStyle: .actionSheet)
+        
+        let levelPairs = [(80, 20), (75, 25), (70, 30)]
+        for (overbought, oversold) in levelPairs {
+            let isSelected = overbought == Int(indicatorSettings.rsiOverbought) && oversold == Int(indicatorSettings.rsiOversold)
+            alert.addAction(UIAlertAction(title: "\(overbought)/\(oversold) \(isSelected ? "✓" : "")", style: .default) { [weak self] _ in
+                self?.indicatorSettings.rsiOverbought = Double(overbought)
+                self?.indicatorSettings.rsiOversold = Double(oversold)
+                self?.updateIndicatorButtons()
+                self?.saveIndicatorSettings()
+            })
+        }
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = rsiSettingsButton
+            popover.sourceRect = rsiSettingsButton.bounds
+        }
+        
+        present(alert, animated: true)
+    }
+    
+
+    
+    private func getCurrentButtonForAlert() -> UIButton? {
+        // Return the button that's currently being tapped (for popover positioning)
+        return nil // Will use default positioning if not implemented
     }
     
     @objc private func closeButtonTapped() {

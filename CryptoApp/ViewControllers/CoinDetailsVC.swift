@@ -62,10 +62,46 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         cancellables.removeAll()
     }
     
+    // MARK: - Setup
+    
+    private func setupNavigationBar() {
+        title = coin.symbol.uppercased()
+        
+        // Add filter/settings button to navigation bar
+        let settingsButton = UIBarButtonItem(
+            image: UIImage(systemName: "slider.horizontal.3"),
+            style: .plain,
+            target: self,
+            action: #selector(settingsButtonTapped)
+        )
+        navigationItem.rightBarButtonItem = settingsButton
+    }
+    
+    @objc private func settingsButtonTapped() {
+        let settingsVC = ChartSettingsVC()
+        settingsVC.delegate = self
+        settingsVC.configure(
+            smoothingEnabled: viewModel.smoothingEnabled,
+            smoothingType: viewModel.currentSmoothingType
+        )
+        
+        // Embed in navigation controller
+        let navigationController = UINavigationController(rootViewController: settingsVC)
+        
+        // Present as modal sheet
+        if let presentationController = navigationController.presentationController as? UISheetPresentationController {
+            presentationController.detents = [.medium(), .large()]
+            presentationController.prefersGrabberVisible = true
+        }
+        
+        present(navigationController, animated: true)
+    }
+    
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        setupNavigationBar()
         setupTableView()
         bindViewModel()
         bindFilter()
@@ -734,26 +770,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         present(landscapeVC, animated: true)
     }
     
-    private func presentChartSettings() {
-        let settingsVC = ChartSettingsVC()
-        settingsVC.delegate = self
-        settingsVC.configure(
-            smoothingEnabled: viewModel.smoothingEnabled,
-            smoothingType: viewModel.currentSmoothingType
-        )
-        
-        // Embed in navigation controller
-        let navigationController = UINavigationController(rootViewController: settingsVC)
-        
-        // Present as modal sheet
-        if let presentationController = navigationController.presentationController as? UISheetPresentationController {
-            presentationController.detents = [.medium(), .large()]
-            presentationController.prefersGrabberVisible = true
-            presentationController.preferredCornerRadius = 20
-        }
-        
-        present(navigationController, animated: true)
-    }
+
     
     // MARK: - ChartSettingsDelegate
     
@@ -766,6 +783,31 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         // Update chart with new settings
         guard let chartCell = getChartCell() else { return }
         applyChartSettings(to: chartCell)
+    }
+    
+    func technicalIndicatorsSettingsChanged(_ settings: TechnicalIndicators.IndicatorSettings) {
+        // Apply technical indicators to the current chart (candlestick only)
+        guard let chartCell = getChartCell() else { return }
+        
+        // Get current color theme
+        let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+        let theme = ChartColorTheme(rawValue: themeRawValue) ?? .classic
+        
+        // DEBUG: Log current chart type and settings
+        AppLogger.ui("Applying technical indicators - Chart type: \(selectedChartType.value.rawValue)")
+        AppLogger.ui("Settings - SMA: \(settings.showSMA), EMA: \(settings.showEMA), RSI: \(settings.showRSI)")
+        
+        // Apply indicators using the public method
+        chartCell.applyTechnicalIndicators(settings, theme: theme)
+    }
+    
+
+    
+    func volumeSettingsChanged(showVolume: Bool, showVolumeMA: Bool) {
+        // Handle volume display settings
+        // TODO: Implement volume chart integration when ready
+        // This will control the display of volume bars and volume moving average
+        AppLogger.ui("Volume settings changed: showVolume=\(showVolume), showVolumeMA=\(showVolumeMA)")
     }
     
     // MARK: - Chart Settings Application
@@ -915,10 +957,6 @@ extension CoinDetailsVC: UITableViewDataSource {
             
             cell.onLandscapeToggle = { [weak self] in
                 self?.presentLandscapeChart()
-            }
-            
-            cell.onChartSettingsToggle = { [weak self] in
-                self?.presentChartSettings()
             }
             
             cell.selectionStyle = .none

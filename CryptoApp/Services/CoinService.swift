@@ -564,10 +564,10 @@ final class CoinService: CoinServiceProtocol {
             .decode(type: CoinGeckoChartResponse.self, decoder: JSONDecoder())
             .map { response in
                 // CoinGecko returns prices as [[timestamp, price]]. We only want the price.
-                let prices = response.prices.map { $0[1] }
-                AppLogger.success("Fetched \(prices.count) price points for '\(geckoId)'")
+                let chartPrices = response.prices.map { $0[1] }
+                AppLogger.success("Fetched \(chartPrices.count) price points for '\(geckoId)'")
                 AppLogger.network("CoinGecko API key working | Rate limit: 30 calls/minute")
-                return prices
+                return chartPrices
             }
             .receive(on: DispatchQueue.main)
             .mapError { error in

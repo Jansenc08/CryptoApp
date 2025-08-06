@@ -497,5 +497,30 @@ final class LandscapeChartVC: UIViewController {
         
         let animationSpeed = UserDefaults.standard.double(forKey: "ChartAnimationSpeed")
         candlestickChartView.setAnimationSpeed(animationSpeed)
+        
+        // Apply technical indicators if any are enabled
+        applyTechnicalIndicatorsToCandlestickChart()
+    }
+    
+    /// Applies technical indicators to the candlestick chart in landscape mode
+    private func applyTechnicalIndicatorsToCandlestickChart() {
+        // Load current indicator settings from UserDefaults
+        let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+        
+        // Only apply if any indicators are enabled
+        guard indicatorSettings.showSMA || 
+              indicatorSettings.showEMA || 
+              indicatorSettings.showRSI else {
+            return
+        }
+        
+        // Get current color theme
+        let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+        let theme = ChartColorTheme(rawValue: themeRawValue) ?? .classic
+        
+        // Apply indicators to the candlestick chart
+        candlestickChartView.updateWithTechnicalIndicators(indicatorSettings, theme: theme)
+        
+        AppLogger.ui("🔄 Applied technical indicators to landscape candlestick chart")
     }
 } 
