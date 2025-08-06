@@ -371,11 +371,11 @@ final class ChartCell: UITableViewCell {
             if chartType == .line && previousChartType == .candlestick {
                 // Clear technical indicators when switching FROM candlestick TO line chart
                 lineChartView.clearTechnicalIndicators()
-                // Clear technical indicators when switching to line chart
+                // Hide technical indicator labels on line charts
+                candlestickChartView.chartLabelManager?.hideAllTechnicalIndicatorLabels()
             } else if chartType == .candlestick {
                 // Reapply technical indicators when switching TO candlestick chart
                 reapplyTechnicalIndicators()
-                // Reapply technical indicators on candlestick chart
             }
         }
     }
@@ -592,7 +592,6 @@ extension ChartCell {
         
         // Update volume chart settings if volume is enabled
         if showVolume {
-            let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
             volumeChartView.updateSettings()
             
             // Apply current color theme to volume chart
@@ -644,34 +643,27 @@ extension ChartCell {
     
     func applyTechnicalIndicators(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme) {
         // TECHNICAL INDICATORS: Only apply to candlestick charts
-        // Line charts don't have OHLC data needed for proper technical analysis
+        // Line charts remain clean and simple for price trend visualization
         switch currentChartType {
         case .line:
             // DO NOT apply technical indicators to line charts
-            // Clear any existing indicators from line chart
-            lineChartView.clearTechnicalIndicators()
-            // Technical indicators only supported on candlestick charts
+            // Keep line charts clean and focused on price movement
             return
+            
         case .candlestick:
             // ONLY CANDLESTICK: Apply technical indicators where they belong
-            // Apply technical indicators to candlestick chart
-    
-    
-    
-            
             // ENSURE DATA AVAILABILITY: Only apply if we have data
             if currentOHLCData.isEmpty {
                 // Store settings for later application
-                // Store the settings for when data becomes available
                 storePendingIndicatorSettings(settings, theme: theme)
                 return
             }
             
             // Apply indicators - the chart will handle its own refresh
             candlestickChartView.updateWithTechnicalIndicators(settings, theme: theme)
-            
-            // Technical indicators applied
         }
+        
+        // Technical indicators applied
     }
     
     // MARK: - Pending Indicator Settings
@@ -690,7 +682,7 @@ extension ChartCell {
             return
         }
         
-                    // Apply pending settings
+        // Apply pending settings to candlestick chart only
         candlestickChartView.updateWithTechnicalIndicators(settings, theme: theme)
         
         // Clear pending settings after successful application
@@ -705,7 +697,7 @@ extension ChartCell {
     private func reapplyTechnicalIndicators() {
         // Technical indicators only work on candlestick charts
         guard currentChartType == .candlestick else {
-            // Skip technical indicators for non-candlestick charts
+            // Skip technical indicators for line charts
             return
         }
         
@@ -726,6 +718,6 @@ extension ChartCell {
         // Apply indicators to the candlestick chart only
         applyTechnicalIndicators(indicatorSettings, theme: theme)
         
-                    // Technical indicators reapplied
+        // Technical indicators reapplied
     }
 }
