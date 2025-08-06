@@ -28,8 +28,6 @@ final class TechnicalIndicators {
         
         // Volume
         var showVolume: Bool = true  // Enable volume by default for better UX
-        var showVolumeMA: Bool = false
-        var volumeMAPeriod: Int = 20
     }
     
     // MARK: - Indicator Results
@@ -55,7 +53,6 @@ final class TechnicalIndicators {
     
     struct VolumeAnalysis {
         let volumes: [Double]
-        let volumeMA: [Double?]
         let volumeRatio: [Double]  // Current volume / average volume
         let isHighVolume: [Bool]   // Above average volume
     }
@@ -213,7 +210,6 @@ final class TechnicalIndicators {
         
         return VolumeAnalysis(
             volumes: volumes,
-            volumeMA: volumeMA.values,
             volumeRatio: volumeRatio,
             isHighVolume: isHighVolume
         )

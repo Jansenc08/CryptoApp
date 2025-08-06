@@ -5,7 +5,7 @@ protocol ChartSettingsDelegate: AnyObject {
     func chartSettingsDidUpdate()
     func smoothingSettingsChanged(enabled: Bool, type: ChartSmoothingHelper.SmoothingType)
     func technicalIndicatorsSettingsChanged(_ settings: TechnicalIndicators.IndicatorSettings)
-    func volumeSettingsChanged(showVolume: Bool, showVolumeMA: Bool)
+    func volumeSettingsChanged(showVolume: Bool)
 }
 
 final class ChartSettingsVC: UIViewController {
@@ -51,8 +51,6 @@ final class ChartSettingsVC: UIViewController {
     // Volume Section
     private let volumeSectionLabel = UILabel()
     private let showVolumeSwitch = UISwitch()
-    private let showVolumeSMASwitch = UISwitch()
-    private let volumeSMAPeriodButton = UIButton(type: .system)
     
     // Presets Section
     private let presetsSectionLabel = UILabel()
@@ -135,7 +133,6 @@ final class ChartSettingsVC: UIViewController {
         
         // Configure volume switches
         setupSwitch(showVolumeSwitch)
-        setupSwitch(showVolumeSMASwitch)
         
         // Configure segmented controls
         setupSegmentedControl(colorThemeSegmentedControl)
@@ -150,8 +147,6 @@ final class ChartSettingsVC: UIViewController {
         setupButton(emaPeriodButton, title: "Period: 12")
         setupButton(rsiSettingsButton, title: "RSI: 14, 70/30")
         
-        // Configure volume buttons
-        setupButton(volumeSMAPeriodButton, title: "Period: 20")
         
         setupPresetButton(tradingPresetButton, title: "Trading View", subtitle: "Professional analysis")
         setupPresetButton(simplePresetButton, title: "Simple View", subtitle: "Clean and minimal")
@@ -276,8 +271,6 @@ final class ChartSettingsVC: UIViewController {
             // Volume Analysis Section
             volumeSectionLabel,
             createSettingRow(label: "Show Volume Bars", control: showVolumeSwitch),
-            createSettingRow(label: "Volume Moving Average", control: showVolumeSMASwitch),
-            volumeSMAPeriodButton,
             createSpacing(24),
             
             // Presets Section
@@ -450,8 +443,6 @@ final class ChartSettingsVC: UIViewController {
     
     private func loadVolumeSettings() {
         showVolumeSwitch.isOn = indicatorSettings.showVolume
-        showVolumeSMASwitch.isOn = indicatorSettings.showVolumeMA
-        updateVolumeButtons()
     }
     
     private func updateIndicatorButtons() {
@@ -466,10 +457,7 @@ final class ChartSettingsVC: UIViewController {
 
     }
     
-    private func updateVolumeButtons() {
-        volumeSMAPeriodButton.setTitle("Period: \(indicatorSettings.volumeMAPeriod)", for: .normal)
-        volumeSMAPeriodButton.alpha = indicatorSettings.showVolumeMA ? 1.0 : 0.5
-    }
+
     
     private func saveIndicatorSettings() {
         TechnicalIndicators.saveIndicatorSettings(indicatorSettings)
@@ -501,8 +489,6 @@ final class ChartSettingsVC: UIViewController {
         
         // Volume actions
         showVolumeSwitch.addTarget(self, action: #selector(volumeSwitchChanged), for: .valueChanged)
-        showVolumeSMASwitch.addTarget(self, action: #selector(volumeSMASwitchChanged), for: .valueChanged)
-        volumeSMAPeriodButton.addTarget(self, action: #selector(volumeSMAPeriodTapped), for: .touchUpInside)
         
         tradingPresetButton.addTarget(self, action: #selector(tradingPresetTapped), for: .touchUpInside)
         simplePresetButton.addTarget(self, action: #selector(simplePresetTapped), for: .touchUpInside)
@@ -631,23 +617,7 @@ final class ChartSettingsVC: UIViewController {
     @objc private func volumeSwitchChanged() {
         indicatorSettings.showVolume = showVolumeSwitch.isOn
         saveIndicatorSettings() // Save the settings
-        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
-    }
-    
-    @objc private func volumeSMASwitchChanged() {
-        indicatorSettings.showVolumeMA = showVolumeSMASwitch.isOn
-        updateVolumeButtons()
-        saveIndicatorSettings() // Save the settings
-        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
-    }
-    
-    @objc private func volumeSMAPeriodTapped() {
-        guard indicatorSettings.showVolumeMA else { return }
-        presentPeriodPicker(title: "Volume SMA Period", currentValue: indicatorSettings.volumeMAPeriod, range: 5...100) { [weak self] newPeriod in
-            self?.indicatorSettings.volumeMAPeriod = newPeriod
-            self?.updateVolumeButtons()
-            self?.saveIndicatorSettings()
-        }
+        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume)
     }
     
     // MARK: - Smoothing Algorithm Picker
@@ -701,8 +671,6 @@ final class ChartSettingsVC: UIViewController {
         
         // Trading preset enables volume analysis for better trading decisions
         indicatorSettings.showVolume = true
-        indicatorSettings.showVolumeMA = true
-        indicatorSettings.volumeMAPeriod = 20
         
         updateAllSettings()
         showPresetAppliedMessage("Trading View Applied", "Enhanced for detailed analysis with volume")
@@ -718,7 +686,6 @@ final class ChartSettingsVC: UIViewController {
         
         // Simple preset disables volume for clean view
         indicatorSettings.showVolume = false
-        indicatorSettings.showVolumeMA = false
         
         updateAllSettings()
         showPresetAppliedMessage("Simple View Applied", "Clean and easy to read")
@@ -731,10 +698,8 @@ final class ChartSettingsVC: UIViewController {
         animationSpeedSegmentedControl.selectedSegmentIndex = 1 // Fast
         gridLinesSwitch.isOn = true
         
-        // Analysis preset enables volume with MA for technical analysis
+        // Analysis preset enables volume for technical analysis
         indicatorSettings.showVolume = true
-        indicatorSettings.showVolumeMA = true
-        indicatorSettings.volumeMAPeriod = 14 // Shorter period for analysis
         
         updateAllSettings()
         showPresetAppliedMessage("Analysis View Applied", "Raw data with volume for technical analysis")
@@ -761,13 +726,11 @@ final class ChartSettingsVC: UIViewController {
         
         // Update volume switches from current settings
         showVolumeSwitch.isOn = indicatorSettings.showVolume
-        showVolumeSMASwitch.isOn = indicatorSettings.showVolumeMA
-        updateVolumeButtons()
         
         // Save indicator settings and notify about changes
         saveIndicatorSettings()
         delegate?.smoothingSettingsChanged(enabled: currentSmoothingEnabled, type: currentSmoothingType)
-        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
+        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume)
     }
     
     private func showPresetAppliedMessage(_ title: String, _ message: String) {

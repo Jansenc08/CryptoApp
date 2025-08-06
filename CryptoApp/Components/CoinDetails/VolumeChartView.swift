@@ -8,7 +8,7 @@
 import UIKit
 import DGCharts
 
-final class VolumeChartView: CombinedChartView {
+final class VolumeChartView: BarChartView {
     
     // MARK: - Properties
     
@@ -19,12 +19,9 @@ final class VolumeChartView: CombinedChartView {
     private var volumeAnalysis: TechnicalIndicators.VolumeAnalysis?
     
     // Settings
-    private var showVolumeMA: Bool = false
-    private var volumeMAPeriod: Int = 20
     private var currentTheme: ChartColorTheme = .classic
     
-    // Prevent duplicate MA calls
-    private var lastMAUpdateTimestamp: TimeInterval = 0
+
     
     // MARK: - Initialization
     
@@ -50,38 +47,36 @@ final class VolumeChartView: CombinedChartView {
         doubleTapToZoomEnabled = false
         highlightPerTapEnabled = false
         
-        // CRITICAL: Configure for CombinedChartView to support both bars and lines
-        drawOrder = [DrawOrder.bar.rawValue, DrawOrder.line.rawValue]
+        // Configure for BarChartView (volume bars only)
+        // Note: drawOrder is not needed for BarChartView as it only displays bars
         
-        // Ensure renderers are properly configured
-        renderer = CombinedChartRenderer(chart: self, animator: chartAnimator, viewPortHandler: viewPortHandler)
-        
-        // Subtle border for visual separation
-        layer.borderColor = UIColor.systemGray5.cgColor
-        layer.borderWidth = 0.5
-        layer.cornerRadius = 4
+        // Clean, borderless design for seamless integration
+        layer.borderWidth = 0
+        layer.cornerRadius = 0
         
         // Configure axes
         configureAxes()
         
-        // Set minimal chart offsets to maximize volume display area
-        setViewPortOffsets(left: 20, top: 5, right: 70, bottom: 5)
+        // Add top padding to prevent Y-axis label clipping
+        setViewPortOffsets(left: 20, top: 20, right: 70, bottom: 16)
     }
     
     private func configureAxes() {
         // Left axis - disabled
         leftAxis.enabled = false
         
-        // Right axis - Volume values
+        // Right axis - Volume values with maximum visibility
         rightAxis.enabled = true
-        rightAxis.labelTextColor = .tertiaryLabel
-        rightAxis.labelFont = .systemFont(ofSize: 9)
+        rightAxis.labelTextColor = .secondaryLabel  // Match main chart's grey labels
+        rightAxis.labelFont = .systemFont(ofSize: 11, weight: .medium)  // Larger, bold font
         rightAxis.drawGridLinesEnabled = false
         rightAxis.drawAxisLineEnabled = false
         rightAxis.valueFormatter = VolumeFormatter()
-        rightAxis.labelCount = 3
-        rightAxis.minWidth = 60
+        rightAxis.labelCount = 3  // More labels for better context
+        rightAxis.minWidth = 40   // Normal width
         rightAxis.forceLabelsEnabled = true
+        rightAxis.spaceTop = 0.1  // Add space at top to prevent clipping
+        rightAxis.spaceBottom = 0.1  // Add space at bottom to prevent clipping
         
         // X axis - Hidden for volume (synchronized with main chart)
         xAxis.enabled = false
@@ -94,7 +89,7 @@ final class VolumeChartView: CombinedChartView {
     func updateVolume(ohlcData: [OHLCData], range: String, theme: ChartColorTheme = .classic) {
         guard !ohlcData.isEmpty else { 
             // Clear chart data if no volume data
-            let emptyData = CombinedChartData()
+            let emptyData = BarChartData()
             self.data = emptyData
             return 
         }
@@ -107,25 +102,21 @@ final class VolumeChartView: CombinedChartView {
         
         // Extract volume data
         self.volumes = ohlcData.map { $0.volume ?? 0.0 }
-        let nonZeroVolumes = volumes.filter { $0 > 0 }.count
         
         // Determine bullish/bearish for each period
         self.priceChanges = ohlcData.map { $0.isBullish }
         
         // Calculate volume analysis
-        self.volumeAnalysis = TechnicalIndicators.analyzeVolume(volumes: volumes, period: volumeMAPeriod)
+        self.volumeAnalysis = TechnicalIndicators.analyzeVolume(volumes: volumes)
         
         // Update chart immediately
         updateChart()
     }
     
-    func updateSettings(showVolumeMA: Bool, volumeMAPeriod: Int) {
-        self.showVolumeMA = showVolumeMA
-        self.volumeMAPeriod = volumeMAPeriod
-        
-        // Recalculate volume analysis with new period
+    func updateSettings() {
+        // Recalculate volume analysis if needed
         if !volumes.isEmpty {
-            self.volumeAnalysis = TechnicalIndicators.analyzeVolume(volumes: volumes, period: volumeMAPeriod)
+            self.volumeAnalysis = TechnicalIndicators.analyzeVolume(volumes: volumes)
             updateChart()
         }
     }
@@ -140,7 +131,7 @@ final class VolumeChartView: CombinedChartView {
     private func updateChart() {
         guard !volumes.isEmpty else { 
             // Clear chart if no data
-            let emptyData = CombinedChartData()
+            let emptyData = BarChartData()
             self.data = emptyData
             return 
         }
@@ -154,7 +145,7 @@ final class VolumeChartView: CombinedChartView {
         }
         
         guard !entries.isEmpty else {
-            let emptyData = CombinedChartData()
+            let emptyData = BarChartData()
             self.data = emptyData
             return
         }
@@ -163,36 +154,33 @@ final class VolumeChartView: CombinedChartView {
         dataSet.drawValuesEnabled = false
         dataSet.drawIconsEnabled = false
         
-        // Apply colors based on price movement
+        // Apply colors based on price movement with elegant transparency
         var colors: [UIColor] = []
         for i in 0..<priceChanges.count {
             let baseColor = priceChanges[i] ? currentTheme.positiveColor : currentTheme.negativeColor
             
-            // Make volume bars much more visible
+            // Refined transparency for elegant appearance
             if let analysis = volumeAnalysis, i < analysis.isHighVolume.count && analysis.isHighVolume[i] {
-                colors.append(baseColor.withAlphaComponent(1.0)) // Fully opaque for high volume
+                colors.append(baseColor.withAlphaComponent(0.9)) // Slightly transparent for high volume
             } else {
-                colors.append(baseColor.withAlphaComponent(0.8)) // More opaque for normal volume
+                colors.append(baseColor.withAlphaComponent(0.6)) // More transparent for normal volume
             }
         }
         dataSet.colors = colors
         
-        // Create CombinedChartData to support both bars and moving average line
-        let combinedData = CombinedChartData()
+        // Create chart data for volume bars only
         let barData = BarChartData(dataSet: dataSet)
-        barData.barWidth = 0.9 // Wider bars for better visibility
-        combinedData.barData = barData
+        barData.barWidth = 0.8 // Optimized bar width for clean appearance
         
-        // Store chart data directly - no async to prevent clearing by subsequent calls
-        self.data = combinedData
+        // Store chart data
+        self.data = barData
+        
+        // Force chart refresh to ensure Y-axis labels are displayed
+        self.notifyDataSetChanged()
+        self.setNeedsDisplay()
         
         // Configure Y-axis range
         self.configureYAxisRange()
-        
-        // Add volume moving average if enabled
-        if showVolumeMA {
-            self.addVolumeMovingAverage()
-        }
         
         // Force chart update 
         self.notifyDataSetChanged()
@@ -203,82 +191,7 @@ final class VolumeChartView: CombinedChartView {
         
 
     }
-    
-    private func addVolumeMovingAverage() {
-        // Prevent rapid duplicate calls
-        let currentTime = Date().timeIntervalSince1970
-        if currentTime - lastMAUpdateTimestamp < 0.1 {
-            AppLogger.chart("🟠 Volume MA: Skipping duplicate call (too soon)")
-            return
-        }
-        lastMAUpdateTimestamp = currentTime
-        
-        guard let analysis = volumeAnalysis,
-              !analysis.volumeMA.isEmpty,
-              let combinedData = self.data as? CombinedChartData else { 
-            AppLogger.chart("🟠 Volume MA: Cannot add - no analysis data or chart data")
-            return 
-        }
-        
-        // Create line data entries for volume moving average using SAME indices as volume bars
-        let maEntries = analysis.volumeMA.enumerated().compactMap { index, ma -> ChartDataEntry? in
-            guard let ma = ma, ma.isFinite && ma >= 0,
-                  index < volumes.count else { return nil }
-            
-            // Use the SAME array index as the corresponding volume bar for perfect alignment
-            return ChartDataEntry(x: Double(index), y: ma)
-        }
-        
-        guard !maEntries.isEmpty else { 
-            AppLogger.chart("🟠 Volume MA: No valid MA entries to display")
-            return 
-        }
-        
-        AppLogger.chart("🟠 Volume MA: Adding \(maEntries.count) MA points with period \(volumeMAPeriod)")
-        
-        // Create EXTREMELY VISIBLE line data set for volume MA
-        let maDataSet = LineChartDataSet(entries: maEntries, label: "Volume MA(\(volumeMAPeriod))")
-        maDataSet.drawCirclesEnabled = true  
-        maDataSet.circleRadius = 8.0 // HUGE circles
-        maDataSet.circleHoleRadius = 4.0
-        maDataSet.drawValuesEnabled = true // Show values for debugging
-        maDataSet.lineWidth = 10.0 // EXTREMELY thick line
-        maDataSet.setColor(.systemRed) // BRIGHT RED for absolute contrast against green/red bars
-        maDataSet.setCircleColor(.systemRed)
-        maDataSet.drawFilledEnabled = true 
-        maDataSet.fillAlpha = 0.7 // More opaque fill
-        maDataSet.fillColor = .systemRed
-        maDataSet.mode = .linear 
-        
-        // Force line to appear on top
-        maDataSet.highlightEnabled = false
-        
-        // Add line data to existing combined data (creates overlay effect)
-        combinedData.lineData = LineChartData(dataSet: maDataSet)
-        
-        // Debug: Check what data we actually have
-        AppLogger.chart("🟠 DEBUG: CombinedData has \(combinedData.barData?.dataSetCount ?? 0) bar datasets and \(combinedData.lineData?.dataSetCount ?? 0) line datasets")
-        AppLogger.chart("🟠 DEBUG: Line dataset has \(maDataSet.count) entries, color: \(maDataSet.colors.first?.description ?? "nil")")
-        AppLogger.chart("🟠 DEBUG: Bar data entry count: \(combinedData.barData?.entryCount ?? 0)")
-        AppLogger.chart("🟠 DEBUG: Line data entry count: \(combinedData.lineData?.entryCount ?? 0)")
-        
-        // Debug X-axis ranges to verify alignment
-        if let barDataSet = combinedData.barData?.dataSets.first as? BarChartDataSet {
-            let barXRange = barDataSet.entries.map(\.x)
-            AppLogger.chart("🟠 DEBUG: Bar X-axis range: \(barXRange.min() ?? 0) to \(barXRange.max() ?? 0)")
-        }
-        if let lineDataSet = combinedData.lineData?.dataSets.first as? LineChartDataSet {
-            let lineXRange = lineDataSet.entries.map(\.x)
-            AppLogger.chart("🟠 DEBUG: Line X-axis range: \(lineXRange.min() ?? 0) to \(lineXRange.max() ?? 0)")
-        }
-        
-        // Force the chart to re-render with both data types
-        self.data = combinedData
-        self.notifyDataSetChanged()
-        self.setNeedsDisplay()
-        
-        AppLogger.chart("🔴 Volume MA: Successfully added EXTREMELY THICK RED line with HUGE CIRCLES and HEAVY FILL using MATCHING INDICES to volume chart")
-    }
+
     
     private func configureYAxisRange() {
         guard !volumes.isEmpty else { return }
@@ -294,6 +207,10 @@ final class VolumeChartView: CombinedChartView {
         if maxVolume - minVolume < maxVolume * 0.1 {
             rightAxis.axisMaximum = maxVolume * 1.5
         }
+        
+        // Force the right axis to refresh its calculations
+        rightAxis.resetCustomAxisMin()
+        rightAxis.resetCustomAxisMax()
     }
     
     // MARK: - Synchronization with Main Chart

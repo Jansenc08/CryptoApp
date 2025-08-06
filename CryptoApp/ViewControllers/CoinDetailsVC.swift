@@ -803,14 +803,14 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     
 
     
-    func volumeSettingsChanged(showVolume: Bool, showVolumeMA: Bool) {
+    func volumeSettingsChanged(showVolume: Bool) {
         // Update chart cell with new volume settings
         guard let chartCell = getChartCell() else {
             return
         }
         
         // Apply volume settings to chart cell
-        chartCell.updateVolumeSettings(showVolume: showVolume, showVolumeMA: showVolumeMA)
+        chartCell.updateVolumeSettings(showVolume: showVolume)
         
         // If we don't have any data yet, trigger initial data load
         // This ensures the chart loads data when volume settings are changed on first app load
@@ -836,8 +836,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             "lineThickness": UserDefaults.standard.double(forKey: "ChartLineThickness"),
             "animationSpeed": UserDefaults.standard.double(forKey: "ChartAnimationSpeed"),
             // Include volume settings for persistence
-            "showVolume": indicatorSettings.showVolume,
-            "showVolumeMA": indicatorSettings.showVolumeMA
+            "showVolume": indicatorSettings.showVolume
         ]
     }
     
@@ -870,7 +869,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         
         // Apply volume settings
         let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
-        chartCell.updateVolumeSettings(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
+        chartCell.updateVolumeSettings(showVolume: indicatorSettings.showVolume)
     }
     
 
@@ -998,7 +997,7 @@ extension CoinDetailsVC: UITableViewDataSource {
             
             // Apply volume settings explicitly
             let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
-            cell.updateVolumeSettings(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
+            cell.updateVolumeSettings(showVolume: indicatorSettings.showVolume)
             
             // Set up retry callback
             cell.onRetryRequested = { [weak self] in

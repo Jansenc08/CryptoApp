@@ -25,7 +25,7 @@ final class ChartCell: UITableViewCell {
     
     // Volume Settings
     private var showVolume: Bool = false
-    private var showVolumeMA: Bool = false
+
     
     // Chart state tracking
     private enum ChartState: Equatable {
@@ -92,7 +92,7 @@ final class ChartCell: UITableViewCell {
         
         // Setup stack view for price chart and volume chart
         chartsStackView.axis = .vertical
-        chartsStackView.spacing = 8
+        chartsStackView.spacing = 4  // Reduced spacing for seamless integration
         chartsStackView.distribution = .fill
         chartsStackView.translatesAutoresizingMaskIntoConstraints = false
         
@@ -338,11 +338,20 @@ final class ChartCell: UITableViewCell {
                 // Keep loading state - will be updated by view controller bindings
                 candlestickChartView.update(ohlcData, range: range)
                 reapplyTechnicalIndicators()
+                // Update volume chart with new OHLC data
+                if showVolume {
+                    AppLogger.chart("🔧 FIX: Updating volume chart with \(ohlcData.count) OHLC points for range: \(range)")
+                    updateVolumeData()
+                }
             } else {
                 currentState = .data
                 candlestickChartView.update(ohlcData, range: range)
                 reapplyTechnicalIndicators()
                 updateViewsForState()
+                // Update volume chart with new OHLC data
+                if showVolume {
+                    updateVolumeData()
+                }
             }
         }
     }
@@ -448,7 +457,7 @@ final class ChartCell: UITableViewCell {
         let lineThickness = settings["lineThickness"] as? Double ?? 0
         let animationSpeed = settings["animationSpeed"] as? Double ?? 0
         let showVolume = settings["showVolume"] as? Bool ?? false
-        let showVolumeMA = settings["showVolumeMA"] as? Bool ?? false
+
         
         // Apply all settings in one go using existing methods
         toggleGridLines(gridEnabled)
@@ -466,7 +475,7 @@ final class ChartCell: UITableViewCell {
         setAnimationSpeed(animationSpeed)
         
         // Apply volume settings to ensure persistence across filter changes
-        updateVolumeSettings(showVolume: showVolume, showVolumeMA: showVolumeMA)
+        updateVolumeSettings(showVolume: showVolume)
     }
     
     // New method to handle loading state
@@ -570,9 +579,8 @@ extension ChartCell {
     
     // MARK: - Volume Settings
     
-    func updateVolumeSettings(showVolume: Bool, showVolumeMA: Bool) {
+    func updateVolumeSettings(showVolume: Bool) {
         self.showVolume = showVolume
-        self.showVolumeMA = showVolumeMA
         
         // Show/hide volume chart based on settings
         volumeChartView.isHidden = !showVolume
@@ -586,7 +594,7 @@ extension ChartCell {
         // Update volume chart settings if volume is enabled
         if showVolume {
             let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
-            volumeChartView.updateSettings(showVolumeMA: showVolumeMA, volumeMAPeriod: indicatorSettings.volumeMAPeriod)
+            volumeChartView.updateSettings()
             
             // Apply current color theme to volume chart
             let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
