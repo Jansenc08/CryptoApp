@@ -812,6 +812,13 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         // Apply volume settings to chart cell
         chartCell.updateVolumeSettings(showVolume: showVolume)
         
+        // Update table view layout to reflect new height requirements
+        // This triggers heightForRowAt which calculates the correct height based on volume visibility
+        UIView.animate(withDuration: 0.3) { [weak self] in
+            self?.tableView.beginUpdates()
+            self?.tableView.endUpdates()
+        }
+        
         // If we don't have any data yet, trigger initial data load
         // This ensures the chart loads data when volume settings are changed on first app load
         if viewModel.currentChartPoints.isEmpty && viewModel.currentOHLCData.isEmpty {
@@ -1038,7 +1045,10 @@ extension CoinDetailsVC: UITableViewDelegate {
         case 1: // Segment control section - ensure minimum height for buttons
             return 76
         case 2: // Chart section
-            return 440 // Fixed height for chart section: 250 (main) + 80 (volume) + 110 (spacing/margins/padding)
+            let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+            let baseHeight: CGFloat = 250 + 110 // Main chart + spacing/margins/padding
+            let volumeHeight: CGFloat = indicatorSettings.showVolume ? 80 : 0
+            return baseHeight + volumeHeight
         default:
             return UITableView.automaticDimension
         }
@@ -1047,7 +1057,10 @@ extension CoinDetailsVC: UITableViewDelegate {
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         switch indexPath.section {
         case 2: // Chart section
-            return 440 // Estimated: 250 (main) + 80 (volume) + 110 (spacing)
+            let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+            let baseHeight: CGFloat = 250 + 110 // Main chart + spacing/margins/padding
+            let volumeHeight: CGFloat = indicatorSettings.showVolume ? 80 : 0
+            return baseHeight + volumeHeight
         default:
             return UITableView.automaticDimension
         }

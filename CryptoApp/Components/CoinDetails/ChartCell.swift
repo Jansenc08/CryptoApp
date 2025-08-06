@@ -132,9 +132,9 @@ final class ChartCell: UITableViewCell {
         chartsStackView.addArrangedSubview(mainChartContainer)
         chartsStackView.addArrangedSubview(volumeChartView)
         
-        // Set flexible height constraints that work with UITableView.automaticDimension
+        // Set fixed height constraints to prevent chart size changes when volume is toggled
         NSLayoutConstraint.activate([
-            mainChartContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 250),
+            mainChartContainer.heightAnchor.constraint(equalToConstant: 250),
             volumeChartView.heightAnchor.constraint(equalToConstant: 80)
         ])
         
