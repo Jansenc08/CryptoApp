@@ -71,6 +71,13 @@ final class RequestManager: RequestManagerProtocol {
      */
     init() {}
     
+    deinit {
+        // Clean up all active requests and cancellables
+        cancellables.removeAll()
+        activeRequests.removeAll()
+        AppLogger.network("RequestManager deinit - cleaned up all requests and cancellables")
+    }
+    
     // MARK: - Rate Limit Cooldown Management
     
     /**

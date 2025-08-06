@@ -183,4 +183,10 @@
     }
 }
 
+- (void)dealloc {
+    // Clean up delegate reference and search bar delegate
+    self.delegate = nil;
+    self.searchBar.delegate = nil;
+}
+
 @end 
