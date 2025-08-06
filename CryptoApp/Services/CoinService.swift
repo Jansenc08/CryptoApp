@@ -395,7 +395,7 @@ final class CoinService: CoinServiceProtocol {
             days: days,
             priority: priority
         ) { [weak self] in
-            self?.performOHLCDataRequest(for: coinId, currency: currency, days: days) ??
+            self?.performOHLCDataWithVolumeRequest(for: coinId, currency: currency, days: days) ??
             Fail(error: NetworkError.unknown(NSError(domain: "CoinService", code: -1, userInfo: nil)))
                 .eraseToAnyPublisher()
         }
@@ -521,6 +521,130 @@ final class CoinService: CoinServiceProtocol {
                 }
             }
             .eraseToAnyPublisher()
+    }
+    
+    // MARK: - Combined OHLC + Volume Data Request
+    private func performOHLCDataWithVolumeRequest(for coinId: String, currency: String, days: String) -> AnyPublisher<[OHLCData], NetworkError> {
+        let geckoId = mapCMCSlugToGeckoId(coinId)
+        
+        // Fetch both OHLC and volume data simultaneously
+        let ohlcRequest = performOHLCDataRequest(for: coinId, currency: currency, days: days)
+        let volumeRequest = performVolumeDataRequest(for: geckoId, currency: currency, days: days)
+        
+        return Publishers.Zip(ohlcRequest, volumeRequest)
+            .map { ohlcData, volumeData in
+                // Combine OHLC data with volume data
+                return self.combineOHLCWithVolume(ohlcData: ohlcData, volumeData: volumeData)
+            }
+            .eraseToAnyPublisher()
+    }
+    
+    // MARK: - Volume Data Request (using market_chart endpoint)
+    private func performVolumeDataRequest(for geckoId: String, currency: String, days: String) -> AnyPublisher<[[Double]], NetworkError> {
+        let endpoint = "\(coinGeckoBaseURL)/coins/\(geckoId)/market_chart?vs_currency=\(currency)&days=\(days)"
+        
+        AppLogger.network("Fetching volume data from CoinGecko: \(endpoint)")
+        
+        guard let url = URL(string: endpoint) else {
+            return Fail(error: .badURL).eraseToAnyPublisher()
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(coinGeckoApiKey, forHTTPHeaderField: "x-cg-demo-api-key")
+        
+        return URLSession.shared.dataTaskPublisher(for: request)
+            .tryMap { output in
+                guard let response = output.response as? HTTPURLResponse else {
+                    AppLogger.error("No HTTP response for volume data")
+                    throw NetworkError.invalidResponse
+                }
+                
+                AppLogger.network("Volume data response: HTTP \(response.statusCode)")
+                
+                if response.statusCode == 404 {
+                    throw NetworkError.badURL
+                } else if response.statusCode == 429 {
+                    throw NetworkError.invalidResponse
+                } else if response.statusCode != 200 {
+                    throw NetworkError.invalidResponse
+                }
+                return output.data
+            }
+            .decode(type: CoinGeckoChartResponse.self, decoder: JSONDecoder())
+            .map { response in
+                AppLogger.success("Successfully fetched volume data with \(response.total_volumes.count) points")
+                return response.total_volumes
+            }
+            .mapError { error in
+                AppLogger.error("Volume data fetch failed", error: error)
+                if let error = error as? NetworkError {
+                    return error
+                } else if error is DecodingError {
+                    return .decodingError
+                } else {
+                    return .unknown(error)
+                }
+            }
+            .eraseToAnyPublisher()
+    }
+    
+    // MARK: - Combine OHLC and Volume Data
+    private func combineOHLCWithVolume(ohlcData: [OHLCData], volumeData: [[Double]]) -> [OHLCData] {
+        AppLogger.chart("Combining OHLC data (\(ohlcData.count) points) with volume data (\(volumeData.count) points)")
+        
+        // Create volume lookup dictionary with fuzzy timestamp matching
+        var volumeByTimestamp: [TimeInterval: Double] = [:]
+        for volumePoint in volumeData {
+            guard volumePoint.count >= 2 else { continue }
+            let timestamp = volumePoint[0] / 1000 // Convert from milliseconds to seconds
+            let volume = volumePoint[1]
+            volumeByTimestamp[timestamp] = volume
+        }
+        
+        // Combine OHLC data with volume using closest timestamp matching
+        let combinedData = ohlcData.map { ohlc -> OHLCData in
+            let ohlcTimestamp = ohlc.timestamp.timeIntervalSince1970
+            
+            // First try exact match
+            if let exactVolume = volumeByTimestamp[ohlcTimestamp] {
+                return OHLCData(
+                    timestamp: ohlc.timestamp,
+                    open: ohlc.open,
+                    high: ohlc.high,
+                    low: ohlc.low,
+                    close: ohlc.close,
+                    volume: exactVolume
+                )
+            }
+            
+            // If no exact match, find closest timestamp within 1 hour (3600 seconds)
+            var closestVolume: Double?
+            var smallestDiff: TimeInterval = 3600 // 1 hour tolerance
+            
+            for (volumeTimestamp, volume) in volumeByTimestamp {
+                let diff = abs(ohlcTimestamp - volumeTimestamp)
+                if diff < smallestDiff {
+                    smallestDiff = diff
+                    closestVolume = volume
+                }
+            }
+            
+            return OHLCData(
+                timestamp: ohlc.timestamp,
+                open: ohlc.open,
+                high: ohlc.high,
+                low: ohlc.low,
+                close: ohlc.close,
+                volume: closestVolume
+            )
+        }
+        
+        let volumeCount = combinedData.compactMap { $0.volume }.count
+        AppLogger.chart("✅ Combined data: \(combinedData.count) OHLC points, \(volumeCount) with volume data")
+        AppLogger.chart("🔊 Sample volumes: \(combinedData.prefix(5).map { $0.volume ?? 0 })")
+        
+        return combinedData
     }
     
     private func performChartDataRequest(for coinId: String, currency: String, days: String) -> AnyPublisher<[Double], NetworkError> {

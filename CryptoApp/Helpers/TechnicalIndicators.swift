@@ -27,7 +27,7 @@ final class TechnicalIndicators {
         var rsiOversold: Double = 30
         
         // Volume
-        var showVolume: Bool = false
+        var showVolume: Bool = true  // Enable volume by default for better UX
         var showVolumeMA: Bool = false
         var volumeMAPeriod: Int = 20
     }

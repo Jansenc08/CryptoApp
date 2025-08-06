@@ -134,3 +134,41 @@ class DateValueFormatter: AxisValueFormatter {
         return dateFormatter.string(from: date)
     }
 }
+
+// MARK: - Volume Formatter for Chart Y-Axis
+
+/**
+ * VolumeFormatter handles the Y-axis volume labels for cryptocurrency volume charts.
+ * 
+ * Key features:
+ * - Automatically abbreviates large volumes (K, M, B for thousands, millions, billions)
+ * - Adjusts precision based on volume magnitude
+ * - Optimized for volume analysis with minimal space usage
+ * - Consistent formatting across different volume ranges
+ */
+class VolumeFormatter: AxisValueFormatter {
+    
+    /**
+     * Formats volume values for Y-axis display with intelligent abbreviation
+     * 
+     * Formatting tiers:
+     * - 1B+ → "1.5B" (1 decimal place)
+     * - 1M+ → "1.2M" (1 decimal place)
+     * - 1K+ → "1.2K" (1 decimal place)
+     * - <1K → "567" (no decimals for small volumes)
+     */
+    func stringForValue(_ value: Double, axis: AxisBase?) -> String {
+        // Handle zero or negative values
+        guard value > 0 else { return "0" }
+        
+        if value >= 1_000_000_000 {
+            return String(format: "%.1fB", value / 1_000_000_000)
+        } else if value >= 1_000_000 {
+            return String(format: "%.1fM", value / 1_000_000)
+        } else if value >= 1_000 {
+            return String(format: "%.1fK", value / 1_000)
+        } else {
+            return String(format: "%.0f", value)
+        }
+    }
+}

@@ -3,7 +3,9 @@ import UIKit
 final class ChartCell: UITableViewCell {
     private let lineChartView = ChartView()
     private let candlestickChartView = CandlestickChartView()
+    private let volumeChartView = VolumeChartView()
     private let containerView = UIView()
+    private let chartsStackView = UIStackView()
     
     // Loading and error state views
     private let loadingView = UIView()
@@ -20,6 +22,10 @@ final class ChartCell: UITableViewCell {
     // Technical Indicators Pending Settings
     private var pendingIndicatorSettings: TechnicalIndicators.IndicatorSettings?
     private var pendingIndicatorTheme: ChartColorTheme?
+    
+    // Volume Settings
+    private var showVolume: Bool = false
+    private var showVolumeMA: Bool = false
     
     // Chart state tracking
     private enum ChartState: Equatable {
@@ -84,24 +90,56 @@ final class ChartCell: UITableViewCell {
             containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
         ])
         
-        // Add both chart views to container
-        containerView.addSubviews(lineChartView, candlestickChartView)
+        // Setup stack view for price chart and volume chart
+        chartsStackView.axis = .vertical
+        chartsStackView.spacing = 8
+        chartsStackView.distribution = .fill
+        chartsStackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        containerView.addSubview(chartsStackView)
+        NSLayoutConstraint.activate([
+            chartsStackView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            chartsStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            chartsStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            chartsStackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
+        ])
+        
+        // Create main chart container (will hold either line or candlestick chart)
+        let mainChartContainer = UIView()
+        mainChartContainer.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add both price chart views to main chart container (only one will be visible at a time)
+        mainChartContainer.addSubviews(lineChartView, candlestickChartView)
         
         lineChartView.translatesAutoresizingMaskIntoConstraints = false
         candlestickChartView.translatesAutoresizingMaskIntoConstraints = false
+        volumeChartView.translatesAutoresizingMaskIntoConstraints = false
         
-        // Both charts fill the container
+        // Both price charts fill the main chart container
         NSLayoutConstraint.activate([
-            lineChartView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            lineChartView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            lineChartView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            lineChartView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            lineChartView.topAnchor.constraint(equalTo: mainChartContainer.topAnchor),
+            lineChartView.bottomAnchor.constraint(equalTo: mainChartContainer.bottomAnchor),
+            lineChartView.leadingAnchor.constraint(equalTo: mainChartContainer.leadingAnchor),
+            lineChartView.trailingAnchor.constraint(equalTo: mainChartContainer.trailingAnchor),
             
-            candlestickChartView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            candlestickChartView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            candlestickChartView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            candlestickChartView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
+            candlestickChartView.topAnchor.constraint(equalTo: mainChartContainer.topAnchor),
+            candlestickChartView.bottomAnchor.constraint(equalTo: mainChartContainer.bottomAnchor),
+            candlestickChartView.leadingAnchor.constraint(equalTo: mainChartContainer.leadingAnchor),
+            candlestickChartView.trailingAnchor.constraint(equalTo: mainChartContainer.trailingAnchor)
         ])
+        
+        // Add main chart container and volume chart to stack view
+        chartsStackView.addArrangedSubview(mainChartContainer)
+        chartsStackView.addArrangedSubview(volumeChartView)
+        
+        // Set flexible height constraints that work with UITableView.automaticDimension
+        NSLayoutConstraint.activate([
+            mainChartContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 250),
+            volumeChartView.heightAnchor.constraint(equalToConstant: 80)
+        ])
+        
+        // Initially hide volume chart
+        volumeChartView.isHidden = true
         
         // Setup loading view
         setupLoadingView()
@@ -351,6 +389,10 @@ final class ChartCell: UITableViewCell {
         if let ohlcData = ohlcData {
             self.currentOHLCData = ohlcData
             if !ohlcData.isEmpty {
+                // Debug: Check volume data availability
+                let volumeCount = ohlcData.compactMap { $0.volume }.count
+                AppLogger.chart("🔊 OHLC Data received: \(ohlcData.count) points, \(volumeCount) with volume data")
+                
                 candlestickChartView.update(ohlcData, range: range)
                 reapplyTechnicalIndicators()
                 applyPendingIndicatorSettings() // Apply any pending settings after data is loaded
@@ -365,6 +407,12 @@ final class ChartCell: UITableViewCell {
                     return
                 }
             }
+        }
+        
+        // Update volume chart ONLY when we have OHLC data (not for line chart points)
+        // Volume data comes with OHLC data, so we only update when ohlcData parameter is provided
+        if hasData && showVolume && !currentOHLCData.isEmpty && ohlcData != nil {
+            updateVolumeData()
         }
         
         // FIXED: Only update state if we actually have data or if we're not in a loading scenario
@@ -399,6 +447,8 @@ final class ChartCell: UITableViewCell {
         let colorTheme = settings["colorTheme"] as? String ?? "classic"
         let lineThickness = settings["lineThickness"] as? Double ?? 0
         let animationSpeed = settings["animationSpeed"] as? Double ?? 0
+        let showVolume = settings["showVolume"] as? Bool ?? false
+        let showVolumeMA = settings["showVolumeMA"] as? Bool ?? false
         
         // Apply all settings in one go using existing methods
         toggleGridLines(gridEnabled)
@@ -414,6 +464,9 @@ final class ChartCell: UITableViewCell {
         }
         
         setAnimationSpeed(animationSpeed)
+        
+        // Apply volume settings to ensure persistence across filter changes
+        updateVolumeSettings(showVolume: showVolume, showVolumeMA: showVolumeMA)
     }
     
     // New method to handle loading state
@@ -507,12 +560,80 @@ extension ChartCell {
     func applyColorTheme(_ theme: ChartColorTheme) {
         lineChartView.applyColorTheme(theme)
         candlestickChartView.applyColorTheme(theme)
+        volumeChartView.applyColorTheme(theme)
     }
     
     func setAnimationSpeed(_ speed: Double) {
         lineChartView.setAnimationSpeed(speed)
         candlestickChartView.setAnimationSpeed(speed)
     }
+    
+    // MARK: - Volume Settings
+    
+    func updateVolumeSettings(showVolume: Bool, showVolumeMA: Bool) {
+        self.showVolume = showVolume
+        self.showVolumeMA = showVolumeMA
+        
+        // Show/hide volume chart based on settings
+        volumeChartView.isHidden = !showVolume
+        
+        // Force layout update
+        chartsStackView.setNeedsLayout()
+        chartsStackView.layoutIfNeeded()
+        self.setNeedsLayout()
+        self.layoutIfNeeded()
+        
+        // Update volume chart settings if volume is enabled
+        if showVolume {
+            let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+            volumeChartView.updateSettings(showVolumeMA: showVolumeMA, volumeMAPeriod: indicatorSettings.volumeMAPeriod)
+            
+            // Apply current color theme to volume chart
+            let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+            if let theme = ChartColorTheme(rawValue: themeRawValue) {
+                volumeChartView.applyColorTheme(theme)
+            }
+            
+            // Note: Volume data will be updated automatically when updateChartData() is called with OHLC data
+            // No need to call updateVolumeData() here to prevent duplicate calls
+        }
+    }
+    
+    private func updateVolumeData() {
+        AppLogger.chart("🔊 updateVolumeData called - showVolume: \(showVolume), OHLC count: \(currentOHLCData.count)")
+        
+        guard showVolume else { 
+            AppLogger.chart("🔊 Volume disabled, skipping data update")
+            return 
+        }
+        guard !currentOHLCData.isEmpty else { 
+            AppLogger.chart("🔊 No OHLC data available for volume chart")
+            return 
+        }
+        
+        let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
+        let theme = ChartColorTheme(rawValue: themeRawValue) ?? .classic
+        
+        AppLogger.chart("🔊 Updating volume chart with \(currentOHLCData.count) data points")
+        AppLogger.chart("🔊 Volume chart frame: \(volumeChartView.frame), isHidden: \(volumeChartView.isHidden)")
+        
+        // Update volume chart immediately - no more debouncing
+        volumeChartView.updateVolume(ohlcData: currentOHLCData, range: currentRange, theme: theme)
+        
+        // Synchronize X-axis with main chart immediately - no async delays
+        let currentMainChart = currentChartType == .line ? lineChartView : candlestickChartView
+        volumeChartView.synchronizeXAxisWith(chartView: currentMainChart)
+        
+        // Force the volume chart to be visible and update its layout
+        volumeChartView.isHidden = false
+        volumeChartView.alpha = 1.0
+        chartsStackView.setNeedsLayout()
+        chartsStackView.layoutIfNeeded()
+        
+        AppLogger.chart("🔊 Volume chart updated - frame: \(volumeChartView.frame), isHidden: \(volumeChartView.isHidden)")
+    }
+    
+
     
     func applyTechnicalIndicators(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme) {
         // TECHNICAL INDICATORS: Only apply to candlestick charts

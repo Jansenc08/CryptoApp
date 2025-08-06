@@ -630,15 +630,15 @@ final class ChartSettingsVC: UIViewController {
     
     @objc private func volumeSwitchChanged() {
         indicatorSettings.showVolume = showVolumeSwitch.isOn
+        saveIndicatorSettings() // Save the settings
         delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
-        delegate?.chartSettingsDidUpdate()
     }
     
     @objc private func volumeSMASwitchChanged() {
         indicatorSettings.showVolumeMA = showVolumeSMASwitch.isOn
         updateVolumeButtons()
+        saveIndicatorSettings() // Save the settings
         delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
-        delegate?.chartSettingsDidUpdate()
     }
     
     @objc private func volumeSMAPeriodTapped() {
@@ -699,8 +699,13 @@ final class ChartSettingsVC: UIViewController {
         animationSpeedSegmentedControl.selectedSegmentIndex = 1 // Fast
         gridLinesSwitch.isOn = true
         
+        // Trading preset enables volume analysis for better trading decisions
+        indicatorSettings.showVolume = true
+        indicatorSettings.showVolumeMA = true
+        indicatorSettings.volumeMAPeriod = 20
+        
         updateAllSettings()
-        showPresetAppliedMessage("Trading View Applied", "Enhanced for detailed analysis")
+        showPresetAppliedMessage("Trading View Applied", "Enhanced for detailed analysis with volume")
     }
     
     private func applySimplePreset() {
@@ -710,6 +715,10 @@ final class ChartSettingsVC: UIViewController {
         lineThicknessSegmentedControl.selectedSegmentIndex = 1 // Normal
         animationSpeedSegmentedControl.selectedSegmentIndex = 2 // Normal
         gridLinesSwitch.isOn = false
+        
+        // Simple preset disables volume for clean view
+        indicatorSettings.showVolume = false
+        indicatorSettings.showVolumeMA = false
         
         updateAllSettings()
         showPresetAppliedMessage("Simple View Applied", "Clean and easy to read")
@@ -722,8 +731,13 @@ final class ChartSettingsVC: UIViewController {
         animationSpeedSegmentedControl.selectedSegmentIndex = 1 // Fast
         gridLinesSwitch.isOn = true
         
+        // Analysis preset enables volume with MA for technical analysis
+        indicatorSettings.showVolume = true
+        indicatorSettings.showVolumeMA = true
+        indicatorSettings.volumeMAPeriod = 14 // Shorter period for analysis
+        
         updateAllSettings()
-        showPresetAppliedMessage("Analysis View Applied", "Raw data for technical analysis")
+        showPresetAppliedMessage("Analysis View Applied", "Raw data with volume for technical analysis")
     }
     
     private func updateAllSettings() {
@@ -745,9 +759,15 @@ final class ChartSettingsVC: UIViewController {
         let selectedSpeed = speeds[animationSpeedSegmentedControl.selectedSegmentIndex]
         UserDefaults.standard.set(selectedSpeed, forKey: "ChartAnimationSpeed")
         
-        // Notify about smoothing changes
+        // Update volume switches from current settings
+        showVolumeSwitch.isOn = indicatorSettings.showVolume
+        showVolumeSMASwitch.isOn = indicatorSettings.showVolumeMA
+        updateVolumeButtons()
+        
+        // Save indicator settings and notify about changes
+        saveIndicatorSettings()
         delegate?.smoothingSettingsChanged(enabled: currentSmoothingEnabled, type: currentSmoothingType)
-        delegate?.chartSettingsDidUpdate()
+        delegate?.volumeSettingsChanged(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
     }
     
     private func showPresetAppliedMessage(_ title: String, _ message: String) {

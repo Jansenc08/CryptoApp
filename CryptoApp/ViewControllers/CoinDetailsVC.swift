@@ -804,23 +804,40 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
 
     
     func volumeSettingsChanged(showVolume: Bool, showVolumeMA: Bool) {
-        // Handle volume display settings
-        // TODO: Implement volume chart integration when ready
-        // This will control the display of volume bars and volume moving average
-        AppLogger.ui("Volume settings changed: showVolume=\(showVolume), showVolumeMA=\(showVolumeMA)")
+        // Update chart cell with new volume settings
+        guard let chartCell = getChartCell() else {
+            return
+        }
+        
+        // Apply volume settings to chart cell
+        chartCell.updateVolumeSettings(showVolume: showVolume, showVolumeMA: showVolumeMA)
+        
+        // If we don't have any data yet, trigger initial data load
+        // This ensures the chart loads data when volume settings are changed on first app load
+        if viewModel.currentChartPoints.isEmpty && viewModel.currentOHLCData.isEmpty {
+            AppLogger.chart("🔊 Volume settings changed but no chart data available - triggering initial load")
+            // Trigger data refresh for current range
+            selectedRange.value = selectedRange.value // This will trigger data loading
+        }
     }
     
     // MARK: - Chart Settings Application
     
     /// Gets current chart settings as a dictionary for atomic updates
     private func getCurrentChartSettings() -> [String: Any] {
+        // Load volume settings to include in atomic updates
+        let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+        
         return [
             "gridEnabled": UserDefaults.standard.bool(forKey: "ChartGridLinesEnabled"),
             "labelsEnabled": UserDefaults.standard.bool(forKey: "ChartPriceLabelsEnabled"),
             "autoScaleEnabled": UserDefaults.standard.bool(forKey: "ChartAutoScaleEnabled"),
             "colorTheme": UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic",
             "lineThickness": UserDefaults.standard.double(forKey: "ChartLineThickness"),
-            "animationSpeed": UserDefaults.standard.double(forKey: "ChartAnimationSpeed")
+            "animationSpeed": UserDefaults.standard.double(forKey: "ChartAnimationSpeed"),
+            // Include volume settings for persistence
+            "showVolume": indicatorSettings.showVolume,
+            "showVolumeMA": indicatorSettings.showVolumeMA
         ]
     }
     
@@ -850,6 +867,10 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         
         let animationSpeed = UserDefaults.standard.double(forKey: "ChartAnimationSpeed")
         chartCell.setAnimationSpeed(animationSpeed)
+        
+        // Apply volume settings
+        let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+        chartCell.updateVolumeSettings(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
     }
     
 
@@ -975,6 +996,10 @@ extension CoinDetailsVC: UITableViewDataSource {
             // ATOMIC: Apply chart settings after configuration to prevent double redraw
             cell.applySettingsAtomically(getCurrentChartSettings())
             
+            // Apply volume settings explicitly
+            let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
+            cell.updateVolumeSettings(showVolume: indicatorSettings.showVolume, showVolumeMA: indicatorSettings.showVolumeMA)
+            
             // Set up retry callback
             cell.onRetryRequested = { [weak self] in
                 self?.handleChartRetry()
@@ -1014,7 +1039,16 @@ extension CoinDetailsVC: UITableViewDelegate {
         case 1: // Segment control section - ensure minimum height for buttons
             return 76
         case 2: // Chart section
-            return 300
+            return 440 // Fixed height for chart section: 250 (main) + 80 (volume) + 110 (spacing/margins/padding)
+        default:
+            return UITableView.automaticDimension
+        }
+    }
+    
+    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+        switch indexPath.section {
+        case 2: // Chart section
+            return 440 // Estimated: 250 (main) + 80 (volume) + 110 (spacing)
         default:
             return UITableView.automaticDimension
         }
