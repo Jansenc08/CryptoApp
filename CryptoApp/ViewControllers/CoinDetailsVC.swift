@@ -56,7 +56,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     }
     
     deinit {
-        AppLogger.ui("CoinDetailsVC deinit - cleaning up resources for \(coin.symbol)")
+        // Clean up resources
         refreshTimer?.invalidate()
         refreshTimer = nil
         cancellables.removeAll()
@@ -139,7 +139,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         
         if isMovingFromParent || isBeingDismissed {
             viewModel.cancelAllRequests()
-            AppLogger.ui("Officially leaving coin details page - cancelled all API calls")
+            // Cancel all API calls
         }
     }
 
@@ -162,7 +162,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             segmentCell.setSelectedRangeSilently(selectedRange.value)
         }
         
-        AppLogger.ui("UI synchronized: range=\(selectedRange.value), chartType=\(selectedChartType.value)")
+        // UI synchronized
     }
     
     // MARK: - Setup
@@ -303,12 +303,12 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 self.updateChartCellWithOHLC(newOHLCData)
                 // Update StatsCell when OHLC data becomes available for Low/High section
                 if !newOHLCData.isEmpty {
-                    AppLogger.data("[Low/High] OHLC data loaded: \(newOHLCData.count) candles - refreshing StatsCell")
+                    // OHLC data loaded, refresh stats
                     DispatchQueue.main.async {
                         self.updateStatsCell()
                     }
                 } else {
-                    AppLogger.data("[Low/High] OHLC data is empty - Low/High section won't show", level: .warning)
+                    // No OHLC data available
                 }
             }
             .store(in: &cancellables)
@@ -393,7 +393,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // MARK: - Retry Handling
     
     private func handleChartRetry() {
-        AppLogger.ui("Chart retry requested by user")
+        // Chart retry requested
         
         // Trigger retry in the view model
         viewModel.retryAllChartData()
@@ -416,11 +416,11 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 
                 // Don't fetch data if this is a UI sync from landscape
                 guard !self.isUpdatingFromLandscape else {
-                    AppLogger.ui("Skipping data fetch - updating from landscape sync")
+                    // Skip data fetch during landscape sync
                     return
                 }
                 
-                AppLogger.ui("Filter change executing: \(range)")
+                // Execute filter change
                 self.viewModel.fetchChartData(for: range)
             }
             .store(in: &cancellables)
@@ -437,7 +437,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                     segmentCell.setSelectedRangeSilently(range)
                 }
                 
-                AppLogger.ui("Filter UI updated to: \(range)")
+                // Filter UI updated
             }
             .store(in: &cancellables)
         
@@ -448,7 +448,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             .sink { [weak self] chartType in
                 guard let self = self else { return }
                 
-                AppLogger.ui("Chart type changed to: \(chartType)")
+                // Chart type changed
                 
                 // Update ViewModel (this uses cached data, doesn't fetch)
                 self.viewModel.setChartType(chartType, for: self.selectedRange.value)
@@ -490,11 +490,11 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     
     private func performSmartRefresh() {
         guard isViewVisible && !isUserInteracting else {
-            AppLogger.performance("Skipping auto-refresh: visible=\(isViewVisible), interacting=\(isUserInteracting)")
+            // Skip auto-refresh while user is interacting
             return
         }
         
-        AppLogger.performance("Performing smart auto-refresh")
+                    // Perform smart auto-refresh
         
         // Refresh chart data
         viewModel.smartAutoRefresh(for: selectedRange.value)
@@ -586,7 +586,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         }
         lastKnownPrice = coin.priceString
         
-        AppLogger.price("CoinDetails: Updated InfoCell with fresh data for \(coin.symbol)")
+        // InfoCell updated with fresh data
     }
     
     // MARK: - Price Change Overview Updates
@@ -603,7 +603,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         // Update cell with fresh data
         priceChangeCell.configure(with: coin)
         
-        AppLogger.price("CoinDetails: Updated PriceChangeOverviewCell with fresh data for \(coin.symbol)")
+        // PriceChangeOverviewCell updated
     }
 
     private func animatePriceChange(_ priceChange: PriceChangeIndicator) {
@@ -626,7 +626,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         
         infoCell.updatePriceChangeIndicator(priceChange: signedPriceChange, percentageChange: signedPercentageChange)
         
-        AppLogger.price("CoinDetails: Animated price change - \(priceChange.direction) by $\(String(format: "%.2f", signedPriceChange))")
+        // Animated price change
     }
     
     // MARK: - Watchlist Management
@@ -635,14 +635,14 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         if isNowInWatchlist {
             // Add to watchlist
             watchlistManager.addToWatchlist(coin, logoURL: nil)
-            AppLogger.ui("Added \(coin.symbol) to watchlist")
+            // Added to watchlist
             
             // Show success feedback
             showWatchlistFeedback(message: "Added to Watchlist", isPositive: true)
         } else {
             // Remove from watchlist
             watchlistManager.removeFromWatchlist(coinId: coin.id)
-            AppLogger.ui("Removed \(coin.symbol) from watchlist")
+            // Removed from watchlist
             
             // Show feedback
             showWatchlistFeedback(message: "Removed from Watchlist", isPositive: false)
@@ -714,7 +714,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         guard isViewLoaded,
               view.window != nil,
               presentedViewController == nil else {
-            AppLogger.ui("Skipping error alert - view not in hierarchy or modal already presented", level: .warning)
+            // Skip error alert - view not ready
             return
         }
         
@@ -743,25 +743,25 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         landscapeVC.onStateChanged = { [weak self] newRange, newChartType in
             guard let self = self else { return }
             
-            AppLogger.ui("Synchronizing state from landscape: range=\(newRange), chartType=\(newChartType)")
+            // Synchronize state from landscape
             
             // Simple state synchronization
             self.isUpdatingFromLandscape = true
             
             // Update state immediately
             if self.selectedRange.value != newRange {
-                AppLogger.ui("Range changed: \(self.selectedRange.value) → \(newRange)")
+                // Range changed
                 self.selectedRange.send(newRange)
             }
             
             if self.selectedChartType.value != newChartType {
-                AppLogger.ui("Chart type changed: \(self.selectedChartType.value) → \(newChartType)")
+                // Chart type changed
                 self.selectedChartType.send(newChartType)
             }
             
             // Clear flag
             self.isUpdatingFromLandscape = false
-            AppLogger.ui("Landscape sync completed")
+            // Landscape sync completed
         }
         
         landscapeVC.modalPresentationStyle = .fullScreen
@@ -794,8 +794,8 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         let theme = ChartColorTheme(rawValue: themeRawValue) ?? .classic
         
         // DEBUG: Log current chart type and settings
-        AppLogger.ui("Applying technical indicators - Chart type: \(selectedChartType.value.rawValue)")
-        AppLogger.ui("Settings - SMA: \(settings.showSMA), EMA: \(settings.showEMA), RSI: \(settings.showRSI)")
+        // Apply technical indicators
+
         
         // Apply indicators using the public method
         chartCell.applyTechnicalIndicators(settings, theme: theme)
@@ -815,7 +815,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         // If we don't have any data yet, trigger initial data load
         // This ensures the chart loads data when volume settings are changed on first app load
         if viewModel.currentChartPoints.isEmpty && viewModel.currentOHLCData.isEmpty {
-            AppLogger.chart("🔊 Volume settings changed but no chart data available - triggering initial load")
+            // Trigger initial load when volume settings changed
             // Trigger data refresh for current range
             selectedRange.value = selectedRange.value // This will trigger data loading
         }
@@ -960,11 +960,11 @@ extension CoinDetailsVC: UITableViewDataSource {
                     guard let self = self else { return }
                     
                     guard !self.isUpdatingFromLandscape else {
-                        AppLogger.ui("Ignoring segment selection - updating from landscape")
+                        // Ignore segment selection during landscape update
                         return
                     }
                     
-                    AppLogger.ui("Manual filter selection: \(range)")
+                    // Manual filter selection
                     self.selectedRange.send(range)
                 }
                 
@@ -1017,7 +1017,7 @@ extension CoinDetailsVC: UITableViewDataSource {
         case 4: // Stats section
             let cell = tableView.dequeueReusableCell(withIdentifier: "StatsCell", for: indexPath) as! StatsCell
             cell.configure(viewModel.currentStats, selectedRange: viewModel.currentSelectedStatsRange) { [weak self] selectedRange in
-                AppLogger.ui("Selected stats filter: \(selectedRange)")
+                // Stats filter selected
                 self?.viewModel.updateStatsRange(selectedRange)
             }
             cell.selectionStyle = .none

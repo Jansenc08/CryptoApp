@@ -93,7 +93,7 @@ final class ChartView: LineChartView {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
         
-        AppLogger.chart("Chart zoom reset")
+        // Chart zoom reset
     }
     
     @objc private func showZoomHint(_ gesture: UILongPressGestureRecognizer) {
@@ -159,7 +159,7 @@ final class ChartView: LineChartView {
         // Apply the zoom
         setVisibleXRangeMaximum(optimalVisiblePoints)
         
-        AppLogger.chart("Line chart initial zoom: showing \(Int(optimalVisiblePoints)) of \(dataCount) points")
+        // Set initial zoom level
     }
     
     // MARK: - Layout
@@ -348,7 +348,7 @@ extension ChartView: ChartViewDelegate {
         }
         
         // Log zoom level for debugging
-        AppLogger.chart("Line chart zoom: X=\(String(format: "%.2f", scaleX)), Y=\(String(format: "%.2f", scaleY))")
+        // Chart zoom level changed
     }
     
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {
@@ -398,7 +398,8 @@ extension ChartView {
     
     func toggleGridLines(_ enabled: Bool) {
         rightAxis.drawGridLinesEnabled = enabled
-        xAxis.drawGridLinesEnabled = enabled
+        // Keep X-axis grid lines disabled (vertical lines removed)
+        xAxis.drawGridLinesEnabled = false
         // Grid lines don't require data set change, just redraw
         setNeedsDisplay()
     }

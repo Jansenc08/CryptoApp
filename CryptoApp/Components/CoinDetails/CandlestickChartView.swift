@@ -68,7 +68,7 @@ final class CandlestickChartView: CombinedChartView {
         xAxis.labelPosition = .bottom
         xAxis.labelFont = .systemFont(ofSize: 9)
         xAxis.labelTextColor = .tertiaryLabel
-        xAxis.drawGridLinesEnabled = true
+        xAxis.drawGridLinesEnabled = false  // Remove vertical grid lines
         xAxis.gridColor = .systemGray5
         xAxis.gridLineWidth = 0.5
         
@@ -122,7 +122,7 @@ final class CandlestickChartView: CombinedChartView {
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
         
-        AppLogger.chart("Candlestick chart zoom reset with consistent Y-axis")
+        // Chart zoom reset
     }
     
     @objc private func showZoomHint(_ gesture: UILongPressGestureRecognizer) {
@@ -219,7 +219,7 @@ final class CandlestickChartView: CombinedChartView {
         setVisibleXRangeMaximum(optimalVisibleCandles)
         setVisibleXRangeMinimum(optimalVisibleCandles / 4.0) // Allow zoom in to show 1/4 of optimal
         
-        AppLogger.chart("Candlestick initial zoom: showing \(Int(optimalVisibleCandles)) of \(dataCount) candles")
+        // Set initial zoom level
     }
     
     // MARK: - Layout
@@ -330,7 +330,7 @@ final class CandlestickChartView: CombinedChartView {
         // Set intelligent initial zoom based on range and data
         setInitialZoom()
         
-        AppLogger.chart("Candlestick chart updated with \(allOHLCData.count) candles")
+        // Chart updated with candles
         
         // Scroll to the latest entry (using index-based X values)
         moveViewToX(Double(entries.count - 1))
@@ -409,7 +409,7 @@ extension CandlestickChartView: ChartViewDelegate {
         // Log selection for debugging
         if let candleEntry = entry as? CandleChartDataEntry {
             let isBullish = candleEntry.close >= candleEntry.open
-            AppLogger.chart("Candlestick selected: \(isBullish ? "📈" : "📉") O:\(String(format: "%.0f", candleEntry.open)) C:\(String(format: "%.0f", candleEntry.close))")
+            // Candlestick selected
         }
     }
     
@@ -428,7 +428,7 @@ extension CandlestickChartView: ChartViewDelegate {
         
         // Calculate visible candles for user feedback
         let visibleCandles = Int(highestVisibleX - lowestVisibleX) + 1
-        AppLogger.chart("Candlestick zoom: \(visibleCandles) candles visible (X-axis only)")
+        // Zoom level changed
     }
     
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {
@@ -479,7 +479,8 @@ extension CandlestickChartView {
     
     func toggleGridLines(_ enabled: Bool) {
         rightAxis.drawGridLinesEnabled = enabled
-        xAxis.drawGridLinesEnabled = enabled
+        // Keep X-axis grid lines disabled (vertical lines removed)
+        xAxis.drawGridLinesEnabled = false
         // Grid lines don't require data set change, just redraw
         setNeedsDisplay()
     }
@@ -536,16 +537,16 @@ extension CandlestickChartView {
     /// Updates chart with technical indicators overlays
     func updateWithTechnicalIndicators(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme = .classic) {
         guard !allOHLCData.isEmpty else { 
-            AppLogger.ui("❌ Cannot apply technical indicators - no OHLC data available")
+            // Cannot apply technical indicators - no OHLC data
             return 
         }
         
-        AppLogger.ui("🔧 Applying technical indicators to chart with \(allOHLCData.count) data points")
+        // Apply technical indicators
         
         // DEBUG: Log price range for normalization
         let allPrices = allOHLCData.flatMap { [$0.open, $0.high, $0.low, $0.close] }
         if let minPrice = allPrices.min(), let maxPrice = allPrices.max() {
-            AppLogger.ui("📊 Price range: $\(String(format: "%.2f", minPrice)) - $\(String(format: "%.2f", maxPrice))")
+            // Price range calculated
         }
         
         // Extract closing prices for indicator calculations
@@ -553,7 +554,7 @@ extension CandlestickChartView {
         
         // Get existing candlestick data - handle both CombinedChartData and direct access
         guard let existingData = data else { 
-            AppLogger.ui("❌ No existing chart data found")
+            // No existing chart data found
             return 
         }
         
@@ -566,12 +567,12 @@ extension CandlestickChartView {
         } else if let directDataSet = existingData.dataSets.first as? CandleChartDataSet {
             candlestickDataSet = directDataSet
         } else {
-            AppLogger.ui("❌ Cannot extract candlestick data set")
+            // Cannot extract candlestick data set
             return
         }
         
         guard let candleDataSet = candlestickDataSet else {
-            AppLogger.ui("❌ No valid candlestick data set found")
+            // No valid candlestick data set found
             return
         }
         
@@ -607,9 +608,9 @@ extension CandlestickChartView {
         // FIXED: Now using CombinedChartView - we can properly display technical indicators!
         if !lineDataSets.isEmpty {
             combinedData.lineData = LineChartData(dataSets: lineDataSets)
-            AppLogger.ui("✅ Applied \(lineDataSets.count) technical indicators to candlestick chart")
+            // Technical indicators applied
         } else {
-            AppLogger.ui("No technical indicators to display")
+            // No technical indicators to display
         }
         
         // FORCE CHART REFRESH: Ensure everything happens on main thread
@@ -634,7 +635,7 @@ extension CandlestickChartView {
                 self.setVisibleXRangeMaximum(Double(min(20, data.entryCount)))
             }
             
-            AppLogger.ui("🔄 Chart refreshed with technical indicators - data applied on main thread")
+            // Chart refreshed with technical indicators
         }
     }
     
@@ -697,7 +698,7 @@ extension CandlestickChartView {
         // DEBUG: Log RSI calculation details
         let validRSIValues = rsiResult.values.compactMap { $0 }
         if let minRSI = validRSIValues.min(), let maxRSI = validRSIValues.max() {
-            AppLogger.ui("📈 RSI range: \(String(format: "%.1f", minRSI)) - \(String(format: "%.1f", maxRSI))")
+            // RSI range calculated
         }
         
         let entries = rsiResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in

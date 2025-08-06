@@ -219,7 +219,7 @@ final class ChartCell: UITableViewCell {
     }
     
     private func handleRetryTapped() {
-        AppLogger.ui("Chart retry button tapped")
+        // Chart retry button tapped
         retryButton.showLoading()
         onRetryRequested?()
         
@@ -257,7 +257,7 @@ final class ChartCell: UITableViewCell {
             let showLineChart = (currentChartType == .line)
             lineChartView.isHidden = !showLineChart
             candlestickChartView.isHidden = showLineChart
-            print("📊 Chart cell ready for data - following SharedCoinDataManager pattern")
+            // Chart cell ready for data
             
         case .loading:
             // Show chart skeleton, hide charts and error
@@ -267,7 +267,7 @@ final class ChartCell: UITableViewCell {
             candlestickChartView.isHidden = true
             // Show chart skeleton instead of activity indicator
             _ = SkeletonLoadingManager.showChartSkeleton(in: loadingView)
-            print("📊 Chart cell showing skeleton loading state")
+            // Show skeleton loading state
             
         case .data:
             // Show appropriate chart based on type, hide loading and error
@@ -278,7 +278,7 @@ final class ChartCell: UITableViewCell {
             let showLineChart = (currentChartType == .line)
             lineChartView.isHidden = !showLineChart
             candlestickChartView.isHidden = showLineChart
-            print("📊 Chart cell showing data state for \(currentChartType.rawValue) chart")
+            // Show data state
             
         case .error(let retryInfo):
             // Show retryable error with retry button
@@ -290,7 +290,7 @@ final class ChartCell: UITableViewCell {
             errorLabel.text = retryInfo.message
             retryButton.isHidden = false
             retryButton.setTitle("Retry")
-            print("📊 Chart cell showing retryable error: \(retryInfo.message)")
+            // Show retryable error state
             
         case .nonRetryableError(let message):
             // Show non-retryable error without retry button
@@ -301,7 +301,7 @@ final class ChartCell: UITableViewCell {
             candlestickChartView.isHidden = true
             errorLabel.text = message
             retryButton.isHidden = true
-            print("📊 Chart cell showing non-retryable error: \(message)")
+            // Show non-retryable error state
         }
     }
 
@@ -340,7 +340,7 @@ final class ChartCell: UITableViewCell {
                 reapplyTechnicalIndicators()
                 // Update volume chart with new OHLC data
                 if showVolume {
-                    AppLogger.chart("🔧 FIX: Updating volume chart with \(ohlcData.count) OHLC points for range: \(range)")
+                    // Update volume chart with new OHLC data
                     updateVolumeData()
                 }
             } else {
@@ -371,11 +371,11 @@ final class ChartCell: UITableViewCell {
             if chartType == .line && previousChartType == .candlestick {
                 // Clear technical indicators when switching FROM candlestick TO line chart
                 lineChartView.clearTechnicalIndicators()
-                AppLogger.ui("Cleared technical indicators when switching to line chart")
+                // Clear technical indicators when switching to line chart
             } else if chartType == .candlestick {
                 // Reapply technical indicators when switching TO candlestick chart
                 reapplyTechnicalIndicators()
-                AppLogger.ui("Reapplied technical indicators on candlestick chart")
+                // Reapply technical indicators on candlestick chart
             }
         }
     }
@@ -398,18 +398,17 @@ final class ChartCell: UITableViewCell {
         if let ohlcData = ohlcData {
             self.currentOHLCData = ohlcData
             if !ohlcData.isEmpty {
-                // Debug: Check volume data availability
                 let volumeCount = ohlcData.compactMap { $0.volume }.count
-                AppLogger.chart("🔊 OHLC Data received: \(ohlcData.count) points, \(volumeCount) with volume data")
+                // Process OHLC data
                 
                 candlestickChartView.update(ohlcData, range: range)
                 reapplyTechnicalIndicators()
                 applyPendingIndicatorSettings() // Apply any pending settings after data is loaded
                 hasData = true
             } else {
-                // FIXED: Only clear and show loading if we're actually in candlestick mode and expecting data
+                // Only clear and show loading if we're in candlestick mode
                 if currentChartType == .candlestick && points == nil {
-                    AppLogger.chart("Empty OHLC data - clearing candlestick chart for \(range)")
+                    // Clear candlestick chart for empty data
                     candlestickChartView.clear() // Clear the candlestick display
                     currentState = .loading // Show loading when candlestick data is cleared
                     updateViewsForState()
@@ -424,16 +423,16 @@ final class ChartCell: UITableViewCell {
             updateVolumeData()
         }
         
-        // FIXED: Only update state if we actually have data or if we're not in a loading scenario
+        // Update state when we have data
         if hasData {
             currentState = .data
             updateViewsForState()
         } else if ohlcData != nil && ohlcData!.isEmpty && currentChartType == .line {
             // If we received empty OHLC data but we're in line mode, don't show loading
-            AppLogger.chart("Ignoring empty OHLC data - in line chart mode")
+            // Ignore empty OHLC data in line chart mode
         }
         
-        AppLogger.chart("Updated chart: \(currentChartType) | Range: \(range)")
+        // Chart updated
     }
     
     // ATOMIC UPDATE: Combines chart data update + settings application to prevent flashing
@@ -484,7 +483,7 @@ final class ChartCell: UITableViewCell {
             currentState = .loading
             updateViewsForState()
         }
-        // Note: We don't set .data state here since that should only happen when we actually receive data
+        // Data state is set when data is actually received
     }
     
 
@@ -602,28 +601,28 @@ extension ChartCell {
                 volumeChartView.applyColorTheme(theme)
             }
             
-            // Note: Volume data will be updated automatically when updateChartData() is called with OHLC data
+            // Volume data updates with OHLC data
             // No need to call updateVolumeData() here to prevent duplicate calls
         }
     }
     
     private func updateVolumeData() {
-        AppLogger.chart("🔊 updateVolumeData called - showVolume: \(showVolume), OHLC count: \(currentOHLCData.count)")
+        // Update volume data
         
         guard showVolume else { 
-            AppLogger.chart("🔊 Volume disabled, skipping data update")
+            // Volume disabled, skip update
             return 
         }
         guard !currentOHLCData.isEmpty else { 
-            AppLogger.chart("🔊 No OHLC data available for volume chart")
+            // No OHLC data available for volume chart
             return 
         }
         
         let themeRawValue = UserDefaults.standard.string(forKey: "ChartColorTheme") ?? "classic"
         let theme = ChartColorTheme(rawValue: themeRawValue) ?? .classic
         
-        AppLogger.chart("🔊 Updating volume chart with \(currentOHLCData.count) data points")
-        AppLogger.chart("🔊 Volume chart frame: \(volumeChartView.frame), isHidden: \(volumeChartView.isHidden)")
+        // Update volume chart
+        // Volume chart layout updated
         
         // Update volume chart immediately - no more debouncing
         volumeChartView.updateVolume(ohlcData: currentOHLCData, range: currentRange, theme: theme)
@@ -638,7 +637,7 @@ extension ChartCell {
         chartsStackView.setNeedsLayout()
         chartsStackView.layoutIfNeeded()
         
-        AppLogger.chart("🔊 Volume chart updated - frame: \(volumeChartView.frame), isHidden: \(volumeChartView.isHidden)")
+        // Volume chart update complete
     }
     
 
@@ -651,18 +650,18 @@ extension ChartCell {
             // DO NOT apply technical indicators to line charts
             // Clear any existing indicators from line chart
             lineChartView.clearTechnicalIndicators()
-            AppLogger.ui("Technical indicators not supported on line chart - use candlestick view")
+            // Technical indicators only supported on candlestick charts
             return
         case .candlestick:
             // ONLY CANDLESTICK: Apply technical indicators where they belong
-            AppLogger.ui("Applying technical indicators to candlestick chart...")
-            AppLogger.ui("OHLC data count: \(currentOHLCData.count)")
-            AppLogger.ui("Current state: \(currentState)")
-            AppLogger.ui("Settings - SMA: \(settings.showSMA), EMA: \(settings.showEMA), RSI: \(settings.showRSI)")
+            // Apply technical indicators to candlestick chart
+    
+    
+    
             
             // ENSURE DATA AVAILABILITY: Only apply if we have data
             if currentOHLCData.isEmpty {
-                AppLogger.ui("⚠️ No OHLC data available - storing settings for later application")
+                // Store settings for later application
                 // Store the settings for when data becomes available
                 storePendingIndicatorSettings(settings, theme: theme)
                 return
@@ -671,7 +670,7 @@ extension ChartCell {
             // Apply indicators - the chart will handle its own refresh
             candlestickChartView.updateWithTechnicalIndicators(settings, theme: theme)
             
-            AppLogger.ui("✅ Finished applying technical indicators to candlestick chart")
+            // Technical indicators applied
         }
     }
     
@@ -680,7 +679,7 @@ extension ChartCell {
     private func storePendingIndicatorSettings(_ settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme) {
         pendingIndicatorSettings = settings
         pendingIndicatorTheme = theme
-        AppLogger.ui("📝 Stored pending technical indicator settings")
+        // Pending settings stored
     }
     
     private func applyPendingIndicatorSettings() {
@@ -691,7 +690,7 @@ extension ChartCell {
             return
         }
         
-        AppLogger.ui("🔄 Applying pending technical indicator settings")
+                    // Apply pending settings
         candlestickChartView.updateWithTechnicalIndicators(settings, theme: theme)
         
         // Clear pending settings after successful application
@@ -706,7 +705,7 @@ extension ChartCell {
     private func reapplyTechnicalIndicators() {
         // Technical indicators only work on candlestick charts
         guard currentChartType == .candlestick else {
-            AppLogger.ui("Skipping technical indicators reapply - not on candlestick chart")
+            // Skip technical indicators for non-candlestick charts
             return
         }
         
@@ -727,6 +726,6 @@ extension ChartCell {
         // Apply indicators to the candlestick chart only
         applyTechnicalIndicators(indicatorSettings, theme: theme)
         
-        AppLogger.ui("🔄 Reapplied technical indicators after data update")
+                    // Technical indicators reapplied
     }
 }
