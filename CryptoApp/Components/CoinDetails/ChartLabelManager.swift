@@ -211,9 +211,14 @@ class ChartLabelManager {
         settings: TechnicalIndicators.IndicatorSettings,
         theme: ChartColorTheme
     ) {
+        // Cache values to avoid duplicate calls
+        var smaValue: Double?
+        var emaValue: Double?
+        var rsiValue: Double?
+        
         // Update SMA at position
         if let smaDataSet = smaDataSet, settings.showSMA {
-            let smaValue = getValueAtIndex(xIndex, from: smaDataSet)
+            smaValue = getValueAtIndex(xIndex, from: smaDataSet)
             let smaColor = TechnicalIndicators.getIndicatorColor(for: "sma", theme: theme)
             updateSMALabel(value: smaValue, period: settings.smaPeriod, color: smaColor, isVisible: true)
         } else {
@@ -222,7 +227,7 @@ class ChartLabelManager {
         
         // Update EMA at position
         if let emaDataSet = emaDataSet, settings.showEMA {
-            let emaValue = getValueAtIndex(xIndex, from: emaDataSet)
+            emaValue = getValueAtIndex(xIndex, from: emaDataSet)
             let emaColor = TechnicalIndicators.getIndicatorColor(for: "ema", theme: theme)
             updateEMALabel(value: emaValue, period: settings.emaPeriod, color: emaColor, isVisible: true)
         } else {
@@ -231,23 +236,79 @@ class ChartLabelManager {
         
         // Update RSI at position
         if let rsiResult = rsiResult, settings.showRSI {
-            let rsiValue = getRSIValueAtIndex(xIndex, from: rsiResult)
+            rsiValue = getRSIValueAtIndex(xIndex, from: rsiResult)
             updateRSILabel(value: rsiValue, period: settings.rsiPeriod, isVisible: true)
         } else {
             rsiLabel?.isHidden = true
         }
+        
+        // Summary of what's being monitored (using cached values)
+        print("📊 SUMMARY for Index \(xIndex):")
+        if settings.showSMA {
+            let smaText = smaValue != nil ? String(format: "%.2f", smaValue!) : "N/A"
+            print("   • SMA(\(settings.smaPeriod)): $\(smaText)")
+        }
+        if settings.showEMA {
+            let emaText = emaValue != nil ? String(format: "%.2f", emaValue!) : "N/A"
+            print("   • EMA(\(settings.emaPeriod)): $\(emaText)")
+        }
+        if settings.showRSI {
+            let rsiText = rsiValue != nil ? String(format: "%.2f", rsiValue!) : "N/A"
+            print("   • RSI(\(settings.rsiPeriod)): \(rsiText)")
+        }
+        print("────────────────────────────────────────")
     }
     
-    /// Gets value from dataset at specific index
+    /// Gets value from dataset at specific index, accounting for dataset offset
     private func getValueAtIndex(_ index: Int, from dataSet: LineChartDataSet) -> Double? {
-        guard index >= 0 && index < dataSet.entries.count else { return nil }
-        return dataSet.entries[index].y
+        // For SMA/EMA datasets that start later due to warm-up period,
+        // we need to find the corresponding entry by matching x values (timestamps)
+        
+        guard !dataSet.entries.isEmpty else { 
+            print("⚠️ Dataset is empty")
+            return nil 
+        }
+        
+        // If index is within bounds, use direct indexing
+        if index >= 0 && index < dataSet.entries.count {
+            let entry = dataSet.entries[index]
+            let value = entry.y
+            print("🎯 Direct: Retrieved \(String(format: "%.2f", value)) at index \(index) (x: \(entry.x)) from dataset with \(dataSet.entries.count) entries")
+            return value
+        }
+        
+        // Otherwise, find the entry with the closest x value to the target index
+        let targetX = Double(index)
+        var closestEntry: ChartDataEntry?
+        var closestDistance = Double.infinity
+        
+        for entry in dataSet.entries {
+            let distance = abs(entry.x - targetX)
+            if distance < closestDistance {
+                closestDistance = distance
+                closestEntry = entry
+            }
+        }
+        
+        if let entry = closestEntry, closestDistance <= 1.0 { // Allow 1 unit tolerance
+            print("🎯 Matched: Retrieved \(String(format: "%.2f", entry.y)) for target index \(index) (actual x: \(entry.x), distance: \(String(format: "%.1f", closestDistance))) from dataset with \(dataSet.entries.count) entries")
+            return entry.y
+        }
+        
+        print("⚠️ No matching entry found for index \(index) in dataset with \(dataSet.entries.count) entries")
+        return nil
     }
     
     /// Gets RSI value at specific index
     private func getRSIValueAtIndex(_ index: Int, from rsiResult: TechnicalIndicators.RSIResult) -> Double? {
-        guard index >= 0 && index < rsiResult.values.count else { return nil }
-        return rsiResult.values[index]
+        guard index >= 0 && index < rsiResult.values.count else { 
+            print("⚠️ RSI index \(index) out of bounds for RSI with \(rsiResult.values.count) values")
+            return nil 
+        }
+        let value = rsiResult.values[index]
+        let formattedValue = value != nil ? String(format: "%.2f", value!) : "nil"
+        print("🎯 RSI: Retrieved \(formattedValue) at index \(index) from RSI with \(rsiResult.values.count) values")
+        return value
     }
     
     // MARK: - Private Helpers

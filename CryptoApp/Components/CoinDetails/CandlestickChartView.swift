@@ -36,6 +36,16 @@ final class CandlestickChartView: CombinedChartView {
     private var currentTechnicalSettings: TechnicalIndicators.IndicatorSettings?
     private var currentTheme: ChartColorTheme?
     
+    // Throttling for smooth scrolling
+    private var updateTimer: Timer?
+    
+    // Viewport monitoring for scroll-based updates
+    private var lastVisibleX: Double = 0
+    private var viewportMonitorTimer: Timer?
+    
+    // Visual indicator for monitored candlestick
+    private var monitoringIndicatorView: UIView?
+    
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
     
@@ -449,6 +459,177 @@ final class CandlestickChartView: CombinedChartView {
             theme: theme
         )
     }
+    
+    /// Updates indicator values based on the current visible range (CoinMarketCap style)
+    private func updateValuesForVisibleRange() {
+        // Throttle updates to avoid excessive calls during scrolling
+        updateTimer?.invalidate()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] timer in
+            timer.invalidate() // Ensure timer is invalidated
+            self?.performVisibleRangeUpdate()
+        }
+    }
+    
+    private func performVisibleRangeUpdate() {
+        guard let labelManager = labelManager,
+              let settings = currentTechnicalSettings,
+              let theme = currentTheme,
+              !allOHLCData.isEmpty else { return }
+        
+        // Get the rightmost visible point (most recent data in view)
+        let rightmostVisibleX = highestVisibleX
+        
+        // Convert to index, ensuring it's within bounds
+        let targetIndex = min(max(0, Int(rightmostVisibleX)), allOHLCData.count - 1)
+        
+        // Show which candlestick is being monitored
+        if targetIndex < allOHLCData.count {
+            let monitoredCandle = allOHLCData[targetIndex]
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM dd, HH:mm"
+            
+            print("🎯 MONITORING: Index \(targetIndex) | \(formatter.string(from: monitoredCandle.timestamp)) | O:\(String(format: "%.2f", monitoredCandle.open)) H:\(String(format: "%.2f", monitoredCandle.high)) L:\(String(format: "%.2f", monitoredCandle.low)) C:\(String(format: "%.2f", monitoredCandle.close))")
+            
+            // Visual indicator removed per user request - too distracting
+        }
+        
+        // Update labels with values at this position
+        labelManager.updateLabelsAtPosition(
+            xIndex: targetIndex,
+            smaDataSet: currentSMADataSet,
+            emaDataSet: currentEMADataSet,
+            rsiResult: currentRSIResult,
+            settings: settings,
+            theme: theme
+        )
+    }
+    
+    // MARK: - View Lifecycle
+    
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil {
+            // View is being removed from window, stop monitoring
+            stopViewportMonitoring()
+            updateTimer?.invalidate()
+            updateTimer = nil
+        }
+    }
+    
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            // Ensure cleanup when view is removed from window
+            stopViewportMonitoring()
+            updateTimer?.invalidate()
+            updateTimer = nil
+        }
+    }
+    
+    // MARK: - Viewport Monitoring for Scroll-Based Updates
+    
+    /// Starts monitoring viewport changes for automatic value updates
+    private func startViewportMonitoring() {
+        stopViewportMonitoring()
+        lastVisibleX = highestVisibleX
+        
+        // Only start monitoring if view is in window hierarchy
+        guard window != nil else { return }
+        
+        // print("🚀 CandlestickChart: Starting viewport monitoring from position \(lastVisibleX)")
+        
+        viewportMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+            guard let self = self, self.window != nil else {
+                timer.invalidate()
+                return
+            }
+            self.checkViewportChanges()
+        }
+    }
+    
+    /// Stops viewport monitoring
+    private func stopViewportMonitoring() {
+        viewportMonitorTimer?.invalidate()
+        viewportMonitorTimer = nil
+    }
+    
+    /// Checks if viewport has changed and updates values accordingly
+    private func checkViewportChanges() {
+        let currentVisibleX = highestVisibleX
+        
+        // Check if viewport has changed significantly (more than 0.5 data points)
+        if abs(currentVisibleX - lastVisibleX) > 0.5 {
+            lastVisibleX = currentVisibleX
+            updateValuesForVisibleRange()
+        }
+    }
+    
+    // MARK: - Visual Monitoring Indicator
+    
+    /// Shows a visual indicator on the candlestick being monitored
+    private func showMonitoringIndicator(at index: Int) {
+        guard index < allOHLCData.count else { return }
+        
+        // Remove existing indicator
+        monitoringIndicatorView?.removeFromSuperview()
+        
+        // Create new indicator
+        let indicator = UIView()
+        indicator.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.3)
+        indicator.layer.borderColor = UIColor.systemBlue.cgColor
+        indicator.layer.borderWidth = 2.0
+        indicator.layer.cornerRadius = 4.0
+        indicator.isUserInteractionEnabled = false
+        
+        // Add to chart
+        addSubview(indicator)
+        monitoringIndicatorView = indicator
+        
+        // Position indicator at the target candlestick
+        positionMonitoringIndicator(at: index)
+    }
+    
+    /// Positions the monitoring indicator at the specified candlestick index
+    private func positionMonitoringIndicator(at index: Int) {
+        guard let indicator = monitoringIndicatorView,
+              index < allOHLCData.count else { return }
+        
+        // Get chart dimensions
+        let chartBounds = bounds
+        let contentRect = contentRect
+        
+        // Calculate position
+        let totalDataPoints = Double(allOHLCData.count)
+        let xPosition = contentRect.minX + (Double(index) / totalDataPoints) * contentRect.width
+        
+        // Set indicator frame (vertical line spanning the chart height)
+        let indicatorWidth: CGFloat = 3.0
+        indicator.frame = CGRect(
+            x: xPosition - indicatorWidth/2,
+            y: contentRect.minY,
+            width: indicatorWidth,
+            height: contentRect.height
+        )
+    }
+    
+    deinit {
+        // Clean up all timers and resources
+        stopViewportMonitoring()
+        updateTimer?.invalidate()
+        updateTimer = nil
+        
+        // Clean up visual indicator
+        monitoringIndicatorView?.removeFromSuperview()
+        monitoringIndicatorView = nil
+        
+        // Clear stored references
+        currentSMADataSet = nil
+        currentEMADataSet = nil
+        currentRSIResult = nil
+        currentTechnicalSettings = nil
+        currentTheme = nil
+        labelManager = nil
+    }
 
 }
 
@@ -498,10 +679,16 @@ extension CandlestickChartView: ChartViewDelegate {
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {
         // Handle chart panning while zoomed
         // This ensures smooth interaction between zoom and pan
+        
+        // Update indicator values based on current visible range
+        updateValuesForVisibleRange()
     }
     
-    // Detect if user has panned all the way to left/right
     func chartViewDidEndPanning(_ chartView: ChartViewBase) {
+        // Update values when panning ends
+        updateValuesForVisibleRange()
+        
+        // Original edge detection logic
         guard let candleChart = chartView as? CandleStickChartView,
               let data = candleChart.data else { return }
         
@@ -735,6 +922,12 @@ extension CandlestickChartView {
                 rsiAreaTop: rsiAreaTop,
                 rsiAreaHeight: rsiAreaHeight
             )
+            
+            // Update values for currently visible range (CoinMarketCap style)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.updateValuesForVisibleRange()
+                self.startViewportMonitoring() // Start monitoring for scroll-based updates
+            }
             
             // Chart refreshed with technical indicators
         }

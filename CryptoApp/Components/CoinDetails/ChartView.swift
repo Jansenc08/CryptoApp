@@ -31,6 +31,13 @@ final class ChartView: LineChartView {
     private var currentRSIResult: TechnicalIndicators.RSIResult?
     private var currentTechnicalSettings: TechnicalIndicators.IndicatorSettings?
     private var currentTheme: ChartColorTheme?
+    
+    // Throttling for smooth scrolling
+    private var updateTimer: Timer?
+    
+    // Viewport monitoring for scroll-based updates
+    private var lastVisibleX: Double = 0
+    private var viewportMonitorTimer: Timer?
 
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
@@ -407,6 +414,113 @@ final class ChartView: LineChartView {
             theme: theme
         )
     }
+    
+    /// Updates indicator values based on the current visible range (CoinMarketCap style)
+    private func updateValuesForVisibleRange() {
+        // Throttle updates to avoid excessive calls during scrolling
+        updateTimer?.invalidate()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] timer in
+            timer.invalidate() // Ensure timer is invalidated
+            self?.performVisibleRangeUpdate()
+        }
+    }
+    
+    private func performVisibleRangeUpdate() {
+        guard let labelManager = labelManager,
+              let settings = currentTechnicalSettings,
+              let theme = currentTheme,
+              !allDataPoints.isEmpty,
+              !allDates.isEmpty else { return }
+        
+        // Get the rightmost visible timestamp
+        let rightmostVisibleTimestamp = highestVisibleX
+        
+        // Convert timestamp to index
+        let targetIndex = findIndexForTimestamp(rightmostVisibleTimestamp)
+        
+        // Update labels with values at this position
+        labelManager.updateLabelsAtPosition(
+            xIndex: targetIndex,
+            smaDataSet: currentSMADataSet,
+            emaDataSet: currentEMADataSet,
+            rsiResult: currentRSIResult,
+            settings: settings,
+            theme: theme
+        )
+    }
+    
+    // MARK: - Viewport Monitoring for Scroll-Based Updates
+    
+    /// Starts monitoring viewport changes for automatic value updates
+    private func startViewportMonitoring() {
+        stopViewportMonitoring()
+        lastVisibleX = highestVisibleX
+        
+        // Only start monitoring if view is in window hierarchy
+        guard window != nil else { return }
+        
+        viewportMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+            guard let self = self, self.window != nil else {
+                timer.invalidate()
+                return
+            }
+            self.checkViewportChanges()
+        }
+    }
+    
+    /// Stops viewport monitoring
+    private func stopViewportMonitoring() {
+        viewportMonitorTimer?.invalidate()
+        viewportMonitorTimer = nil
+    }
+    
+    /// Checks if viewport has changed and updates values accordingly
+    private func checkViewportChanges() {
+        let currentVisibleX = highestVisibleX
+        
+        // Check if viewport has changed significantly
+        if abs(currentVisibleX - lastVisibleX) > 0.1 {
+            lastVisibleX = currentVisibleX
+            updateValuesForVisibleRange()
+        }
+    }
+    
+    // MARK: - View Lifecycle
+    
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil {
+            // View is being removed from window, stop monitoring
+            stopViewportMonitoring()
+            updateTimer?.invalidate()
+            updateTimer = nil
+        }
+    }
+    
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            // Ensure cleanup when view is removed from window
+            stopViewportMonitoring()
+            updateTimer?.invalidate()
+            updateTimer = nil
+        }
+    }
+    
+    deinit {
+        // Clean up all timers and resources
+        stopViewportMonitoring()
+        updateTimer?.invalidate()
+        updateTimer = nil
+        
+        // Clear stored references
+        currentSMADataSet = nil
+        currentEMADataSet = nil
+        currentRSIResult = nil
+        currentTechnicalSettings = nil
+        currentTheme = nil
+        labelManager = nil
+    }
 
 }
 
@@ -448,10 +562,16 @@ extension ChartView: ChartViewDelegate {
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {
         // Handle chart panning while zoomed
         // This ensures smooth interaction between zoom and pan
+        
+        // Update indicator values based on current visible range
+        updateValuesForVisibleRange()
     }
 
     // Detect if user has panned all the way to left/right
     func chartViewDidEndPanning(_ chartView: ChartViewBase) {
+        // Update values when panning ends
+        updateValuesForVisibleRange()
+        
         guard let lineChart = chartView as? LineChartView,
               let data = lineChart.data else { return }
 
@@ -600,6 +720,13 @@ extension ChartView {
             }
         }
         
+        // Store current data for dynamic updates
+        currentSMADataSet = smaDataSet
+        currentEMADataSet = emaDataSet
+        currentRSIResult = rsiResult
+        currentTechnicalSettings = settings
+        currentTheme = theme
+        
         // Update chart with all datasets
         // SAFETY: Validate all data sets have entries before creating LineChartData
         let validDataSets = dataSets.filter { !$0.entries.isEmpty }
@@ -622,6 +749,12 @@ extension ChartView {
                 rsiAreaTop: rsiAreaTop,
                 rsiAreaHeight: rsiAreaHeight
             )
+            
+            // Update values for currently visible range (CoinMarketCap style)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.updateValuesForVisibleRange()
+                self.startViewportMonitoring() // Start monitoring for scroll-based updates
+            }
         }
     }
     
