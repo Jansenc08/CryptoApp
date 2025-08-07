@@ -34,6 +34,8 @@ final class AddCoinsVC: UIViewController {
     
     // MARK: - Properties
     
+    private var titleLabel: UILabel!
+    private var subtitleLabel: UILabel!
     private var collectionView: UICollectionView!
     private var searchBarComponent: SearchBarComponent!
     private var addButton: UIButton!
@@ -100,6 +102,7 @@ final class AddCoinsVC: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         configureView()
+        configureHeader()
         configureSearchBar()
         configureCollectionView()
         configureAddButton()
@@ -155,14 +158,51 @@ final class AddCoinsVC: UIViewController {
     
     private func configureView() {
         view.backgroundColor = .systemBackground
-        navigationItem.title = "Add Coins"
         
-        // Add close button
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close,
+        // Remove navigation title for clean modal look to match smoothing modal format
+        navigationItem.title = ""
+        
+        // Add close button on the right side to match smoothing modal format
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "xmark"),
+            style: .plain,
             target: self,
             action: #selector(closeButtonTapped)
         )
+        
+        // Style the close button to match the design
+        navigationItem.rightBarButtonItem?.tintColor = .systemGray
+    }
+    
+    private func configureHeader() {
+        // Create title label to match smoothing modal format
+        titleLabel = UILabel()
+        titleLabel.text = "Add Coins"
+        titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
+        titleLabel.textAlignment = .center
+        titleLabel.textColor = .label
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Create subtitle label
+        subtitleLabel = UILabel()
+        subtitleLabel.text = "Search and add coins to your watchlist"
+        subtitleLabel.font = .systemFont(ofSize: 16, weight: .regular)
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        view.addSubview(titleLabel)
+        view.addSubview(subtitleLabel)
+        
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+        ])
     }
     
     private func configureSearchBar() {
@@ -176,7 +216,7 @@ final class AddCoinsVC: UIViewController {
         view.addSubview(searchBarComponent)
         
         NSLayoutConstraint.activate([
-            searchBarComponent.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            searchBarComponent.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
             searchBarComponent.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             searchBarComponent.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             searchBarComponent.heightAnchor.constraint(equalToConstant: 56)

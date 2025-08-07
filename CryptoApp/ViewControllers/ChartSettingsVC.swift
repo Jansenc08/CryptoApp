@@ -85,12 +85,19 @@ final class ChartSettingsVC: UIViewController {
         loadCurrentSettings()
         setupActions()
         
-        // Add close button
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close,
+        // Remove navigation title for clean modal look
+        navigationItem.title = ""
+        
+        // Add close button on the right side to match smoothing modal format
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "xmark"),
+            style: .plain,
             target: self,
             action: #selector(closeButtonTapped)
         )
+        
+        // Style the close button to match the design
+        navigationItem.rightBarButtonItem?.tintColor = .systemGray
     }
     
     // MARK: - UI Setup
@@ -104,13 +111,13 @@ final class ChartSettingsVC: UIViewController {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentView.translatesAutoresizingMaskIntoConstraints = false
         
-        // Configure title and subtitle
-        titleLabel.text = "Chart Settings"
+        // Configure title and subtitle to match smoothing modal format
+        titleLabel.text = "⚙️ Chart Settings"
         titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
         titleLabel.textAlignment = .center
         titleLabel.textColor = .label
         
-        subtitleLabel.text = "Let us know your preferences below"
+        subtitleLabel.text = "Customize your chart display and analysis tools"
         subtitleLabel.font = .systemFont(ofSize: 16, weight: .regular)
         subtitleLabel.textAlignment = .center
         subtitleLabel.textColor = .secondaryLabel
