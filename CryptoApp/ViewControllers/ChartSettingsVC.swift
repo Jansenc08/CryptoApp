@@ -112,8 +112,8 @@ final class ChartSettingsVC: UIViewController {
         subtitleLabel.textColor = .secondaryLabel
         
         // Configure section labels
-        setupSectionLabel(smoothingSectionLabel, text: "Smoothing")
-        setupSectionLabel(visualSectionLabel, text: "Display")
+        setupSectionLabel(smoothingSectionLabel, text: "Line Chart Settings")
+        setupSectionLabel(visualSectionLabel, text: "Display Settings")
         setupSectionLabel(appearanceSectionLabel, text: "Appearance")
         setupSectionLabel(animationSectionLabel, text: "Animation")
         setupSectionLabel(indicatorsSectionLabel, text: "Technical Indicators")
@@ -159,6 +159,125 @@ final class ChartSettingsVC: UIViewController {
         label.text = text
         label.font = .systemFont(ofSize: 18, weight: .semibold)
         label.textColor = .label
+    }
+    
+    // MARK: - Chart Type Badge Creation
+    
+    private func createChartTypeBadge(for types: [ChartType]) -> UIView {
+        let containerView = UIView()
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let stackView = UIStackView()
+        stackView.axis = .horizontal
+        stackView.spacing = 4
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        for type in types {
+            let badge = UILabel()
+            badge.font = .systemFont(ofSize: 10, weight: .medium)
+            badge.textAlignment = .center
+            badge.layer.cornerRadius = 8
+            badge.layer.masksToBounds = true
+            badge.translatesAutoresizingMaskIntoConstraints = false
+            
+            switch type {
+            case .line:
+                badge.text = "LINE"
+                badge.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.15)
+                badge.textColor = .systemBlue
+            case .candlestick:
+                badge.text = "CANDLE"
+                badge.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.15)
+                badge.textColor = .systemOrange
+            }
+            
+            // Set badge size
+            NSLayoutConstraint.activate([
+                badge.widthAnchor.constraint(greaterThanOrEqualToConstant: 45),
+                badge.heightAnchor.constraint(equalToConstant: 16)
+            ])
+            
+            stackView.addArrangedSubview(badge)
+        }
+        
+        containerView.addSubview(stackView)
+        NSLayoutConstraint.activate([
+            stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            stackView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: containerView.leadingAnchor),
+            containerView.heightAnchor.constraint(equalToConstant: 20)
+        ])
+        
+        return containerView
+    }
+    
+    private func createSettingRowWithBadges(label: String, control: UIControl, chartTypes: [ChartType], helpText: String? = nil) -> UIView {
+        let containerView = UIView()
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Main content view
+        let contentView = UIView()
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Setting label
+        let settingLabel = UILabel()
+        settingLabel.text = label
+        settingLabel.font = .systemFont(ofSize: 16, weight: .regular)
+        settingLabel.textColor = .label
+        settingLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Chart type badges
+        let badgeView = createChartTypeBadge(for: chartTypes)
+        
+        // Control
+        control.translatesAutoresizingMaskIntoConstraints = false
+        
+        contentView.addSubview(settingLabel)
+        contentView.addSubview(badgeView)
+        contentView.addSubview(control)
+        
+        NSLayoutConstraint.activate([
+            settingLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            settingLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            
+            badgeView.leadingAnchor.constraint(greaterThanOrEqualTo: settingLabel.trailingAnchor, constant: 8),
+            badgeView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            
+            control.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            control.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            control.leadingAnchor.constraint(greaterThanOrEqualTo: badgeView.trailingAnchor, constant: 8),
+            
+            contentView.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        containerView.addSubview(contentView)
+        NSLayoutConstraint.activate([
+            contentView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            contentView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
+        ])
+        
+        // Add help text if provided
+        if let helpText = helpText {
+            let helpLabel = UILabel()
+            helpLabel.text = helpText
+            helpLabel.font = .systemFont(ofSize: 13, weight: .regular)
+            helpLabel.textColor = .secondaryLabel
+            helpLabel.numberOfLines = 0
+            helpLabel.translatesAutoresizingMaskIntoConstraints = false
+            
+            containerView.addSubview(helpLabel)
+            NSLayoutConstraint.activate([
+                helpLabel.topAnchor.constraint(equalTo: contentView.bottomAnchor, constant: 4),
+                helpLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+                helpLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                helpLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8)
+            ])
+        } else {
+            contentView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor).isActive = true
+        }
+        
+        return containerView
     }
     
     private func setupSwitch(_ switchControl: UISwitch) {
@@ -234,43 +353,43 @@ final class ChartSettingsVC: UIViewController {
             subtitleLabel,
             createSpacing(24),
             
-            // Smoothing Section
+            // Line Chart Settings
             smoothingSectionLabel,
-            createSettingRow(label: "Enable Smoothing", control: smoothingEnabledSwitch),
+            createSettingRowWithBadges(label: "Enable Smoothing", control: smoothingEnabledSwitch, chartTypes: [.line], helpText: "Applies curve smoothing to line charts for better visualization"),
             smoothingAlgorithmButton,
             createSpacing(24),
             
-            // Visual Section
+            // Universal Settings (Both Chart Types)
             visualSectionLabel,
-            createSettingRow(label: "Grid Lines", control: gridLinesSwitch),
-            createSettingRow(label: "Price Labels", control: priceLabelsSwitch),
-            createSettingRow(label: "Auto Scale Y-Axis", control: autoScaleSwitch),
+            createSettingRowWithBadges(label: "Grid Lines", control: gridLinesSwitch, chartTypes: [.line, .candlestick]),
+            createSettingRowWithBadges(label: "Price Labels", control: priceLabelsSwitch, chartTypes: [.line, .candlestick]),
+            createSettingRowWithBadges(label: "Auto Scale Y-Axis", control: autoScaleSwitch, chartTypes: [.line, .candlestick]),
             createSpacing(24),
             
-            // Appearance Section
+            // Appearance Section (Both Chart Types)
             appearanceSectionLabel,
             createLabeledControl(label: "Color Theme", control: colorThemeSegmentedControl),
             createLabeledControl(label: "Line Thickness", control: lineThicknessSegmentedControl),
             createSpacing(24),
             
-            // Animation Section
+            // Animation Section (Both Chart Types)
             animationSectionLabel,
             createLabeledControl(label: "Speed", control: animationSpeedSegmentedControl),
             createSpacing(24),
             
-            // Technical Indicators Section
+            // Candlestick-Only Settings
             indicatorsSectionLabel,
-            createSettingRow(label: "Simple Moving Average", control: showSMASwitch),
+            createSettingRowWithBadges(label: "Simple Moving Average", control: showSMASwitch, chartTypes: [.candlestick], helpText: "Technical analysis overlay for trend identification"),
             smaPeriodButton,
-            createSettingRow(label: "Exponential Moving Average", control: showEMASwitch),
+            createSettingRowWithBadges(label: "Exponential Moving Average", control: showEMASwitch, chartTypes: [.candlestick], helpText: "Weighted moving average for faster trend detection"),
             emaPeriodButton,
-            createSettingRow(label: "RSI (Relative Strength Index)", control: showRSISwitch),
+            createSettingRowWithBadges(label: "RSI (Relative Strength Index)", control: showRSISwitch, chartTypes: [.candlestick], helpText: "Momentum oscillator to identify overbought/oversold conditions"),
             rsiSettingsButton,
             createSpacing(24),
             
-            // Volume Analysis Section
+            // Volume Analysis (Both Chart Types)
             volumeSectionLabel,
-            createSettingRow(label: "Show Volume Bars", control: showVolumeSwitch),
+            createSettingRowWithBadges(label: "Show Volume Bars", control: showVolumeSwitch, chartTypes: [.line, .candlestick], helpText: "Display trading volume below the main chart"),
             createSpacing(24),
             
             // Presets Section
