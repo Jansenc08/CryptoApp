@@ -200,10 +200,73 @@ class ChartLabelManager {
         rsiLabel = nil
     }
     
+    // MARK: - Dynamic Value Updates (CoinMarketCap Style)
+    
+    /// Updates labels with values at specific chart position (for crosshair interaction)
+    func updateLabelsAtPosition(
+        xIndex: Int,
+        smaDataSet: LineChartDataSet?,
+        emaDataSet: LineChartDataSet?,
+        rsiResult: TechnicalIndicators.RSIResult?,
+        settings: TechnicalIndicators.IndicatorSettings,
+        theme: ChartColorTheme
+    ) {
+        // Update SMA at position
+        if let smaDataSet = smaDataSet, settings.showSMA {
+            let smaValue = getValueAtIndex(xIndex, from: smaDataSet)
+            let smaColor = TechnicalIndicators.getIndicatorColor(for: "sma", theme: theme)
+            updateSMALabel(value: smaValue, period: settings.smaPeriod, color: smaColor, isVisible: true)
+        } else {
+            smaLabel?.isHidden = true
+        }
+        
+        // Update EMA at position
+        if let emaDataSet = emaDataSet, settings.showEMA {
+            let emaValue = getValueAtIndex(xIndex, from: emaDataSet)
+            let emaColor = TechnicalIndicators.getIndicatorColor(for: "ema", theme: theme)
+            updateEMALabel(value: emaValue, period: settings.emaPeriod, color: emaColor, isVisible: true)
+        } else {
+            emaLabel?.isHidden = true
+        }
+        
+        // Update RSI at position
+        if let rsiResult = rsiResult, settings.showRSI {
+            let rsiValue = getRSIValueAtIndex(xIndex, from: rsiResult)
+            updateRSILabel(value: rsiValue, period: settings.rsiPeriod, isVisible: true)
+        } else {
+            rsiLabel?.isHidden = true
+        }
+    }
+    
+    /// Gets value from dataset at specific index
+    private func getValueAtIndex(_ index: Int, from dataSet: LineChartDataSet) -> Double? {
+        guard index >= 0 && index < dataSet.entries.count else { return nil }
+        return dataSet.entries[index].y
+    }
+    
+    /// Gets RSI value at specific index
+    private func getRSIValueAtIndex(_ index: Int, from rsiResult: TechnicalIndicators.RSIResult) -> Double? {
+        guard index >= 0 && index < rsiResult.values.count else { return nil }
+        return rsiResult.values[index]
+    }
+    
     // MARK: - Private Helpers
     
-    /// Formats currency values using the same logic as PriceFormatter
+    /// Formats currency values with full precision (not abbreviated) like CoinMarketCap
     private func formatCurrency(_ value: Double) -> String {
+        // Use NumberFormatter for proper currency formatting with commas
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = "$"
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.locale = Locale(identifier: "en_US")
+        
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+    }
+    
+    /// Legacy abbreviated formatter (kept for compatibility)
+    private func formatCurrencyAbbreviated(_ value: Double) -> String {
         if value >= 1000000 {
             return String(format: "$%.1fM", value / 1000000)
         } else if value >= 1000 {

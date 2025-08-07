@@ -29,6 +29,13 @@ final class CandlestickChartView: CombinedChartView {
         return labelManager
     }
     
+    // MARK: - Dynamic Value Tracking (CoinMarketCap Style)
+    private var currentSMADataSet: LineChartDataSet?
+    private var currentEMADataSet: LineChartDataSet?
+    private var currentRSIResult: TechnicalIndicators.RSIResult?
+    private var currentTechnicalSettings: TechnicalIndicators.IndicatorSettings?
+    private var currentTheme: ChartColorTheme?
+    
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
     
@@ -68,6 +75,7 @@ final class CandlestickChartView: CombinedChartView {
         pinchZoomEnabled = true
         doubleTapToZoomEnabled = true
         highlightPerTapEnabled = true
+        highlightPerDragEnabled = true  // Enable drag highlighting for dynamic value updates
         
         // Configure axes for combined chart
         leftAxis.enabled = false
@@ -405,6 +413,42 @@ final class CandlestickChartView: CombinedChartView {
         moveViewToX(clampedX)
     }
     
+    // MARK: - Dynamic Value Updates (CoinMarketCap Style)
+    
+    /// Updates indicator labels with values at the specified chart position
+    private func updateDynamicValues(at xIndex: Int) {
+        guard let labelManager = labelManager,
+              let settings = currentTechnicalSettings,
+              let theme = currentTheme else { return }
+        
+        labelManager.updateLabelsAtPosition(
+            xIndex: xIndex,
+            smaDataSet: currentSMADataSet,
+            emaDataSet: currentEMADataSet,
+            rsiResult: currentRSIResult,
+            settings: settings,
+            theme: theme
+        )
+    }
+    
+    /// Resets labels to show the latest (most recent) values
+    private func resetToLatestValues() {
+        guard let labelManager = labelManager,
+              let settings = currentTechnicalSettings,
+              let theme = currentTheme else { return }
+        
+        // Get the last index (most recent data)
+        let lastIndex = max(0, allOHLCData.count - 1)
+        
+        labelManager.updateLabelsAtPosition(
+            xIndex: lastIndex,
+            smaDataSet: currentSMADataSet,
+            emaDataSet: currentEMADataSet,
+            rsiResult: currentRSIResult,
+            settings: settings,
+            theme: theme
+        )
+    }
 
 }
 
@@ -412,11 +456,16 @@ final class CandlestickChartView: CombinedChartView {
 
 extension CandlestickChartView: ChartViewDelegate {
     
-    // Auto-clear highlight tooltip after delay
+    // Handle crosshair interaction for dynamic value updates
     func chartValueSelected(_ chartView: ChartViewBase, entry: ChartDataEntry, highlight: Highlight) {
+        // Update indicator labels dynamically based on crosshair position
+        updateDynamicValues(at: Int(entry.x))
+        
         // Show tooltip for longer since candlestick has more data
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak chartView] in
             chartView?.highlightValue(nil)
+            // Reset to latest values when tooltip disappears
+            self.resetToLatestValues()
         }
         
         // Log selection for debugging
@@ -428,6 +477,8 @@ extension CandlestickChartView: ChartViewDelegate {
     
     func chartValueNothingSelected(_ chartView: ChartViewBase) {
         chartView.highlightValue(nil)
+        // Reset to latest values when nothing is selected
+        resetToLatestValues()
     }
     
     // MARK: - Zoom Event Handling
@@ -627,6 +678,13 @@ extension CandlestickChartView {
                 lineDataSets.append(contentsOf: rsiDataSets)
             }
         }
+        
+        // Store current data for dynamic updates
+        currentSMADataSet = smaDataSet
+        currentEMADataSet = emaDataSet
+        currentRSIResult = rsiResult
+        currentTechnicalSettings = settings
+        currentTheme = theme
         
         // FIXED: Now using CombinedChartView - we can properly display technical indicators!
         if !lineDataSets.isEmpty {

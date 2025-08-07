@@ -24,6 +24,13 @@ final class ChartView: LineChartView {
     
     // MARK: - Label Management
     private var labelManager: ChartLabelManager?
+    
+    // MARK: - Dynamic Value Tracking (CoinMarketCap Style)
+    private var currentSMADataSet: LineChartDataSet?
+    private var currentEMADataSet: LineChartDataSet?
+    private var currentRSIResult: TechnicalIndicators.RSIResult?
+    private var currentTechnicalSettings: TechnicalIndicators.IndicatorSettings?
+    private var currentTheme: ChartColorTheme?
 
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
@@ -58,6 +65,9 @@ final class ChartView: LineChartView {
         // Use helper for basic configuration
         ChartConfigurationHelper.configureBasicSettings(for: self)
         ChartConfigurationHelper.configureAxes(for: self)
+        
+        // Enable drag highlighting for dynamic value updates
+        highlightPerDragEnabled = true
         
         // Line chart specific settings
         scaleYEnabled = true  // Allow Y-axis zoom for price analysis
@@ -339,6 +349,64 @@ final class ChartView: LineChartView {
         moveViewToX(clampedX)
     }
     
+    // MARK: - Dynamic Value Updates (CoinMarketCap Style)
+    
+    /// Updates indicator labels with values at the specified timestamp
+    private func updateDynamicValues(at timestamp: Double) {
+        guard let labelManager = labelManager,
+              let settings = currentTechnicalSettings,
+              let theme = currentTheme else { return }
+        
+        // Convert timestamp to index
+        let xIndex = findIndexForTimestamp(timestamp)
+        
+        labelManager.updateLabelsAtPosition(
+            xIndex: xIndex,
+            smaDataSet: currentSMADataSet,
+            emaDataSet: currentEMADataSet,
+            rsiResult: currentRSIResult,
+            settings: settings,
+            theme: theme
+        )
+    }
+    
+    /// Finds the closest index for a given timestamp
+    private func findIndexForTimestamp(_ timestamp: Double) -> Int {
+        guard !allDates.isEmpty else { return 0 }
+        
+        let targetDate = Date(timeIntervalSince1970: timestamp)
+        var closestIndex = 0
+        var minDifference = abs(allDates[0].timeIntervalSince1970 - timestamp)
+        
+        for (index, date) in allDates.enumerated() {
+            let difference = abs(date.timeIntervalSince1970 - timestamp)
+            if difference < minDifference {
+                minDifference = difference
+                closestIndex = index
+            }
+        }
+        
+        return closestIndex
+    }
+    
+    /// Resets labels to show the latest (most recent) values
+    private func resetToLatestValues() {
+        guard let labelManager = labelManager,
+              let settings = currentTechnicalSettings,
+              let theme = currentTheme else { return }
+        
+        // Get the last index (most recent data)
+        let lastIndex = max(0, allDataPoints.count - 1)
+        
+        labelManager.updateLabelsAtPosition(
+            xIndex: lastIndex,
+            smaDataSet: currentSMADataSet,
+            emaDataSet: currentEMADataSet,
+            rsiResult: currentRSIResult,
+            settings: settings,
+            theme: theme
+        )
+    }
 
 }
 
@@ -346,15 +414,22 @@ final class ChartView: LineChartView {
 
 extension ChartView: ChartViewDelegate {
     
-    // Auto-clear highlight tooltip after delay
+    // Handle crosshair interaction for dynamic value updates
     func chartValueSelected(_ chartView: ChartViewBase, entry: ChartDataEntry, highlight: Highlight) {
+        // Update indicator labels dynamically based on crosshair position
+        updateDynamicValues(at: entry.x)
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak chartView] in
             chartView?.highlightValue(nil)
+            // Reset to latest values when tooltip disappears
+            self.resetToLatestValues()
         }
     }
     
     func chartValueNothingSelected(_ chartView: ChartViewBase) {
         chartView.highlightValue(nil)
+        // Reset to latest values when nothing is selected
+        resetToLatestValues()
     }
     
     // MARK: - Zoom Event Handling
