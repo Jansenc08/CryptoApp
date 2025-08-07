@@ -731,7 +731,7 @@ extension ChartView {
         // Add RSI if enabled (with reference lines)
         if settings.showRSI {
             rsiResult = TechnicalIndicators.calculateRSI(prices: allDataPoints, period: settings.rsiPeriod)
-            let rsiDataSets = createRSIDataSets(period: settings.rsiPeriod, theme: theme)
+            let rsiDataSets = createRSIDataSets(settings: settings, theme: theme)
             // SAFETY: Only append if we have valid data sets
             if !rsiDataSets.isEmpty {
                 dataSets.append(contentsOf: rsiDataSets)
@@ -825,9 +825,9 @@ extension ChartView {
     
 
     
-    private func createRSIDataSets(period: Int, theme: ChartColorTheme) -> [LineChartDataSet] {
+    private func createRSIDataSets(settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme) -> [LineChartDataSet] {
         // SAFETY: Early validation to prevent crashes
-        guard !allDataPoints.isEmpty, allDataPoints.count > period else { return [] }
+        guard !allDataPoints.isEmpty, allDataPoints.count > settings.rsiPeriod else { return [] }
         guard !allDates.isEmpty, allDates.count == allDataPoints.count else { return [] }
         
         // No RSI display on line chart - only candlestick chart shows RSI

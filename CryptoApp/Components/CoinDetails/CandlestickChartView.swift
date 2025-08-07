@@ -883,7 +883,7 @@ extension CandlestickChartView {
         // Add RSI if enabled (with reference lines)
         if settings.showRSI {
             rsiResult = TechnicalIndicators.calculateRSI(prices: closingPrices, period: settings.rsiPeriod)
-            let rsiDataSets = createRSIDataSets(prices: closingPrices, period: settings.rsiPeriod, theme: theme)
+            let rsiDataSets = createRSIDataSets(prices: closingPrices, settings: settings, theme: theme)
             // SAFETY: Only append if we have valid data sets
             if !rsiDataSets.isEmpty {
                 lineDataSets.append(contentsOf: rsiDataSets)
@@ -1007,12 +1007,12 @@ extension CandlestickChartView {
     
 
     
-    private func createRSIDataSets(prices: [Double], period: Int, theme: ChartColorTheme) -> [LineChartDataSet] {
+    private func createRSIDataSets(prices: [Double], settings: TechnicalIndicators.IndicatorSettings, theme: ChartColorTheme) -> [LineChartDataSet] {
         // SAFETY: Early validation to prevent crashes
-        guard !prices.isEmpty, prices.count > period else { return [] }
+        guard !prices.isEmpty, prices.count > settings.rsiPeriod else { return [] }
         guard !allOHLCData.isEmpty else { return [] }
         
-        let rsiResult = TechnicalIndicators.calculateRSI(prices: prices, period: period)
+        let rsiResult = TechnicalIndicators.calculateRSI(prices: prices, period: settings.rsiPeriod, overbought: settings.rsiOverbought, oversold: settings.rsiOversold)
         
         // Get price range to position RSI below main chart
         let allPrices = allOHLCData.flatMap { [$0.open, $0.high, $0.low, $0.close] }
@@ -1061,7 +1061,7 @@ extension CandlestickChartView {
         var dataSets: [LineChartDataSet] = []
         
         // Main RSI line - Professional styling
-        let rsiDataSet = LineChartDataSet(entries: rsiEntries, label: "RSI(\(period))")
+        let rsiDataSet = LineChartDataSet(entries: rsiEntries, label: "RSI(\(settings.rsiPeriod))")
         rsiDataSet.setColor(UIColor.systemPurple)  // Purple as requested
         rsiDataSet.lineWidth = 1.8 // Slightly thinner for cleaner look
         rsiDataSet.drawCirclesEnabled = false
@@ -1075,11 +1075,11 @@ extension CandlestickChartView {
         // Create reference line entries spanning the chart width
         guard let firstEntry = rsiEntries.first, let lastEntry = rsiEntries.last else { return [rsiDataSet] }
         
-        // Reference lines at key RSI levels following industry best practices
+        // Reference lines using user-configurable RSI levels
         let referenceLines = [
-            (level: 70.0, color: UIColor.systemRed, name: "Overbought", dashPattern: [CGFloat(2.0), CGFloat(4.0)]),
+            (level: settings.rsiOverbought, color: UIColor.systemRed, name: "Overbought", dashPattern: [CGFloat(2.0), CGFloat(4.0)]),
             (level: 50.0, color: UIColor.systemGray, name: "Neutral", dashPattern: [CGFloat(1.0), CGFloat(3.0)]), 
-            (level: 30.0, color: UIColor.systemBlue, name: "Oversold", dashPattern: [CGFloat(2.0), CGFloat(4.0)])
+            (level: settings.rsiOversold, color: UIColor.systemBlue, name: "Oversold", dashPattern: [CGFloat(2.0), CGFloat(4.0)])
         ]
         
         for referenceLine in referenceLines {
