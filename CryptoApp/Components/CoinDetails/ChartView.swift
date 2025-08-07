@@ -402,6 +402,14 @@ final class ChartView: LineChartView {
               let settings = currentTechnicalSettings,
               let theme = currentTheme else { return }
         
+        // Check if we have enough data for any enabled indicators
+        let hasEnoughDataForSMA = settings.showSMA && allDataPoints.count >= settings.smaPeriod
+        let hasEnoughDataForEMA = settings.showEMA && allDataPoints.count >= settings.emaPeriod
+        let hasEnoughDataForRSI = settings.showRSI && allDataPoints.count >= (settings.rsiPeriod + 1)
+        
+        // If no indicators have enough data, skip position updates to preserve the "Need more data" messages
+        guard hasEnoughDataForSMA || hasEnoughDataForEMA || hasEnoughDataForRSI else { return }
+        
         // Get the last index (most recent data)
         let lastIndex = max(0, allDataPoints.count - 1)
         
@@ -411,7 +419,8 @@ final class ChartView: LineChartView {
             emaDataSet: currentEMADataSet,
             rsiResult: currentRSIResult,
             settings: settings,
-            theme: theme
+            theme: theme,
+            dataPointCount: allDataPoints.count
         )
     }
     
@@ -432,6 +441,14 @@ final class ChartView: LineChartView {
               !allDataPoints.isEmpty,
               !allDates.isEmpty else { return }
         
+        // Check if we have enough data for any enabled indicators
+        let hasEnoughDataForSMA = settings.showSMA && allDataPoints.count >= settings.smaPeriod
+        let hasEnoughDataForEMA = settings.showEMA && allDataPoints.count >= settings.emaPeriod
+        let hasEnoughDataForRSI = settings.showRSI && allDataPoints.count >= (settings.rsiPeriod + 1)
+        
+        // If no indicators have enough data, skip position updates to preserve the "Need more data" messages
+        guard hasEnoughDataForSMA || hasEnoughDataForEMA || hasEnoughDataForRSI else { return }
+        
         // Get the rightmost visible timestamp
         let rightmostVisibleTimestamp = highestVisibleX
         
@@ -445,7 +462,8 @@ final class ChartView: LineChartView {
             emaDataSet: currentEMADataSet,
             rsiResult: currentRSIResult,
             settings: settings,
-            theme: theme
+            theme: theme,
+            dataPointCount: allDataPoints.count
         )
     }
     
@@ -533,10 +551,10 @@ extension ChartView: ChartViewDelegate {
         // Update indicator labels dynamically based on crosshair position
         updateDynamicValues(at: entry.x)
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak chartView] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self, weak chartView] in
             chartView?.highlightValue(nil)
             // Reset to latest values when tooltip disappears
-            self.resetToLatestValues()
+            self?.resetToLatestValues()
         }
     }
     
@@ -747,7 +765,8 @@ extension ChartView {
                 settings: settings,
                 theme: theme,
                 rsiAreaTop: rsiAreaTop,
-                rsiAreaHeight: rsiAreaHeight
+                rsiAreaHeight: rsiAreaHeight,
+                dataPointCount: allDataPoints.count
             )
             
             // Update values for currently visible range (CoinMarketCap style)

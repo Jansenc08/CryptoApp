@@ -7,14 +7,12 @@
 
 
 /**
- * ALGORITHM TYPES::
+ * ALGORITHM TYPES (5 Essential Algorithms):
  * Basic: Evenly smoothed gentle curves
- * Adaptive: chooses the best smoothing method based on time range
- * Gaussian: Ultra-smooth flowing lines
- * Savitzky-Golay: Smooth but keeps important peaks
- * Median: Clean with spikes removed
- * LOESS: Organic, naturally flowing curves
- * Bollinger: Adaptive crypto-optimized smoothing
+ * Adaptive: Chooses the best smoothing method based on time range  
+ * Savitzky-Golay: Smooth but keeps important peaks (crypto-optimized)
+ * Median: Clean with spikes removed (data cleaning)
+ * LOESS: Ultra-smooth organic flowing curves (presentations)
  */
 
 import Foundation
@@ -27,11 +25,9 @@ final class ChartSmoothingHelper {
     enum SmoothingType: String {
         case basic = "basic"              // Simple moving average
         case adaptive = "adaptive"        // Range-based adaptive smoothing
-        case gaussian = "gaussian"        // Gaussian smoothing (very smooth)
         case savitzkyGolay = "savitzkyGolay"  // Preserves peaks (great for crypto)
         case median = "median"            // Removes spikes
         case loess = "loess"              // Local regression (follows trends)
-        case bollinger = "bollinger"      // Crypto-specific band smoothing
     }
     
     // MARK: - Main Smoothing Function
@@ -52,12 +48,6 @@ final class ChartSmoothingHelper {
             // Result: Smart smoothing - light for short periods, heavy for long periods
             return applyAdaptiveTimeRangeSmoothing(data, for: timeRange)
             
-        case .gaussian:
-            // Creates smooth, natural-looking curves using bell-curve weighting
-            // Result: Professional, flowing lines perfect for presentations
-            let sigma = getGaussianSigma(for: timeRange)
-            return applyGaussianSmoothing(data, sigma: sigma)
-            
         case .savitzkyGolay:
             // Preserves important peaks and valleys while smoothing the overall trend
             // Result: Clean lines that keep price spikes and dips visible for analysis
@@ -71,16 +61,10 @@ final class ChartSmoothingHelper {
             return applyMedianFilter(data, windowSize: windowSize)
             
         case .loess:
-            // Intelligently adapts smoothing strength to follow complex price patterns
+            // Creates ultra-smooth flowing curves using local regression
             // Result: Smooth curves that bend and flow with market trends naturally
             let bandwidth = getLOESSBandwidth(for: timeRange)
             return applyLOESSSmoothing(data, bandwidth: bandwidth)
-            
-        case .bollinger:
-            // Uses price volatility to determine smoothing - more during volatile periods
-            // Result: Crypto-specific smoothing that adapts to market conditions
-            let period = getBollingerPeriod(for: timeRange)
-            return applyBollingerBandSmoothing(data, period: period)
         }
     }
     
@@ -145,60 +129,6 @@ final class ChartSmoothingHelper {
     }
     
     // MARK: - Advanced Smoothing Algorithms
-    
-    /// Gaussian smoothing - Creates very smooth, natural-looking curves
-    private static func applyGaussianSmoothing(_ data: [Double], sigma: Double = 1.0) -> [Double] {
-        guard data.count > 5 else { return data }
-        
-        let kernelSize = Int(6 * sigma) + 1
-        let kernel = generateGaussianKernel(size: kernelSize, sigma: sigma)
-        
-        return applyConvolution(data, kernel: kernel)
-    }
-    
-    /// Generate Gaussian kernel for smoothing with NaN validation
-    private static func generateGaussianKernel(size: Int, sigma: Double) -> [Double] {
-        guard size > 0 && sigma > 0 && sigma.isFinite else {
-            // Return simple averaging kernel as fallback
-            return Array(repeating: 1.0 / Double(max(size, 1)), count: max(size, 1))
-        }
-        
-        let center = size / 2
-        var kernel: [Double] = []
-        var sum: Double = 0
-        
-        for i in 0..<size {
-            let x = Double(i - center)
-            let exponent = -(x * x) / (2 * sigma * sigma)
-            
-            // Validate exponent before exp() to prevent NaN
-            guard exponent.isFinite else {
-                kernel.append(0.0)
-                continue
-            }
-            
-            let value = exp(exponent)
-            
-            // Validate exp result
-            if value.isFinite && value >= 0 {
-                kernel.append(value)
-                sum += value
-            } else {
-                kernel.append(0.0)
-            }
-        }
-        
-        // Normalize kernel with validation
-        guard sum > 0 && sum.isFinite else {
-            // Return simple averaging kernel as fallback
-            return Array(repeating: 1.0 / Double(size), count: size)
-        }
-        
-        return kernel.map { value in
-            let normalized = value / sum
-            return normalized.isFinite ? normalized : 0.0
-        }
-    }
     
     /// Savitzky-Golay filter - Preserves peaks while smoothing (great for crypto!)
     private static func applySavitzkyGolayFilter(_ data: [Double], windowSize: Int = 5) -> [Double] {
@@ -330,36 +260,6 @@ final class ChartSmoothingHelper {
         return result
     }
     
-    /// Bollinger Band smoothing - Crypto-specific smoothing using price bands
-    private static func applyBollingerBandSmoothing(_ data: [Double], period: Int = 20) -> [Double] {
-        guard data.count > period else { return data }
-        
-        var smoothedData: [Double] = []
-        
-        for i in 0..<data.count {
-            if i < period {
-                smoothedData.append(data[i])
-            } else {
-                let window = Array(data[(i - period + 1)...i])
-                let sma = window.reduce(0, +) / Double(window.count)
-                
-                // Calculate standard deviation
-                let variance = window.map { pow($0 - sma, 2) }.reduce(0, +) / Double(window.count)
-                let stdDev = sqrt(variance)
-                
-                // Use middle of Bollinger Bands as smoothed value
-                let upperBand = sma + (2 * stdDev)
-                let lowerBand = sma - (2 * stdDev)
-                
-                // Clamp current price within bands for smoothing
-                let clampedPrice = max(lowerBand, min(upperBand, data[i]))
-                smoothedData.append((sma + clampedPrice) / 2)
-            }
-        }
-        
-        return smoothedData
-    }
-    
     // MARK: - Adaptive Range Smoothing
     
     /// Original adaptive smoothing based on time range
@@ -382,16 +282,6 @@ final class ChartSmoothingHelper {
         case "30": return 7
         case "365": return 10
         default: return 5
-        }
-    }
-    
-    private static func getGaussianSigma(for days: String) -> Double {
-        switch days {
-        case "1": return 0.8    // Light smoothing for 24h
-        case "7": return 1.2    // Medium smoothing for 7d
-        case "30": return 1.8   // Heavy smoothing for 30d
-        case "365": return 2.5  // Very heavy for all-time
-        default: return 1.2
         }
     }
     
@@ -424,14 +314,4 @@ final class ChartSmoothingHelper {
         default: return 0.3
         }
     }
-    
-    private static func getBollingerPeriod(for days: String) -> Int {
-        switch days {
-        case "1": return 10
-        case "7": return 15
-        case "30": return 20
-        case "365": return 25
-        default: return 20
-        }
-    }
-} 
+}

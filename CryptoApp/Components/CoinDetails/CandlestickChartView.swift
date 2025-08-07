@@ -476,6 +476,17 @@ final class CandlestickChartView: CombinedChartView {
               let theme = currentTheme,
               !allOHLCData.isEmpty else { return }
         
+        // Extract closing prices for data count check
+        let closingPrices = allOHLCData.map { $0.close }
+        
+        // Check if we have enough data for any enabled indicators
+        let hasEnoughDataForSMA = settings.showSMA && closingPrices.count >= settings.smaPeriod
+        let hasEnoughDataForEMA = settings.showEMA && closingPrices.count >= settings.emaPeriod
+        let hasEnoughDataForRSI = settings.showRSI && closingPrices.count >= (settings.rsiPeriod + 1)
+        
+        // If no indicators have enough data, skip position updates to preserve the "Need more data" messages
+        guard hasEnoughDataForSMA || hasEnoughDataForEMA || hasEnoughDataForRSI else { return }
+        
         // Get the rightmost visible point (most recent data in view)
         let rightmostVisibleX = highestVisibleX
         
@@ -500,7 +511,8 @@ final class CandlestickChartView: CombinedChartView {
             emaDataSet: currentEMADataSet,
             rsiResult: currentRSIResult,
             settings: settings,
-            theme: theme
+            theme: theme,
+            dataPointCount: allOHLCData.count
         )
     }
     
@@ -655,10 +667,10 @@ extension CandlestickChartView: ChartViewDelegate {
         updateDynamicValues(at: Int(entry.x))
         
         // Show tooltip for longer since candlestick has more data
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak chartView] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self, weak chartView] in
             chartView?.highlightValue(nil)
             // Reset to latest values when tooltip disappears
-            self.resetToLatestValues()
+            self?.resetToLatestValues()
         }
         
         // Log selection for debugging
@@ -932,7 +944,8 @@ extension CandlestickChartView {
                 settings: settings,
                 theme: theme,
                 rsiAreaTop: rsiAreaTop,
-                rsiAreaHeight: rsiAreaHeight
+                rsiAreaHeight: rsiAreaHeight,
+                dataPointCount: closingPrices.count
             )
             
             // Auto-scroll to latest data (rightmost position)

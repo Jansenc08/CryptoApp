@@ -114,41 +114,78 @@ class ChartLabelManager {
     
     // MARK: - Public Update Methods
     
+    /// Creates an intelligent message for insufficient technical indicator data
+    private func getInsufficientDataMessage(for indicatorType: String, period: Int, availableDataCount: Int) -> String {
+        let needed = period + (indicatorType == "RSI" ? 1 : 0) // RSI needs period + 1
+        let remaining = needed - availableDataCount
+        
+        if availableDataCount == 0 {
+            return "\(indicatorType)(\(period)): No data available"
+        } else if remaining > 0 {
+            if remaining == 1 {
+                return "\(indicatorType)(\(period)): Need 1 more data point"
+            } else {
+                return "\(indicatorType)(\(period)): Need \(remaining) more data points"
+            }
+        } else {
+            return "\(indicatorType)(\(period)): Need more data"
+        }
+    }
+    
     /// Updates SMA label with current value and settings
-    func updateSMALabel(value: Double?, period: Int, color: UIColor, isVisible: Bool) {
+    func updateSMALabel(value: Double?, period: Int, color: UIColor, isVisible: Bool, dataCount: Int = 0) {
         guard let smaLabel = smaLabel else { return }
         
         smaLabel.isHidden = !isVisible
         
-        if isVisible, let value = value {
-            let formattedValue = formatCurrency(value)
-            smaLabel.text = "SMA(\(period)): \(formattedValue)"
-            smaLabel.textColor = color
+        if isVisible {
+            if let value = value {
+                let formattedValue = formatCurrency(value)
+                smaLabel.text = "SMA(\(period)): \(formattedValue)"
+                smaLabel.textColor = color
+            } else {
+                // Show intelligent message for insufficient data
+                smaLabel.text = getInsufficientDataMessage(for: "SMA", period: period, availableDataCount: dataCount)
+                smaLabel.textColor = UIColor.systemGray2
+            }
         }
     }
     
     /// Updates EMA label with current value and settings
-    func updateEMALabel(value: Double?, period: Int, color: UIColor, isVisible: Bool) {
+    func updateEMALabel(value: Double?, period: Int, color: UIColor, isVisible: Bool, dataCount: Int = 0) {
         guard let emaLabel = emaLabel else { return }
         
         emaLabel.isHidden = !isVisible
         
-        if isVisible, let value = value {
-            let formattedValue = formatCurrency(value)
-            emaLabel.text = "EMA(\(period)): \(formattedValue)"
-            emaLabel.textColor = color
+        if isVisible {
+            if let value = value {
+                let formattedValue = formatCurrency(value)
+                emaLabel.text = "EMA(\(period)): \(formattedValue)"
+                emaLabel.textColor = color
+            } else {
+                // Show intelligent message for insufficient data
+                emaLabel.text = getInsufficientDataMessage(for: "EMA", period: period, availableDataCount: dataCount)
+                emaLabel.textColor = UIColor.systemGray2
+            }
         }
     }
     
     /// Updates RSI label with current value and settings
-    func updateRSILabel(value: Double?, period: Int, isVisible: Bool) {
+    func updateRSILabel(value: Double?, period: Int, isVisible: Bool, dataCount: Int = 0) {
         guard let rsiLabel = rsiLabel else { return }
         
         rsiLabel.isHidden = !isVisible
         
-        if isVisible, let value = value {
-            let formattedValue = String(format: "%.2f", value)
-            rsiLabel.text = "RSI(\(period)): \(formattedValue)"
+        if isVisible {
+            if let value = value {
+                let formattedValue = String(format: "%.2f", value)
+                rsiLabel.text = "RSI(\(period)): \(formattedValue)"
+                rsiLabel.textColor = UIColor.systemGray
+            } else {
+                // Show intelligent message for insufficient data
+                rsiLabel.text = getInsufficientDataMessage(for: "RSI", period: period, availableDataCount: dataCount)
+                rsiLabel.textColor = UIColor.systemGray2
+            }
         }
     }
     
@@ -209,7 +246,8 @@ class ChartLabelManager {
         emaDataSet: LineChartDataSet?,
         rsiResult: TechnicalIndicators.RSIResult?,
         settings: TechnicalIndicators.IndicatorSettings,
-        theme: ChartColorTheme
+        theme: ChartColorTheme,
+        dataPointCount: Int = 0
     ) {
         // Cache values to avoid duplicate calls
         var smaValue: Double?
@@ -217,27 +255,33 @@ class ChartLabelManager {
         var rsiValue: Double?
         
         // Update SMA at position
-        if let smaDataSet = smaDataSet, settings.showSMA {
-            smaValue = getValueAtIndex(xIndex, from: smaDataSet)
+        if settings.showSMA {
+            if let smaDataSet = smaDataSet {
+                smaValue = getValueAtIndex(xIndex, from: smaDataSet)
+            }
             let smaColor = TechnicalIndicators.getIndicatorColor(for: "sma", theme: theme)
-            updateSMALabel(value: smaValue, period: settings.smaPeriod, color: smaColor, isVisible: true)
+            updateSMALabel(value: smaValue, period: settings.smaPeriod, color: smaColor, isVisible: true, dataCount: dataPointCount)
         } else {
             smaLabel?.isHidden = true
         }
         
         // Update EMA at position
-        if let emaDataSet = emaDataSet, settings.showEMA {
-            emaValue = getValueAtIndex(xIndex, from: emaDataSet)
+        if settings.showEMA {
+            if let emaDataSet = emaDataSet {
+                emaValue = getValueAtIndex(xIndex, from: emaDataSet)
+            }
             let emaColor = TechnicalIndicators.getIndicatorColor(for: "ema", theme: theme)
-            updateEMALabel(value: emaValue, period: settings.emaPeriod, color: emaColor, isVisible: true)
+            updateEMALabel(value: emaValue, period: settings.emaPeriod, color: emaColor, isVisible: true, dataCount: dataPointCount)
         } else {
             emaLabel?.isHidden = true
         }
         
         // Update RSI at position
-        if let rsiResult = rsiResult, settings.showRSI {
-            rsiValue = getRSIValueAtIndex(xIndex, from: rsiResult)
-            updateRSILabel(value: rsiValue, period: settings.rsiPeriod, isVisible: true)
+        if settings.showRSI {
+            if let rsiResult = rsiResult {
+                rsiValue = getRSIValueAtIndex(xIndex, from: rsiResult)
+            }
+            updateRSILabel(value: rsiValue, period: settings.rsiPeriod, isVisible: true, dataCount: dataPointCount)
         } else {
             rsiLabel?.isHidden = true
         }
@@ -352,21 +396,22 @@ extension ChartLabelManager {
         settings: TechnicalIndicators.IndicatorSettings,
         theme: ChartColorTheme,
         rsiAreaTop: CGFloat? = nil,
-        rsiAreaHeight: CGFloat? = nil
+        rsiAreaHeight: CGFloat? = nil,
+        dataPointCount: Int = 0
     ) {
         // Update SMA label
         let smaValue = getLatestSMAValue(from: smaDataSet)
         let smaColor = TechnicalIndicators.getIndicatorColor(for: "sma", theme: theme)
-        updateSMALabel(value: smaValue, period: settings.smaPeriod, color: smaColor, isVisible: settings.showSMA)
+        updateSMALabel(value: smaValue, period: settings.smaPeriod, color: smaColor, isVisible: settings.showSMA, dataCount: dataPointCount)
         
         // Update EMA label
         let emaValue = getLatestEMAValue(from: emaDataSet)
         let emaColor = TechnicalIndicators.getIndicatorColor(for: "ema", theme: theme)
-        updateEMALabel(value: emaValue, period: settings.emaPeriod, color: emaColor, isVisible: settings.showEMA)
+        updateEMALabel(value: emaValue, period: settings.emaPeriod, color: emaColor, isVisible: settings.showEMA, dataCount: dataPointCount)
         
         // Update RSI label
         let rsiValue = rsiResult != nil ? getLatestRSIValue(from: rsiResult!) : nil
-        updateRSILabel(value: rsiValue, period: settings.rsiPeriod, isVisible: settings.showRSI)
+        updateRSILabel(value: rsiValue, period: settings.rsiPeriod, isVisible: settings.showRSI, dataCount: dataPointCount)
         
         // Position RSI label in RSI section if coordinates provided
         if let rsiTop = rsiAreaTop, let rsiHeight = rsiAreaHeight, settings.showRSI {

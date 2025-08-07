@@ -67,7 +67,11 @@ final class ChartSettingsVC: UIViewController {
     }()
     private var currentSmoothingType: ChartSmoothingHelper.SmoothingType = {
         let savedType = UserDefaults.standard.string(forKey: "ChartSmoothingType") ?? "adaptive"
-        return ChartSmoothingHelper.SmoothingType(rawValue: savedType) ?? .adaptive
+        let type = ChartSmoothingHelper.SmoothingType(rawValue: savedType) ?? .adaptive
+        
+        // Handle removed algorithms - fallback to adaptive
+        let validTypes: [ChartSmoothingHelper.SmoothingType] = [.basic, .adaptive, .savitzkyGolay, .median, .loess]
+        return validTypes.contains(type) ? type : .adaptive
     }()
     
     // Technical Indicators Settings
@@ -536,11 +540,9 @@ final class ChartSettingsVC: UIViewController {
         switch type {
         case .adaptive: return "Adaptive"
         case .basic: return "Basic"
-        case .gaussian: return "Gaussian"
         case .savitzkyGolay: return "Savitzky-Golay"
         case .median: return "Median"
         case .loess: return "LOESS"
-        case .bollinger: return "Bollinger"
         }
     }
     
@@ -744,11 +746,9 @@ final class ChartSettingsVC: UIViewController {
         let algorithms: [(ChartSmoothingHelper.SmoothingType, String, String, String)] = [
             (.adaptive, "Adaptive (Recommended)", "Automatically chooses the best method based on timeframe", "Best for: General use, beginners"),
             (.basic, "Basic", "Simple moving average smoothing", "Best for: Clean, predictable results"),
-            (.gaussian, "Gaussian", "Ultra-smooth flowing lines, removes most noise", "Best for: Presentations, trend analysis"),
-            (.savitzkyGolay, "Savitzky-Golay", "Smooth but preserves important price spikes", "Best for: Crypto trading, volatile markets"),
-            (.median, "Median", "Removes flash crashes and data errors", "Best for: Noisy data, API glitches"),
-            (.loess, "LOESS", "Follows market trends naturally", "Best for: Trend following, smooth curves"),
-            (.bollinger, "Bollinger", "Adapts smoothing based on price volatility", "Best for: Crypto-specific analysis")
+            (.savitzkyGolay, "Crypto-Optimized", "Smooth but preserves important price spikes", "Best for: Crypto trading, volatile markets"),
+            (.median, "Clean Data", "Removes flash crashes and data errors", "Best for: Noisy data, API glitches"),
+            (.loess, "Smooth", "Follows market trends with flowing curves", "Best for: Presentations, trend analysis")
         ]
         
         for (type, title, description, useCase) in algorithms {
@@ -784,39 +784,15 @@ final class ChartSettingsVC: UIViewController {
     }
     
     private func showSmoothingAlgorithmHelp() {
-        let alert = UIAlertController(title: "Smoothing Algorithm Guide", message: nil, preferredStyle: .alert)
+        let helpVC = SmoothingHelpVC()
+        helpVC.modalPresentationStyle = .pageSheet
         
-        // Create attributed string with bold algorithm names
-        let helpText = NSMutableAttributedString()
-        
-        let algorithms = [
-            ("ADAPTIVE:", " Smart choice that automatically selects the best smoothing for your timeframe. Great for beginners.\n\n"),
-            ("BASIC:", " Simple moving average. Creates clean, predictable smoothing without surprises.\n\n"),
-            ("GAUSSIAN:", " Creates very smooth, professional-looking curves. Perfect for presentations.\n\n"),
-            ("SAVITZKY-GOLAY:", " Keeps important price spikes visible while smoothing noise. Excellent for crypto analysis.\n\n"),
-            ("MEDIAN:", " Removes flash crashes and API errors. Good for cleaning noisy data.\n\n"),
-            ("LOESS:", " Follows market trends naturally with organic curves. Great for trend analysis.\n\n"),
-            ("BOLLINGER:", " Crypto-specific smoothing that adapts to market volatility. Advanced option.")
-        ]
-        
-        for (boldText, normalText) in algorithms {
-            // Add bold algorithm name
-            helpText.append(NSAttributedString(string: boldText, attributes: [
-                .font: UIFont.systemFont(ofSize: 13, weight: .bold),
-                .foregroundColor: UIColor.label
-            ]))
-            
-            // Add normal description
-            helpText.append(NSAttributedString(string: normalText, attributes: [
-                .font: UIFont.systemFont(ofSize: 13, weight: .regular),
-                .foregroundColor: UIColor.label
-            ]))
+        if let sheet = helpVC.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.preferredCornerRadius = 16
         }
         
-        alert.setValue(helpText, forKey: "attributedMessage")
-        alert.addAction(UIAlertAction(title: "Got it!", style: .default))
-        
-        present(alert, animated: true)
+        present(helpVC, animated: true)
     }
     
     // MARK: - Preset Applications
