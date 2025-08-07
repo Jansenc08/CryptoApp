@@ -762,24 +762,26 @@ extension CandlestickChartView {
         
         var dataSets: [LineChartDataSet] = []
         
-        // Main RSI line - Purple color as requested
+        // Main RSI line - Professional styling
         let rsiDataSet = LineChartDataSet(entries: rsiEntries, label: "RSI(\(period))")
         rsiDataSet.setColor(UIColor.systemPurple)  // Purple as requested
-        rsiDataSet.lineWidth = 2.0
+        rsiDataSet.lineWidth = 1.8 // Slightly thinner for cleaner look
         rsiDataSet.drawCirclesEnabled = false
         rsiDataSet.drawValuesEnabled = false
         rsiDataSet.drawFilledEnabled = false
         rsiDataSet.highlightEnabled = true
+        rsiDataSet.mode = .cubicBezier // Smooth line interpolation
+        rsiDataSet.cubicIntensity = 0.1 // Subtle smoothing
         dataSets.append(rsiDataSet)
         
         // Create reference line entries spanning the chart width
         guard let firstEntry = rsiEntries.first, let lastEntry = rsiEntries.last else { return [rsiDataSet] }
         
-        // Reference lines at key RSI levels in separate coordinate space
+        // Reference lines at key RSI levels following industry best practices
         let referenceLines = [
-            (level: 70.0, color: UIColor.systemRed, name: "Overbought"),
-            (level: 50.0, color: UIColor.systemGray, name: "Neutral"), 
-            (level: 30.0, color: UIColor.systemGreen, name: "Oversold")
+            (level: 70.0, color: UIColor.systemRed, name: "Overbought", dashPattern: [CGFloat(2.0), CGFloat(4.0)]),
+            (level: 50.0, color: UIColor.systemGray, name: "Neutral", dashPattern: [CGFloat(1.0), CGFloat(3.0)]), 
+            (level: 30.0, color: UIColor.systemBlue, name: "Oversold", dashPattern: [CGFloat(2.0), CGFloat(4.0)])
         ]
         
         for referenceLine in referenceLines {
@@ -790,12 +792,12 @@ extension CandlestickChartView {
             ]
             
             let dataSet = LineChartDataSet(entries: entries, label: "")
-            dataSet.setColor(referenceLine.color.withAlphaComponent(0.5))
-            dataSet.lineWidth = 0.8
+            dataSet.setColor(referenceLine.color.withAlphaComponent(0.6)) // Slightly more visible
+            dataSet.lineWidth = referenceLine.level == 50.0 ? 0.5 : 0.7 // Thinner midline
             dataSet.drawCirclesEnabled = false
             dataSet.drawValuesEnabled = false
             dataSet.highlightEnabled = false
-            dataSet.lineDashLengths = [3, 6]
+            dataSet.lineDashLengths = referenceLine.dashPattern
             dataSets.append(dataSet)
         }
         
