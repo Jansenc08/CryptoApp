@@ -1044,9 +1044,9 @@ extension CoinDetailsVC: UITableViewDelegate {
         switch indexPath.section {
         case 1: // Segment control section - ensure minimum height for buttons
             return 76
-        case 2: // Chart section
+        case 2: // Chart section - Provide minimum viable height to prevent 44pt default
             let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
-            let baseHeight: CGFloat = 250 + 110 // Main chart + spacing/margins/padding
+            let baseHeight: CGFloat = 350 // Minimum for chart with RSI
             let volumeHeight: CGFloat = indicatorSettings.showVolume ? 80 : 0
             return baseHeight + volumeHeight
         default:
@@ -1056,11 +1056,8 @@ extension CoinDetailsVC: UITableViewDelegate {
     
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         switch indexPath.section {
-        case 2: // Chart section
-            let indicatorSettings = TechnicalIndicators.loadIndicatorSettings()
-            let baseHeight: CGFloat = 250 + 110 // Main chart + spacing/margins/padding
-            let volumeHeight: CGFloat = indicatorSettings.showVolume ? 80 : 0
-            return baseHeight + volumeHeight
+        case 2: // Chart section - Provide reasonable estimate for performance
+            return 450 // Rough estimate including RSI section and volume
         default:
             return UITableView.automaticDimension
         }

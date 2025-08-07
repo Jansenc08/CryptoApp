@@ -298,19 +298,18 @@ final class CandlestickChartView: CombinedChartView {
         guard let minY = allOHLCData.map({ min($0.low, min($0.open, $0.close)) }).min(),
               let maxY = allOHLCData.map({ max($0.high, max($0.open, $0.close)) }).max() else { return }
         
-        // Setup y-axis with EXPANDED range to accommodate technical indicators
+        // Setup y-axis - main price chart only (RSI will have separate scaling)
         let range = maxY - minY
         // FIXED: Prevent NaN in CoreGraphics when all OHLC values are identical
         let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
         let minRange = max(range, fallbackRange) // Ensure at least 1% range
         
-        // IMPROVED RANGE: Allocate more space for enhanced RSI display
-        let baseBuffer = minRange * 0.25  // Base buffer for price context
-        let rsiBuffer = minRange * 0.30   // Increased space for RSI below (was 0.20, now 0.30)
+        // Main chart area - price data only
+        let baseBuffer = minRange * 0.15  // Standard buffer for price context
         
-        // Extended range to show RSI below price action with reference lines
-        rightAxis.axisMinimum = minY - baseBuffer - rsiBuffer  // RSI area below
-        rightAxis.axisMaximum = maxY + baseBuffer              // No MACD above
+        // Price chart axis (RSI will use separate coordinate space)
+        rightAxis.axisMinimum = minY - baseBuffer
+        rightAxis.axisMaximum = maxY + baseBuffer
         
         let dataSet = CandleChartDataSet(entries: entries, label: "")
         
@@ -663,13 +662,20 @@ extension CandlestickChartView {
                 self.setVisibleXRangeMaximum(Double(min(20, data.entryCount)))
             }
             
+            // Calculate RSI area coordinates for label positioning
+            let chartHeight = self.bounds.height
+            let rsiAreaTop = chartHeight * 0.75  // RSI section starts at 75% down
+            let rsiAreaHeight = chartHeight * 0.25  // RSI section is 25% of chart height
+            
             // Update labels with current values
             self.labelManager?.updateAllLabels(
                 smaDataSet: smaDataSet,
                 emaDataSet: emaDataSet,
                 rsiResult: rsiResult,
                 settings: settings,
-                theme: theme
+                theme: theme,
+                rsiAreaTop: rsiAreaTop,
+                rsiAreaHeight: rsiAreaHeight
             )
             
             // Chart refreshed with technical indicators
@@ -731,97 +737,119 @@ extension CandlestickChartView {
         
         let rsiResult = TechnicalIndicators.calculateRSI(prices: prices, period: period)
         
-        // Get price range for better normalization
+        // Get price range to position RSI below main chart
         let allPrices = allOHLCData.flatMap { [$0.open, $0.high, $0.low, $0.close] }
         guard let minPrice = allPrices.min(), let maxPrice = allPrices.max(), maxPrice > minPrice else { return [] }
         
-        // IMPROVED NORMALIZATION: Increase RSI area to 25% for better visibility
-        let chartBottom = minPrice - (maxPrice - minPrice) * 0.05  // Buffer below chart
-        let rsiRange = (maxPrice - minPrice) * 0.25  // Use 25% of chart height (increased from 15%)
-        let rsiBottom = chartBottom - rsiRange
+        // Create RSI section with reasonable fixed separation
+        let priceRange = maxPrice - minPrice
+        let separationMultiplier = max(2.0, priceRange * 0.0001) // Dynamic but reasonable separation
+        let rsiSectionHeight = priceRange * 0.25  // 25% of price range for RSI section
+        let rsiBottom = minPrice - (priceRange * 0.1) - rsiSectionHeight
         
-        // Create RSI data entries with additional safety checks
+        // Map RSI values (0-100) to RSI section coordinates
         let rsiEntries = rsiResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
             guard let value = value else { return nil }
             guard value.isFinite && value >= 0 && value <= 100 else { return nil }
-            guard index < allOHLCData.count else { return nil } // Bounds check
+            guard index < allOHLCData.count else { return nil }
             
-            let normalizedValue = rsiBottom + (value / 100.0) * rsiRange
-            guard normalizedValue.isFinite else { return nil }
-            return ChartDataEntry(x: Double(index), y: normalizedValue)
+            // Map RSI (0-100) to the RSI section height
+            let rsiPosition = rsiBottom + (value / 100.0) * rsiSectionHeight
+            return ChartDataEntry(x: Double(index), y: rsiPosition)
         }
         
-        guard !rsiEntries.isEmpty, rsiEntries.count >= 2 else { return [] } // Need at least 2 points for reference lines
+        guard !rsiEntries.isEmpty, rsiEntries.count >= 2 else { return [] }
         
         var dataSets: [LineChartDataSet] = []
         
-        // Main RSI line - make it more prominent
+        // Main RSI line - Purple color as requested
         let rsiDataSet = LineChartDataSet(entries: rsiEntries, label: "RSI(\(period))")
-        rsiDataSet.setColor(TechnicalIndicators.getIndicatorColor(for: "rsi", theme: theme))
-        rsiDataSet.lineWidth = 2.5  // Increased from 2.0
+        rsiDataSet.setColor(UIColor.systemPurple)  // Purple as requested
+        rsiDataSet.lineWidth = 2.0
         rsiDataSet.drawCirclesEnabled = false
         rsiDataSet.drawValuesEnabled = false
         rsiDataSet.drawFilledEnabled = false
-        rsiDataSet.highlightEnabled = true  // Enable highlighting for better interaction
+        rsiDataSet.highlightEnabled = true
         dataSets.append(rsiDataSet)
         
-        // Create reference line entries (same x-coordinates as RSI)
-        guard let firstEntry = rsiEntries.first, let lastEntry = rsiEntries.last else { return dataSets }
+        // Create reference line entries spanning the chart width
+        guard let firstEntry = rsiEntries.first, let lastEntry = rsiEntries.last else { return [rsiDataSet] }
         
-        // Overbought level (70) - Red dashed line
-        let overboughtY = rsiBottom + (70.0 / 100.0) * rsiRange
-        let overboughtEntries = [
-            ChartDataEntry(x: firstEntry.x, y: overboughtY),
-            ChartDataEntry(x: lastEntry.x, y: overboughtY)
+        // Reference lines at key RSI levels in separate coordinate space
+        let referenceLines = [
+            (level: 70.0, color: UIColor.systemRed, name: "Overbought"),
+            (level: 50.0, color: UIColor.systemGray, name: "Neutral"), 
+            (level: 30.0, color: UIColor.systemGreen, name: "Oversold")
         ]
-        let overboughtDataSet = LineChartDataSet(entries: overboughtEntries, label: "")
-        overboughtDataSet.setColor(UIColor.systemRed.withAlphaComponent(0.7))
-        overboughtDataSet.lineWidth = 1.5
-        overboughtDataSet.drawCirclesEnabled = false
-        overboughtDataSet.drawValuesEnabled = false
-        overboughtDataSet.highlightEnabled = false
-        overboughtDataSet.lineDashLengths = [4, 4]
-        dataSets.append(overboughtDataSet)
         
-        // Oversold level (30) - Green dashed line
-        let oversoldY = rsiBottom + (30.0 / 100.0) * rsiRange
-        let oversoldEntries = [
-            ChartDataEntry(x: firstEntry.x, y: oversoldY),
-            ChartDataEntry(x: lastEntry.x, y: oversoldY)
-        ]
-        let oversoldDataSet = LineChartDataSet(entries: oversoldEntries, label: "")
-        oversoldDataSet.setColor(UIColor.systemGreen.withAlphaComponent(0.7))
-        oversoldDataSet.lineWidth = 1.5
-        oversoldDataSet.drawCirclesEnabled = false
-        oversoldDataSet.drawValuesEnabled = false
-        oversoldDataSet.highlightEnabled = false
-        oversoldDataSet.lineDashLengths = [4, 4]
-        dataSets.append(oversoldDataSet)
+        for referenceLine in referenceLines {
+            let levelPosition = rsiBottom + (referenceLine.level / 100.0) * rsiSectionHeight
+            let entries = [
+                ChartDataEntry(x: firstEntry.x, y: levelPosition),
+                ChartDataEntry(x: lastEntry.x, y: levelPosition)
+            ]
+            
+            let dataSet = LineChartDataSet(entries: entries, label: "")
+            dataSet.setColor(referenceLine.color.withAlphaComponent(0.5))
+            dataSet.lineWidth = 0.8
+            dataSet.drawCirclesEnabled = false
+            dataSet.drawValuesEnabled = false
+            dataSet.highlightEnabled = false
+            dataSet.lineDashLengths = [3, 6]
+            dataSets.append(dataSet)
+        }
         
-        // Neutral level (50) - Gray dashed line
-        let neutralY = rsiBottom + (50.0 / 100.0) * rsiRange
-        let neutralEntries = [
-            ChartDataEntry(x: firstEntry.x, y: neutralY),
-            ChartDataEntry(x: lastEntry.x, y: neutralY)
-        ]
-        let neutralDataSet = LineChartDataSet(entries: neutralEntries, label: "")
-        neutralDataSet.setColor(UIColor.systemGray.withAlphaComponent(0.5))
-        neutralDataSet.lineWidth = 1.0
-        neutralDataSet.drawCirclesEnabled = false
-        neutralDataSet.drawValuesEnabled = false
-        neutralDataSet.highlightEnabled = false
-        neutralDataSet.lineDashLengths = [2, 6]
-        dataSets.append(neutralDataSet)
+        // Configure chart axis to include RSI section properly
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Set axis to include both price data and RSI section
+            let topBuffer = priceRange * 0.05
+            self.rightAxis.axisMinimum = rsiBottom
+            self.rightAxis.axisMaximum = maxPrice + topBuffer
+            
+            // Disable auto-scaling to prevent zoom issues
+            self.rightAxis.granularityEnabled = true
+            self.rightAxis.granularity = 1.0
+            
+            // Use custom formatter for RSI section
+            self.rightAxis.valueFormatter = RSISeparateAxisFormatter(
+                rsiStart: rsiBottom,
+                rsiEnd: rsiBottom + rsiSectionHeight,
+                priceStart: minPrice
+            )
+        }
         
         return dataSets
     }
     
+    /// Adds a visual separator line between main chart and RSI section
+    private func addRSISeparatorLine(at yPosition: Double) {
+        // Create a horizontal separator line
+        let separatorLayer = CALayer()
+        separatorLayer.backgroundColor = UIColor.separator.cgColor
+        separatorLayer.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 1)
+        
+        // Convert chart coordinate to view coordinate
+        let transformer = getTransformer(forAxis: .right)
+        let pixelY = transformer.pixelForValues(x: 0, y: yPosition).y
+        
+        separatorLayer.frame.origin.y = pixelY
+        layer.addSublayer(separatorLayer)
+        
+        // Store reference for removal later
+        separatorLayer.name = "RSISeparator"
+    }
+    
+    /// Removes existing RSI separator lines
+    private func removeRSISeparatorLines() {
+        layer.sublayers?.removeAll { $0.name == "RSISeparator" }
+    }
 
     
     /// Clears all technical indicator overlays, keeping only the candlestick data
     func clearTechnicalIndicators() {
         // For candlestick charts, we'll focus on the core candlestick display
-        // Technical indicators are better suited for line charts
         notifyDataSetChanged()
     } 
 } 

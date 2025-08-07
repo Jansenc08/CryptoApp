@@ -132,14 +132,41 @@ final class ChartCell: UITableViewCell {
         chartsStackView.addArrangedSubview(mainChartContainer)
         chartsStackView.addArrangedSubview(volumeChartView)
         
-        // Set fixed height constraints to prevent chart size changes when volume is toggled
+        // Set flexible height constraints with priorities to prevent conflicts
+        // Main chart height is preferred but can be compressed if needed
+        let mainChartHeightConstraint = mainChartContainer.heightAnchor.constraint(equalToConstant: 320)
+        mainChartHeightConstraint.priority = UILayoutPriority(999) // High priority but not required
+        
+        let volumeChartHeightConstraint = volumeChartView.heightAnchor.constraint(equalToConstant: 80)
+        volumeChartHeightConstraint.priority = UILayoutPriority(999) // High priority but not required
+        
+        // Minimum height constraints to ensure charts are usable
+        let mainChartMinHeightConstraint = mainChartContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 280)
+        mainChartMinHeightConstraint.priority = UILayoutPriority.required
+        
+        let volumeChartMinHeightConstraint = volumeChartView.heightAnchor.constraint(greaterThanOrEqualToConstant: 60)
+        volumeChartMinHeightConstraint.priority = UILayoutPriority.required
+        
         NSLayoutConstraint.activate([
-            mainChartContainer.heightAnchor.constraint(equalToConstant: 250),
-            volumeChartView.heightAnchor.constraint(equalToConstant: 80)
+            mainChartHeightConstraint,
+            volumeChartHeightConstraint,
+            mainChartMinHeightConstraint,
+            volumeChartMinHeightConstraint
         ])
+        
+        // Set content priorities to ensure proper layout behavior
+        mainChartContainer.setContentHuggingPriority(UILayoutPriority(250), for: .vertical)
+        mainChartContainer.setContentCompressionResistancePriority(UILayoutPriority(750), for: .vertical)
+        
+        volumeChartView.setContentHuggingPriority(UILayoutPriority(251), for: .vertical)
+        volumeChartView.setContentCompressionResistancePriority(UILayoutPriority(751), for: .vertical)
         
         // Initially hide volume chart
         volumeChartView.isHidden = true
+        
+        // Set container view priorities for proper layout
+        containerView.setContentHuggingPriority(UILayoutPriority(249), for: .vertical)
+        containerView.setContentCompressionResistancePriority(UILayoutPriority(749), for: .vertical)
         
         // Setup loading view
         setupLoadingView()
@@ -154,6 +181,18 @@ final class ChartCell: UITableViewCell {
         updateViewsForState()
         
         isSetupComplete = true
+    }
+    
+    // MARK: - Intrinsic Content Size Support
+    
+    override var intrinsicContentSize: CGSize {
+        // Calculate intrinsic size based on content requirements
+        let baseHeight: CGFloat = 320 // Main chart with RSI
+        let volumeHeight: CGFloat = showVolume ? 80 : 0
+        let spacing: CGFloat = showVolume ? 4 : 0
+        let totalHeight = baseHeight + volumeHeight + spacing
+        
+        return CGSize(width: UIView.noIntrinsicMetric, height: totalHeight)
     }
     
     private func setupLoadingView() {
@@ -584,11 +623,12 @@ extension ChartCell {
         // Show/hide volume chart based on settings
         volumeChartView.isHidden = !showVolume
         
-        // Force layout update
-        chartsStackView.setNeedsLayout()
-        chartsStackView.layoutIfNeeded()
-        self.setNeedsLayout()
-        self.layoutIfNeeded()
+        // Defer layout update to avoid reentrant calls
+        DispatchQueue.main.async { [weak self] in
+            self?.invalidateIntrinsicContentSize()
+            self?.setNeedsUpdateConstraints()
+            self?.setNeedsLayout()
+        }
         
         // Update volume chart settings if volume is enabled
         if showVolume {

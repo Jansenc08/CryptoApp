@@ -104,6 +104,7 @@ class ChartLabelManager {
     
     private func createRSILabel() -> UILabel {
         let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false  // Fix AutoLayout conflicts
         label.font = UIFont.systemFont(ofSize: 11, weight: .medium)
         label.textAlignment = .left
         label.textColor = UIColor.systemGray
@@ -155,10 +156,13 @@ class ChartLabelManager {
     func positionRSILabel(in chartBounds: CGRect, rsiAreaTop: CGFloat, rsiAreaHeight: CGFloat) {
         guard let rsiContainer = rsiLabelContainer, let parentChart = parentChart else { return }
         
-        // Position RSI label container in the RSI area
+        // Clean up existing constraints and positioning
         rsiContainer.removeFromSuperview()
+        
+        // Add container back and set up constraints
         parentChart.addSubview(rsiContainer)
         
+        // Set constraints - these will be fresh since we removed from superview
         NSLayoutConstraint.activate([
             rsiContainer.leadingAnchor.constraint(equalTo: parentChart.leadingAnchor),
             rsiContainer.trailingAnchor.constraint(equalTo: parentChart.trailingAnchor),
@@ -222,7 +226,9 @@ extension ChartLabelManager {
         emaDataSet: LineChartDataSet?, 
         rsiResult: TechnicalIndicators.RSIResult?,
         settings: TechnicalIndicators.IndicatorSettings,
-        theme: ChartColorTheme
+        theme: ChartColorTheme,
+        rsiAreaTop: CGFloat? = nil,
+        rsiAreaHeight: CGFloat? = nil
     ) {
         // Update SMA label
         let smaValue = getLatestSMAValue(from: smaDataSet)
@@ -237,6 +243,12 @@ extension ChartLabelManager {
         // Update RSI label
         let rsiValue = rsiResult != nil ? getLatestRSIValue(from: rsiResult!) : nil
         updateRSILabel(value: rsiValue, period: settings.rsiPeriod, isVisible: settings.showRSI)
+        
+        // Position RSI label in RSI section if coordinates provided
+        if let rsiTop = rsiAreaTop, let rsiHeight = rsiAreaHeight, settings.showRSI {
+            guard let parentChart = parentChart else { return }
+            positionRSILabel(in: parentChart.bounds, rsiAreaTop: rsiTop, rsiAreaHeight: rsiHeight)
+        }
     }
     
     /// Hides all technical indicator labels (used when switching to line charts)
