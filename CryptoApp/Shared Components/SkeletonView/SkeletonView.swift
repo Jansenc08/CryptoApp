@@ -118,7 +118,7 @@ final class SkeletonContainerView: UIView {
     
     func addSkeletonViews(_ views: [SkeletonView]) {
         skeletonViews.append(contentsOf: views)
-        views.forEach { addSubview($0) }
+        addSubviews(contentsOf: views)
     }
     
     func startShimmering() {

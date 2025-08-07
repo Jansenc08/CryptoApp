@@ -232,9 +232,7 @@ final class ChartSettingsVC: UIViewController {
         // Control
         control.translatesAutoresizingMaskIntoConstraints = false
         
-        contentView.addSubview(settingLabel)
-        contentView.addSubview(badgeView)
-        contentView.addSubview(control)
+        contentView.addSubviews(settingLabel, badgeView, control)
         
         NSLayoutConstraint.activate([
             settingLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -431,8 +429,7 @@ final class ChartSettingsVC: UIViewController {
         titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
         titleLabel.textColor = .label
         
-        container.addSubview(titleLabel)
-        container.addSubview(control)
+        container.addSubviews(titleLabel, control)
         
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         control.translatesAutoresizingMaskIntoConstraints = false
