@@ -504,6 +504,18 @@ final class CandlestickChartView: CombinedChartView {
         )
     }
     
+    // MARK: - Chart Navigation
+    
+    /// Scrolls the chart to show the latest (most recent) data
+    private func scrollToLatestData() {
+        guard let data = data else { return }
+        
+        // Move to the rightmost position (latest data) like ChartView does
+        moveViewToX(data.xMax)
+        
+        print("📍 Auto-scrolled to latest data at position \(data.xMax)")
+    }
+    
     // MARK: - View Lifecycle
     
     override func willMove(toWindow newWindow: UIWindow?) {
@@ -923,8 +935,9 @@ extension CandlestickChartView {
                 rsiAreaHeight: rsiAreaHeight
             )
             
-            // Update values for currently visible range (CoinMarketCap style)
+            // Auto-scroll to latest data (rightmost position)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.scrollToLatestData()
                 self.updateValuesForVisibleRange()
                 self.startViewportMonitoring() // Start monitoring for scroll-based updates
             }
