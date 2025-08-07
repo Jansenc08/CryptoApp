@@ -742,31 +742,39 @@ final class ChartSettingsVC: UIViewController {
     // MARK: - Smoothing Algorithm Picker
     
     private func presentSmoothingAlgorithmPicker() {
-        let alert = UIAlertController(title: "Smoothing Algorithm", message: "Choose how chart data is smoothed", preferredStyle: .actionSheet)
+        let alert = UIAlertController(title: "Choose Smoothing Algorithm", message: "Different algorithms work better for different trading styles", preferredStyle: .actionSheet)
         
-        let algorithms: [(ChartSmoothingHelper.SmoothingType, String, String)] = [
-            (.adaptive, "Adaptive", "Smart smoothing based on volatility"),
-            (.basic, "Basic", "Simple moving average"),
-            (.gaussian, "Gaussian", "Very smooth, removes noise"),
-            (.savitzkyGolay, "Savitzky-Golay", "Preserves peaks - great for crypto"),
-            (.median, "Median", "Removes price spikes"),
-            (.loess, "LOESS", "Follows trends closely"),
-            (.bollinger, "Bollinger", "Crypto-specific smoothing")
+        let algorithms: [(ChartSmoothingHelper.SmoothingType, String, String, String)] = [
+            (.adaptive, "Adaptive (Recommended)", "Automatically chooses the best method based on timeframe", "Best for: General use, beginners"),
+            (.basic, "Basic", "Simple moving average smoothing", "Best for: Clean, predictable results"),
+            (.gaussian, "Gaussian", "Ultra-smooth flowing lines, removes most noise", "Best for: Presentations, trend analysis"),
+            (.savitzkyGolay, "Savitzky-Golay", "Smooth but preserves important price spikes", "Best for: Crypto trading, volatile markets"),
+            (.median, "Median", "Removes flash crashes and data errors", "Best for: Noisy data, API glitches"),
+            (.loess, "LOESS", "Follows market trends naturally", "Best for: Trend following, smooth curves"),
+            (.bollinger, "Bollinger", "Adapts smoothing based on price volatility", "Best for: Crypto-specific analysis")
         ]
         
-        for (type, title, _) in algorithms {
+        for (type, title, description, useCase) in algorithms {
             let isSelected = currentSmoothingType == type
-            let actionTitle = "\(title) \(isSelected ? "✓" : "")"
+            let checkmark = isSelected ? " ✓" : ""
             
-            alert.addAction(UIAlertAction(title: actionTitle, style: .default) { [weak self] _ in
+            // Create detailed action with description
+            let action = UIAlertAction(title: "\(title)\(checkmark)", style: .default) { [weak self] _ in
                 self?.currentSmoothingType = type
                 self?.updateSmoothingAlgorithmButton()
                 if let self = self {
                     self.delegate?.smoothingSettingsChanged(enabled: self.currentSmoothingEnabled, type: self.currentSmoothingType)
                 }
                 self?.delegate?.chartSettingsDidUpdate()
-            })
+            }
+            
+            alert.addAction(action)
         }
+        
+        // Add help action
+        alert.addAction(UIAlertAction(title: "What's the difference?", style: .default) { [weak self] _ in
+            self?.showSmoothingAlgorithmHelp()
+        })
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         
@@ -774,6 +782,31 @@ final class ChartSettingsVC: UIViewController {
             popover.sourceView = smoothingAlgorithmButton
             popover.sourceRect = smoothingAlgorithmButton.bounds
         }
+        
+        present(alert, animated: true)
+    }
+    
+    private func showSmoothingAlgorithmHelp() {
+        let alert = UIAlertController(title: "Smoothing Algorithm Guide", message: nil, preferredStyle: .alert)
+        
+        let helpText = """
+        ADAPTIVE: Smart choice that automatically selects the best smoothing for your timeframe. Great for beginners.
+        
+        BASIC: Simple moving average. Creates clean, predictable smoothing without surprises.
+        
+        GAUSSIAN: Creates very smooth, professional-looking curves. Perfect for presentations.
+        
+        SAVITZKY-GOLAY: Keeps important price spikes visible while smoothing noise. Excellent for crypto analysis.
+        
+        MEDIAN: Removes flash crashes and API errors. Good for cleaning noisy data.
+        
+        LOESS: Follows market trends naturally with organic curves. Great for trend analysis.
+        
+        BOLLINGER: Crypto-specific smoothing that adapts to market volatility. Advanced option.
+        """
+        
+        alert.message = helpText
+        alert.addAction(UIAlertAction(title: "Got it!", style: .default))
         
         present(alert, animated: true)
     }
