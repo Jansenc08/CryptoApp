@@ -239,14 +239,24 @@ final class ChartView: LineChartView {
 
         guard let minY = allDataPoints.min(), let maxY = allDataPoints.max() else { return }
 
-        // Setup y-axis buffer (using right axis)
+        // Setup y-axis buffer (using right axis) with NaN validation
         let range = maxY - minY
         // FIXED: Prevent NaN in CoreGraphics when all values are identical
         let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
         let minRange = max(range, fallbackRange) // Ensure at least 1% range
         let buffer = minRange * 0.05
-        rightAxis.axisMinimum = minY - buffer
-        rightAxis.axisMaximum = maxY + buffer
+        let axisMin = minY - buffer
+        let axisMax = maxY + buffer
+        
+        // CRITICAL: Validate axis values before setting to prevent NaN errors
+        guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
+            print("⚠️ Invalid axis values in ChartView - skipping axis configuration")
+            print("axisMin: \(axisMin), axisMax: \(axisMax), minY: \(minY), maxY: \(maxY)")
+            return
+        }
+        
+        rightAxis.axisMinimum = axisMin
+        rightAxis.axisMaximum = axisMax
 
         // Color based on price trend
         // Green if lastprice >= firstPrice(Positive) else red.

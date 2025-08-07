@@ -156,21 +156,48 @@ final class ChartSmoothingHelper {
         return applyConvolution(data, kernel: kernel)
     }
     
-    /// Generate Gaussian kernel for smoothing
+    /// Generate Gaussian kernel for smoothing with NaN validation
     private static func generateGaussianKernel(size: Int, sigma: Double) -> [Double] {
+        guard size > 0 && sigma > 0 && sigma.isFinite else {
+            // Return simple averaging kernel as fallback
+            return Array(repeating: 1.0 / Double(max(size, 1)), count: max(size, 1))
+        }
+        
         let center = size / 2
         var kernel: [Double] = []
         var sum: Double = 0
         
         for i in 0..<size {
             let x = Double(i - center)
-            let value = exp(-(x * x) / (2 * sigma * sigma))
-            kernel.append(value)
-            sum += value
+            let exponent = -(x * x) / (2 * sigma * sigma)
+            
+            // Validate exponent before exp() to prevent NaN
+            guard exponent.isFinite else {
+                kernel.append(0.0)
+                continue
+            }
+            
+            let value = exp(exponent)
+            
+            // Validate exp result
+            if value.isFinite && value >= 0 {
+                kernel.append(value)
+                sum += value
+            } else {
+                kernel.append(0.0)
+            }
         }
         
-        // Normalize kernel
-        return kernel.map { $0 / sum }
+        // Normalize kernel with validation
+        guard sum > 0 && sum.isFinite else {
+            // Return simple averaging kernel as fallback
+            return Array(repeating: 1.0 / Double(size), count: size)
+        }
+        
+        return kernel.map { value in
+            let normalized = value / sum
+            return normalized.isFinite ? normalized : 0.0
+        }
     }
     
     /// Savitzky-Golay filter - Preserves peaks while smoothing (great for crypto!)
@@ -238,26 +265,50 @@ final class ChartSmoothingHelper {
         return smoothedData
     }
     
-    /// Calculate LOESS weights
+    /// Calculate LOESS weights with NaN validation
     private static func calculateLOESSWeights(index: Int, data: [Double], bandwidth: Int) -> [Double] {
         var weights = Array(repeating: 0.0, count: data.count)
+        
+        // Validate bandwidth to prevent division by zero
+        guard bandwidth > 0 else {
+            return weights
+        }
         
         for j in 0..<data.count {
             let distance = abs(Double(j - index))
             if distance <= Double(bandwidth) {
                 let u = distance / Double(bandwidth)
-                weights[j] = pow(1 - pow(u, 3), 3) // Tricube weight function
+                
+                // Validate u before pow operations
+                guard u.isFinite && u >= 0 && u <= 1 else {
+                    continue
+                }
+                
+                let u3 = pow(u, 3)
+                let weight = pow(1 - u3, 3) // Tricube weight function
+                
+                // Validate final weight
+                if weight.isFinite && weight >= 0 {
+                    weights[j] = weight
+                }
             }
         }
         
         return weights
     }
     
-    /// Calculate weighted average for LOESS
+    /// Calculate weighted average for LOESS with NaN validation
     private static func calculateWeightedAverage(data: [Double], weights: [Double]) -> Double {
         let weightedSum = zip(data, weights).map { $0 * $1 }.reduce(0, +)
         let totalWeight = weights.reduce(0, +)
-        return totalWeight > 0 ? weightedSum / totalWeight : 0
+        
+        // Validate calculations before division
+        guard weightedSum.isFinite && totalWeight.isFinite && totalWeight > 0 else {
+            return data.isEmpty ? 0 : (data.reduce(0, +) / Double(data.count))
+        }
+        
+        let result = weightedSum / totalWeight
+        return result.isFinite ? result : 0
     }
     
     /// Apply convolution for filtering

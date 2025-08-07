@@ -741,11 +741,25 @@ extension CandlestickChartView {
         let allPrices = allOHLCData.flatMap { [$0.open, $0.high, $0.low, $0.close] }
         guard let minPrice = allPrices.min(), let maxPrice = allPrices.max(), maxPrice > minPrice else { return [] }
         
-        // Create RSI section with reasonable fixed separation
+        // Create RSI section with robust validation to prevent NaN errors
         let priceRange = maxPrice - minPrice
+        
+        // Validate price range is finite and reasonable
+        guard priceRange.isFinite && priceRange >= 0 else {
+            print("⚠️ Invalid price range: \(priceRange), minPrice: \(minPrice), maxPrice: \(maxPrice)")
+            return []
+        }
+        
         let separationMultiplier = max(2.0, priceRange * 0.0001) // Dynamic but reasonable separation
         let rsiSectionHeight = priceRange * 0.25  // 25% of price range for RSI section
         let rsiBottom = minPrice - (priceRange * 0.1) - rsiSectionHeight
+        
+        // Final validation of all computed values
+        guard separationMultiplier.isFinite && rsiSectionHeight.isFinite && rsiBottom.isFinite else {
+            print("⚠️ Invalid RSI positioning values:")
+            print("separationMultiplier: \(separationMultiplier), rsiSectionHeight: \(rsiSectionHeight), rsiBottom: \(rsiBottom)")
+            return []
+        }
         
         // Map RSI values (0-100) to RSI section coordinates
         let rsiEntries = rsiResult.values.enumerated().compactMap { index, value -> ChartDataEntry? in
@@ -755,6 +769,13 @@ extension CandlestickChartView {
             
             // Map RSI (0-100) to the RSI section height
             let rsiPosition = rsiBottom + (value / 100.0) * rsiSectionHeight
+            
+            // Validate final position is finite before creating entry
+            guard rsiPosition.isFinite else {
+                print("⚠️ Invalid RSI position: \(rsiPosition) for value: \(value)")
+                return nil
+            }
+            
             return ChartDataEntry(x: Double(index), y: rsiPosition)
         }
         
@@ -769,7 +790,7 @@ extension CandlestickChartView {
         rsiDataSet.drawCirclesEnabled = false
         rsiDataSet.drawValuesEnabled = false
         rsiDataSet.drawFilledEnabled = false
-        rsiDataSet.highlightEnabled = true
+        rsiDataSet.highlightEnabled = false // Disable tooltip for RSI line
         rsiDataSet.mode = .cubicBezier // Smooth line interpolation
         rsiDataSet.cubicIntensity = 0.1 // Subtle smoothing
         dataSets.append(rsiDataSet)
@@ -786,6 +807,13 @@ extension CandlestickChartView {
         
         for referenceLine in referenceLines {
             let levelPosition = rsiBottom + (referenceLine.level / 100.0) * rsiSectionHeight
+            
+            // Validate reference line position is finite
+            guard levelPosition.isFinite else {
+                print("⚠️ Invalid reference line position: \(levelPosition) for level: \(referenceLine.level)")
+                continue
+            }
+            
             let entries = [
                 ChartDataEntry(x: firstEntry.x, y: levelPosition),
                 ChartDataEntry(x: lastEntry.x, y: levelPosition)
@@ -805,16 +833,33 @@ extension CandlestickChartView {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Set axis to include both price data and RSI section
+            // CRITICAL: Validate all axis values before setting to prevent NaN errors
             let topBuffer = priceRange * 0.05
-            self.rightAxis.axisMinimum = rsiBottom
-            self.rightAxis.axisMaximum = maxPrice + topBuffer
+            let axisMinimum = rsiBottom
+            let axisMaximum = maxPrice + topBuffer
+            let granularityValue = 1.0
+            
+            // Validate all values are finite before setting axis properties
+            guard axisMinimum.isFinite && axisMaximum.isFinite && axisMaximum > axisMinimum,
+                  granularityValue.isFinite && granularityValue > 0,
+                  rsiBottom.isFinite && rsiSectionHeight.isFinite && rsiSectionHeight > 0,
+                  minPrice.isFinite else {
+                print("⚠️ Invalid axis values detected - skipping axis configuration")
+                print("axisMinimum: \(axisMinimum), axisMaximum: \(axisMaximum)")
+                print("rsiBottom: \(rsiBottom), rsiSectionHeight: \(rsiSectionHeight)")
+                print("minPrice: \(minPrice), maxPrice: \(maxPrice)")
+                return
+            }
+            
+            // Set axis to include both price data and RSI section
+            self.rightAxis.axisMinimum = axisMinimum
+            self.rightAxis.axisMaximum = axisMaximum
             
             // Disable auto-scaling to prevent zoom issues
             self.rightAxis.granularityEnabled = true
-            self.rightAxis.granularity = 1.0
+            self.rightAxis.granularity = granularityValue
             
-            // Use custom formatter for RSI section
+            // Use custom formatter for RSI section (only if all values are valid)
             self.rightAxis.valueFormatter = RSISeparateAxisFormatter(
                 rsiStart: rsiBottom,
                 rsiEnd: rsiBottom + rsiSectionHeight,

@@ -85,17 +85,29 @@ final class TechnicalIndicators {
     // MARK: - Exponential Moving Average (EMA)
     
     static func calculateEMA(prices: [Double], period: Int) -> MovingAverageResult {
-        guard prices.count >= period else {
+        guard prices.count >= period, period > 0 else {
             return MovingAverageResult(values: Array(repeating: nil, count: prices.count), period: period, type: .exponential)
         }
         
         let multiplier = 2.0 / Double(period + 1)
+        
+        // Validate multiplier is finite
+        guard multiplier.isFinite && multiplier > 0 else {
+            return MovingAverageResult(values: Array(repeating: nil, count: prices.count), period: period, type: .exponential)
+        }
+        
         var emaValues: [Double?] = Array(repeating: nil, count: period - 1)
         
-        // First EMA value is SMA
+        // First EMA value is SMA with validation
         let firstSum = prices[0..<period].reduce(0, +)
         let firstEMA = firstSum / Double(period)
-        emaValues.append(firstEMA)
+        
+        // Validate first EMA value
+        if firstEMA.isFinite {
+            emaValues.append(firstEMA)
+        } else {
+            emaValues.append(nil)
+        }
         
         // Calculate subsequent EMA values
         for i in period..<prices.count {
@@ -164,6 +176,12 @@ final class TechnicalIndicators {
         for i in period..<gains.count {
             avgGain = ((avgGain * Double(period - 1)) + gains[i]) / Double(period)
             avgLoss = ((avgLoss * Double(period - 1)) + losses[i]) / Double(period)
+            
+            // Validate intermediate averages
+            guard avgGain.isFinite && avgLoss.isFinite && avgGain >= 0 && avgLoss >= 0 else {
+                rsiValues.append(nil)
+                continue
+            }
             
             let rs: Double
             if avgLoss == 0 {

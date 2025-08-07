@@ -789,23 +789,34 @@ final class ChartSettingsVC: UIViewController {
     private func showSmoothingAlgorithmHelp() {
         let alert = UIAlertController(title: "Smoothing Algorithm Guide", message: nil, preferredStyle: .alert)
         
-        let helpText = """
-        ADAPTIVE: Smart choice that automatically selects the best smoothing for your timeframe. Great for beginners.
+        // Create attributed string with bold algorithm names
+        let helpText = NSMutableAttributedString()
         
-        BASIC: Simple moving average. Creates clean, predictable smoothing without surprises.
+        let algorithms = [
+            ("ADAPTIVE:", " Smart choice that automatically selects the best smoothing for your timeframe. Great for beginners.\n\n"),
+            ("BASIC:", " Simple moving average. Creates clean, predictable smoothing without surprises.\n\n"),
+            ("GAUSSIAN:", " Creates very smooth, professional-looking curves. Perfect for presentations.\n\n"),
+            ("SAVITZKY-GOLAY:", " Keeps important price spikes visible while smoothing noise. Excellent for crypto analysis.\n\n"),
+            ("MEDIAN:", " Removes flash crashes and API errors. Good for cleaning noisy data.\n\n"),
+            ("LOESS:", " Follows market trends naturally with organic curves. Great for trend analysis.\n\n"),
+            ("BOLLINGER:", " Crypto-specific smoothing that adapts to market volatility. Advanced option.")
+        ]
         
-        GAUSSIAN: Creates very smooth, professional-looking curves. Perfect for presentations.
+        for (boldText, normalText) in algorithms {
+            // Add bold algorithm name
+            helpText.append(NSAttributedString(string: boldText, attributes: [
+                .font: UIFont.systemFont(ofSize: 13, weight: .bold),
+                .foregroundColor: UIColor.label
+            ]))
+            
+            // Add normal description
+            helpText.append(NSAttributedString(string: normalText, attributes: [
+                .font: UIFont.systemFont(ofSize: 13, weight: .regular),
+                .foregroundColor: UIColor.label
+            ]))
+        }
         
-        SAVITZKY-GOLAY: Keeps important price spikes visible while smoothing noise. Excellent for crypto analysis.
-        
-        MEDIAN: Removes flash crashes and API errors. Good for cleaning noisy data.
-        
-        LOESS: Follows market trends naturally with organic curves. Great for trend analysis.
-        
-        BOLLINGER: Crypto-specific smoothing that adapts to market volatility. Advanced option.
-        """
-        
-        alert.message = helpText
+        alert.setValue(helpText, forKey: "attributedMessage")
         alert.addAction(UIAlertAction(title: "Got it!", style: .default))
         
         present(alert, animated: true)
