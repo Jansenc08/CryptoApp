@@ -51,7 +51,7 @@ final class AppLogger {
     
     /// Error conditions
     static func error(_ message: String, error: Error? = nil) {
-        let errorDetail = error != nil ? " | \(error!.localizedDescription)" : ""
+        let errorDetail = error.map { " | \($0.localizedDescription)" } ?? ""
         shared.log("❌ ERROR", message + errorDetail, level: .error)
     }
     
@@ -150,8 +150,8 @@ final class AppLogger {
     
     /// Log API request summary
     static func apiSummary(endpoint: String, status: Int, itemCount: Int? = nil, duration: TimeInterval? = nil) {
-        let countText = itemCount != nil ? " | \(itemCount!) items" : ""
-        let durationText = duration != nil ? " | \(String(format: "%.2f", duration! * 1000))ms" : ""
+        let countText = itemCount.map { " | \($0) items" } ?? ""
+        let durationText = duration.map { " | \(String(format: "%.2f", $0 * 1000))ms" } ?? ""
         AppLogger.network("\(endpoint) | HTTP \(status)\(countText)\(durationText)")
     }
     

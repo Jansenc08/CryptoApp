@@ -773,14 +773,16 @@ import Combine
         emptyStateView = UIContentUnavailableView(configuration: configuration)
         emptyStateView?.translatesAutoresizingMaskIntoConstraints = false
         emptyStateView?.isHidden = true
-        scrollContentView.addSubview(emptyStateView!)
         
-        NSLayoutConstraint.activate([
-            emptyStateView!.centerXAnchor.constraint(equalTo: scrollContentView.centerXAnchor),
-            emptyStateView!.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 120),
-            emptyStateView!.leadingAnchor.constraint(greaterThanOrEqualTo: scrollContentView.leadingAnchor, constant: 40),
-            emptyStateView!.trailingAnchor.constraint(lessThanOrEqualTo: scrollContentView.trailingAnchor, constant: -40)
-        ])
+        if let emptyView = emptyStateView {
+            scrollContentView.addSubview(emptyView)
+            NSLayoutConstraint.activate([
+                emptyView.centerXAnchor.constraint(equalTo: scrollContentView.centerXAnchor),
+                emptyView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 120),
+                emptyView.leadingAnchor.constraint(greaterThanOrEqualTo: scrollContentView.leadingAnchor, constant: 40),
+                emptyView.trailingAnchor.constraint(lessThanOrEqualTo: scrollContentView.trailingAnchor, constant: -40)
+            ])
+        }
     }
     
     private func updateEmptyState(_ searchResults: [Coin], searchText: String) {

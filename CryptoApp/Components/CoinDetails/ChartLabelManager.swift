@@ -321,15 +321,15 @@ class ChartLabelManager {
         // Summary of what's being monitored (using cached values)
         print("📊 SUMMARY for Index \(xIndex):")
         if settings.showSMA {
-            let smaText = smaValue != nil ? String(format: "%.2f", smaValue!) : "N/A"
+            let smaText = smaValue.map { String(format: "%.2f", $0) } ?? "N/A"
             print("   • SMA(\(settings.smaPeriod)): $\(smaText)")
         }
         if settings.showEMA {
-            let emaText = emaValue != nil ? String(format: "%.2f", emaValue!) : "N/A"
+            let emaText = emaValue.map { String(format: "%.2f", $0) } ?? "N/A"
             print("   • EMA(\(settings.emaPeriod)): $\(emaText)")
         }
         if settings.showRSI {
-            let rsiText = rsiValue != nil ? String(format: "%.2f", rsiValue!) : "N/A"
+            let rsiText = rsiValue.map { String(format: "%.2f", $0) } ?? "N/A"
             print("   • RSI(\(settings.rsiPeriod)): \(rsiText)")
         }
         print("────────────────────────────────────────")
@@ -382,7 +382,7 @@ class ChartLabelManager {
             return nil 
         }
         let value = rsiResult.values[index]
-        let formattedValue = value != nil ? String(format: "%.2f", value!) : "nil"
+        let formattedValue = value.map { String(format: "%.2f", $0) } ?? "nil"
         print("🎯 RSI: Retrieved \(formattedValue) at index \(index) from RSI with \(rsiResult.values.count) values")
         return value
     }
