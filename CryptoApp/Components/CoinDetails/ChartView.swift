@@ -83,6 +83,8 @@ final class ChartView: LineChartView {
         setVisibleXRangeMaximum(200)  // Max zoom out
         setVisibleXRangeMinimum(5)    // Max zoom in (show 5 data points)
         
+
+        
         // Add gesture recognizers using helper
         configurationHelper.addZoomGestures(to: self, target: self, resetAction: #selector(resetChartZoom), showZoomAction: #selector(showZoomHint))
 
@@ -454,6 +456,14 @@ final class ChartView: LineChartView {
         
         // Convert timestamp to index
         let targetIndex = findIndexForTimestamp(rightmostVisibleTimestamp)
+        
+        // Update current price label (check if we have price data)
+        if targetIndex < allDataPoints.count && targetIndex >= 0 {
+            let currentPrice = allDataPoints[targetIndex]
+            // For line chart, determine bullish/bearish by comparing with previous price
+            let isBullish = targetIndex > 0 ? currentPrice >= allDataPoints[targetIndex - 1] : true
+            labelManager.updateCurrentPrice(price: currentPrice, isBullish: isBullish)
+        }
         
         // Update labels with values at this position
         labelManager.updateLabelsAtPosition(

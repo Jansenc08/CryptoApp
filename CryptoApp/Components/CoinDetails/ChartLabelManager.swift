@@ -23,6 +23,7 @@ class ChartLabelManager {
     private var smaLabel: UILabel?
     private var emaLabel: UILabel?
     private var rsiLabel: UILabel?
+    private var currentPriceLabel: UILabel?
     
     // MARK: - Initialization
     
@@ -36,10 +37,10 @@ class ChartLabelManager {
     private func setupLabelContainers() {
         guard let parentChart = parentChart else { return }
         
-        // Create top labels container for SMA/EMA values (similar to CoinMarketCap)
+        // Create top labels container for Current Price/SMA/EMA values (similar to CoinMarketCap)
         topLabelsContainer = UIStackView()
         topLabelsContainer?.axis = .horizontal
-        topLabelsContainer?.spacing = 16
+        topLabelsContainer?.spacing = 12 // Tighter spacing to fit all three labels
         topLabelsContainer?.alignment = .center
         topLabelsContainer?.distribution = .fillProportionally
         topLabelsContainer?.translatesAutoresizingMaskIntoConstraints = false
@@ -67,11 +68,15 @@ class ChartLabelManager {
     }
     
     private func setupIndividualLabels() {
-        // SMA Label
+        // Current Price Label (first in line)
+        currentPriceLabel = createCurrentPriceLabel()
+        currentPriceLabel?.isHidden = true
+        
+        // SMA Label (smaller font)
         smaLabel = createTechnicalIndicatorLabel()
         smaLabel?.isHidden = true
         
-        // EMA Label  
+        // EMA Label (smaller font)
         emaLabel = createTechnicalIndicatorLabel()
         emaLabel?.isHidden = true
         
@@ -83,6 +88,7 @@ class ChartLabelManager {
         if let topContainer = topLabelsContainer {
             if let smaLabel = smaLabel { topContainer.addArrangedSubview(smaLabel) }
             if let emaLabel = emaLabel { topContainer.addArrangedSubview(emaLabel) }
+            if let priceLabel = currentPriceLabel { topContainer.addArrangedSubview(priceLabel) }
         }
         
         if let rsiContainer = rsiLabelContainer, let rsiLabel = rsiLabel {
@@ -94,9 +100,17 @@ class ChartLabelManager {
         }
     }
     
+    private func createCurrentPriceLabel() -> UILabel {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 10, weight: .medium) // Same size as SMA/EMA
+        label.textAlignment = .left
+        label.backgroundColor = UIColor.clear
+        return label
+    }
+    
     private func createTechnicalIndicatorLabel() -> UILabel {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        label.font = UIFont.systemFont(ofSize: 10, weight: .medium) // Smaller font to fit all three
         label.textAlignment = .left
         label.backgroundColor = UIColor.clear
         return label
@@ -238,6 +252,24 @@ class ChartLabelManager {
     }
     
     // MARK: - Dynamic Value Updates (CoinMarketCap Style)
+    
+    /// Updates the current price label with dynamic price and color
+    func updateCurrentPrice(price: Double, isBullish: Bool) {
+        guard let label = currentPriceLabel else { return }
+        
+        // Format price with proper currency formatting and "Close:" prefix
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = "$"
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        let formattedPrice = formatter.string(from: NSNumber(value: price)) ?? String(format: "$%.2f", price)
+        label.text = "Close: \(formattedPrice)"
+        
+        // Update color based on price movement
+        label.textColor = isBullish ? UIColor.systemGreen : UIColor.systemRed
+        label.isHidden = false
+    }
     
     /// Updates labels with values at specific chart position (for crosshair interaction)
     func updateLabelsAtPosition(

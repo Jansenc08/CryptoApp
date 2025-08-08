@@ -46,6 +46,11 @@ final class CandlestickChartView: CombinedChartView {
     // Visual indicator for monitored candlestick
     private var monitoringIndicatorView: UIView?
     
+    // Current price indicator (TradingView style)
+    private var currentPriceLineView: UIView?
+    private var currentPriceLabelView: UIView?
+    private var currentPriceLabel: UILabel?
+    
     // Callback to notify when user scrolls to chart edge
     var onScrollToEdge: ((ScrollDirection) -> Void)?
     
@@ -61,6 +66,7 @@ final class CandlestickChartView: CombinedChartView {
         self.delegate = self
         configure()
         setupLabelManager()
+        setupCurrentPriceIndicator()
     }
     
     required init?(coder: NSCoder) {
@@ -68,11 +74,145 @@ final class CandlestickChartView: CombinedChartView {
         self.delegate = self
         configure()
         setupLabelManager()
+        setupCurrentPriceIndicator()
     }
     
     private func setupLabelManager() {
         labelManager = ChartLabelManager(parentChart: self)
     }
+    
+    // MARK: - Current Price Indicator Setup
+    
+    private func setupCurrentPriceIndicator() {
+        // NOTE: Current price text is displayed in the top label container alongside SMA/EMA
+        // But we still show a subtle dotted horizontal line for visual price level reference
+        
+        // Create horizontal dotted line for current price level
+        currentPriceLineView = UIView()
+        currentPriceLineView?.backgroundColor = UIColor.clear // We'll use a CAShapeLayer instead
+        currentPriceLineView?.translatesAutoresizingMaskIntoConstraints = false
+        currentPriceLineView?.isHidden = true
+        currentPriceLineView?.alpha = 0.6 // Reduced opacity for subtlety
+        
+        // Add to chart
+        if let lineView = currentPriceLineView {
+            addSubview(lineView)
+        }
+    }
+    
+    // MARK: - Current Price Indicator Updates
+    
+    private func updateCurrentPriceIndicator(for candlestick: OHLCData) {
+        guard let lineView = currentPriceLineView else { 
+            return 
+        }
+        
+        // Use closing price as the current price
+        let currentPrice = candlestick.close
+        
+        // Determine color based on price movement (bullish/bearish)
+        let indicatorColor = candlestick.isBullish ? UIColor.systemGreen : UIColor.systemRed
+        
+        // Convert price to Y position on chart
+        let yPosition = getYPositionForPrice(currentPrice)
+        
+        // Get the actual chart content area for accurate line positioning
+        let chartContentRect = contentRect
+        let lineStartX = max(0, chartContentRect.minX)
+        let lineEndX = min(bounds.width, chartContentRect.maxX)
+        let lineWidth = lineEndX - lineStartX
+        
+        // Position the horizontal line across the chart content area
+        // Make sure the Y position is relative to the chart view bounds
+        lineView.frame = CGRect(
+            x: lineStartX,
+            y: yPosition - 0.5, // Half line height for centering
+            width: lineWidth,
+            height: 1
+        )
+        
+        // Remove any existing shape layers
+        lineView.layer.sublayers?.removeAll()
+        
+        // Create dotted line pattern using CAShapeLayer
+        let dottedLine = CAShapeLayer()
+        dottedLine.strokeColor = indicatorColor.cgColor
+        dottedLine.lineWidth = 1.0
+        dottedLine.lineDashPattern = [4, 4] // 4 points dash, 4 points gap
+        
+        // Create the path for the line using the actual line width
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: 0, y: 0.5))
+        path.addLine(to: CGPoint(x: lineWidth, y: 0.5))
+        
+        dottedLine.path = path.cgPath
+        lineView.layer.addSublayer(dottedLine)
+        
+        // Show the line
+        lineView.isHidden = false
+        
+        // Bring to front to ensure visibility over candlesticks
+        bringSubviewToFront(lineView)
+    }
+    
+    /// Cached transformer for performance (Swift best practice)
+    private var cachedRightAxisTransformer: Transformer?
+    
+    private func getYPositionForPrice(_ price: Double) -> CGFloat {
+        // SWIFT BEST PRACTICE: Cache expensive transformer calls
+        if cachedRightAxisTransformer == nil {
+            cachedRightAxisTransformer = getTransformer(forAxis: .right)
+        }
+        
+        guard let transformer = cachedRightAxisTransformer else {
+            return contentRect.midY // Fallback
+        }
+        
+        let pixelY = transformer.pixelForValues(x: 0, y: price)
+        
+        // Swift best practice: Safe bounds checking
+        return max(contentRect.minY, min(contentRect.maxY, pixelY.y))
+    }
+    
+    private func hideCurrentPriceIndicator() {
+        currentPriceLineView?.isHidden = true
+        // Note: currentPriceLabelView is no longer used - price text is in top container
+    }
+    
+    // MARK: - Public Price Indicator Controls
+    
+    /// Toggles the current price indicator visibility
+    func setCurrentPriceIndicatorVisible(_ visible: Bool) {
+        if visible && !allOHLCData.isEmpty {
+            // Trigger a visible range update which will update the price indicator
+            updateValuesForVisibleRange()
+        } else {
+            hideCurrentPriceIndicator()
+        }
+    }
+    
+    // MARK: - Precise Index Calculation for Zoom Levels
+    
+    /// Calculates the rightmost visible candlestick index using DGCharts built-in properties (optimized)
+    private func calculateRightmostVisibleIndex() -> Int {
+        guard !allOHLCData.isEmpty else { return 0 }
+        
+        // SWIFT BEST PRACTICE: Use DGCharts built-in highestVisibleX (O(1) complexity)
+        // This is the most efficient and accurate method
+        
+        let rightmostDataX = highestVisibleX
+        let candidateIndex = Int(rightmostDataX.rounded())
+        
+        // Swift best practice: Safe bounds checking
+        let finalIndex = max(0, min(candidateIndex, allOHLCData.count - 1))
+        
+        return finalIndex
+    }
+    
+    // Note: Price indicator updates are now integrated directly into performVisibleRangeUpdate()
+    // This ensures the price indicator uses precise index calculation for all zoom levels
+    
+
     
     // MARK: - Chart Setup
     private func configure() {
@@ -111,6 +251,8 @@ final class CandlestickChartView: CombinedChartView {
         // Set zoom limits optimized for candlestick analysis
         setVisibleXRangeMaximum(200)        // Max zoom out (show 200 candles) - increased for monthly/all views
         setVisibleXRangeMinimum(3)          // Max zoom in (show 3 candles for detail)
+        
+
         
         // ZOOM GESTURES: Add the zoom functionality that was missing
         isUserInteractionEnabled = true
@@ -260,6 +402,14 @@ final class CandlestickChartView: CombinedChartView {
         super.layoutSubviews()
         configurationHelper.layoutFadingEdges(in: bounds)
         configurationHelper.layoutHintLabel(in: bounds)
+        
+        // Update price indicator position when layout changes (orientation, zoom, etc.)
+        // Use a delayed update to ensure chart layout is complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            if let self = self, !self.allOHLCData.isEmpty {
+                self.updateValuesForVisibleRange()
+            }
+        }
     }
     
     // MARK: - Dark Mode Support
@@ -281,14 +431,29 @@ final class CandlestickChartView: CombinedChartView {
     // MARK: - Public Update Method
     
     func update(_ ohlcData: [OHLCData], range: String) {
-        guard !ohlcData.isEmpty else { return }
+        guard !ohlcData.isEmpty else { 
+            hideCurrentPriceIndicator()
+            return 
+        }
         
         self.allOHLCData = ohlcData
         self.currentRange = range
         self.visibleDataPointsCount = ChartConfigurationHelper.calculateVisiblePoints(for: range, dataCount: ohlcData.count)
         self.allDates = ohlcData.map { $0.timestamp }
         self.currentScrollPosition = 0
+        
+        // SWIFT BEST PRACTICE: Invalidate cache when data changes
+        cachedRightAxisTransformer = nil
+        
         updateChart()
+        
+        // Start viewport monitoring for scroll-based updates
+        startViewportMonitoring()
+        
+        // Show price indicator for the rightmost visible candlestick
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.updateValuesForVisibleRange()
+        }
     }
     
     // MARK: - Chart Rendering
@@ -363,8 +528,17 @@ final class CandlestickChartView: CombinedChartView {
         
         // Chart updated with candles
         
-        // Scroll to the latest entry (using index-based X values)
-        moveViewToX(Double(entries.count - 1))
+        // Position chart to show latest candlesticks with some scroll space
+        let lastIndex = Double(entries.count - 1)
+        
+        // For small datasets, show all data centered
+        if entries.count <= 20 {
+            fitScreen()
+        } else {
+            // For larger datasets, position to show latest with 10% buffer for scrolling
+            let bufferCandles = max(3.0, Double(entries.count) * 0.1)
+            moveViewToX(lastIndex - bufferCandles)
+        }
         
         // Create X-axis formatter for indices based on current range
         let dateStrings = allDates.map { date in
@@ -460,21 +634,38 @@ final class CandlestickChartView: CombinedChartView {
         )
     }
     
-    /// Updates indicator values based on the current visible range (CoinMarketCap style)
+    /// Updates indicator values based on the current visible range (optimized)
     private func updateValuesForVisibleRange() {
-        // Throttle updates to avoid excessive calls during scrolling
+        // SWIFT BEST PRACTICE: Use DispatchQueue for better performance than Timer
+        // Debounce rapid calls using work items
         updateTimer?.invalidate()
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] timer in
-            timer.invalidate() // Ensure timer is invalidated
+        
+        let workItem = DispatchWorkItem { [weak self] in
             self?.performVisibleRangeUpdate()
         }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
     }
     
     private func performVisibleRangeUpdate() {
+        guard !allOHLCData.isEmpty else { return }
+        
+        // Get a reliable rightmost visible candlestick index using screen coordinates
+        let targetIndex = calculateRightmostVisibleIndex()
+        
+        // 🎯 UPDATE PRICE LABEL: Use precise index calculation
+        let candlestick = allOHLCData[targetIndex]
+        
+        // Update the price label in the top container alongside SMA/EMA
+        labelManager?.updateCurrentPrice(price: candlestick.close, isBullish: candlestick.isBullish)
+        
+        // Update the dotted price line indicator
+        updateCurrentPriceIndicator(for: candlestick)
+        
+        // Only update technical indicators if settings are available
         guard let labelManager = labelManager,
               let settings = currentTechnicalSettings,
-              let theme = currentTheme,
-              !allOHLCData.isEmpty else { return }
+              let theme = currentTheme else { return }
         
         // Extract closing prices for data count check
         let closingPrices = allOHLCData.map { $0.close }
@@ -486,23 +677,6 @@ final class CandlestickChartView: CombinedChartView {
         
         // If no indicators have enough data, skip position updates to preserve the "Need more data" messages
         guard hasEnoughDataForSMA || hasEnoughDataForEMA || hasEnoughDataForRSI else { return }
-        
-        // Get the rightmost visible point (most recent data in view)
-        let rightmostVisibleX = highestVisibleX
-        
-        // Convert to index, ensuring it's within bounds
-        let targetIndex = min(max(0, Int(rightmostVisibleX)), allOHLCData.count - 1)
-        
-        // Show which candlestick is being monitored
-        if targetIndex < allOHLCData.count {
-            let monitoredCandle = allOHLCData[targetIndex]
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM dd, HH:mm"
-            
-            print("🎯 MONITORING: Index \(targetIndex) | \(formatter.string(from: monitoredCandle.timestamp)) | O:\(String(format: "%.2f", monitoredCandle.open)) H:\(String(format: "%.2f", monitoredCandle.high)) L:\(String(format: "%.2f", monitoredCandle.low)) C:\(String(format: "%.2f", monitoredCandle.close))")
-            
-            // Visual indicator removed per user request - too distracting
-        }
         
         // Update labels with values at this position
         labelManager.updateLabelsAtPosition(
@@ -562,7 +736,7 @@ final class CandlestickChartView: CombinedChartView {
         
         // print("🚀 CandlestickChart: Starting viewport monitoring from position \(lastVisibleX)")
         
-        viewportMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+        viewportMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] timer in
             guard let self = self, self.window != nil else {
                 timer.invalidate()
                 return
@@ -581,9 +755,11 @@ final class CandlestickChartView: CombinedChartView {
     private func checkViewportChanges() {
         let currentVisibleX = highestVisibleX
         
-        // Check if viewport has changed significantly (more than 0.5 data points)
-        if abs(currentVisibleX - lastVisibleX) > 0.5 {
+        // Check if viewport has changed significantly (more than 0.1 data points for more responsive updates)
+        if abs(currentVisibleX - lastVisibleX) > 0.1 {
             lastVisibleX = currentVisibleX
+            
+            // Update all indicators (including price indicator) together
             updateValuesForVisibleRange()
         }
     }
@@ -697,12 +873,18 @@ extension CandlestickChartView: ChartViewDelegate {
         
         // Calculate visible candles for user feedback
         let visibleCandles = Int(highestVisibleX - lowestVisibleX) + 1
-        // Zoom level changed
+        print("🔍 Zoom detected - ScaleX: \(scaleX), ScaleY: \(scaleY), Visible candles: \(visibleCandles)")
+        
+        // Update price indicator and labels immediately when zoom level changes
+        // The new screen-based calculation is zoom-independent and doesn't need delays
+        updateValuesForVisibleRange()
     }
     
     func chartTranslated(_ chartView: ChartViewBase, dX: CGFloat, dY: CGFloat) {
         // Handle chart panning while zoomed
         // This ensures smooth interaction between zoom and pan
+        
+        // Price indicator updates are now integrated into updateValuesForVisibleRange()
         
         // Update indicator values based on current visible range
         updateValuesForVisibleRange()
@@ -711,6 +893,8 @@ extension CandlestickChartView: ChartViewDelegate {
     func chartViewDidEndPanning(_ chartView: ChartViewBase) {
         // Update values when panning ends
         updateValuesForVisibleRange()
+        
+        // Price indicator updates are now integrated into updateValuesForVisibleRange()
         
         // Original edge detection logic
         guard let candleChart = chartView as? CandleStickChartView,
