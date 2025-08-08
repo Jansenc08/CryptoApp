@@ -203,7 +203,8 @@ final class CandlestickChartView: CombinedChartView {
         let rightmostDataX = highestVisibleX
         let candidateIndex = Int(rightmostDataX.rounded())
         
-        // Swift best practice: Safe bounds checking
+        // ENHANCEMENT: When scrolling in the extended padding area (before/after actual data),
+        // clamp to show the first or last candlestick's data for price detection
         let finalIndex = max(0, min(candidateIndex, allOHLCData.count - 1))
         
         return finalIndex
@@ -447,6 +448,11 @@ final class CandlestickChartView: CombinedChartView {
         
         updateChart()
         
+        // ENHANCEMENT: Position chart to show latest data with room to scroll past the last candlestick
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.positionChartForOptimalScrolling()
+        }
+        
         // Start viewport monitoring for scroll-based updates
         startViewportMonitoring()
         
@@ -517,6 +523,17 @@ final class CandlestickChartView: CombinedChartView {
         let combinedData = CombinedChartData()
         combinedData.candleData = CandleChartData(dataSet: dataSet)
         self.data = combinedData
+        
+        // ENHANCEMENT: Allow scrolling past the first candlestick by extending the X-axis range
+        // Add significant padding to allow scrolling well before the first candlestick (historical data side)
+        // Special handling for 24h timeframe which needs more padding
+        let paddingMultiplier = currentRange == "24h" ? 1.0 : 0.5 // 100% for 24h, 50% for others
+        let paddingPoints = max(Double(visibleDataPointsCount) * paddingMultiplier, 15.0) // Reduced minimum
+        let lastDataIndex = Double(entries.count - 1)
+        
+        // Set X-axis range to include the padding - only at the beginning (left side - historical data)
+        xAxis.axisMinimum = -paddingPoints // Allow scrolling before the first candlestick
+        xAxis.axisMaximum = lastDataIndex // Keep the end at the last candlestick
         
         // Force immediate render
         invalidateIntrinsicContentSize()
@@ -700,6 +717,24 @@ final class CandlestickChartView: CombinedChartView {
         moveViewToX(data.xMax)
         
         print("📍 Auto-scrolled to latest data at position \(data.xMax)")
+    }
+    
+    /// Positions the chart optimally to show the latest data while allowing scrolling past the last candlestick
+    private func positionChartForOptimalScrolling() {
+        guard !allOHLCData.isEmpty else { return }
+        
+        // Position the chart so the last candlestick is visible but not at the very edge
+        // This allows users to immediately scroll right to see beyond the last candlestick
+        let lastCandlestickIndex = Double(allOHLCData.count - 1)
+        let visibleRange = Double(visibleDataPointsCount)
+        
+        // Position so the last candlestick is about 70% across the visible range
+        // This gives more room to scroll right and see the price detection for the last candlesticks
+        let targetPosition = lastCandlestickIndex - (visibleRange * 0.3)
+        
+        moveViewToX(max(0, targetPosition))
+        
+        print("📍 Positioned chart at \(targetPosition) to show last candlestick with significant scroll room")
     }
     
     // MARK: - View Lifecycle
@@ -896,20 +931,25 @@ extension CandlestickChartView: ChartViewDelegate {
         
         // Price indicator updates are now integrated into updateValuesForVisibleRange()
         
-        // Original edge detection logic
-        guard let candleChart = chartView as? CandleStickChartView,
-              let data = candleChart.data else { return }
+        // Updated edge detection logic to account for extended X-axis range
+        guard let candleChart = chartView as? CandleStickChartView else { return }
         
         let lowestVisibleX = candleChart.lowestVisibleX
         let highestVisibleX = candleChart.highestVisibleX
         
-        // Notify when close to LEFT edge
-        if lowestVisibleX <= data.xMin + (data.xMax - data.xMin) * 0.1 {
+        // Use the actual data bounds (not the extended axis range) for edge detection
+        let actualDataMin = 0.0 // First candlestick index
+        let actualDataMax = Double(allOHLCData.count - 1) // Last candlestick index
+        let dataRange = actualDataMax - actualDataMin
+        
+        // Notify when close to LEFT edge (based on actual data, not extended range)
+        // Only trigger when we're near the actual first candlestick, not the extended padding
+        if lowestVisibleX >= actualDataMin - dataRange * 0.1 && lowestVisibleX <= actualDataMin + dataRange * 0.1 {
             onScrollToEdge?(.left)
         }
         
-        // Notify when close to RIGHT edge
-        if highestVisibleX >= data.xMax - (data.xMax - data.xMin) * 0.1 {
+        // Notify when close to RIGHT edge (based on actual data)
+        if highestVisibleX >= actualDataMax - dataRange * 0.1 {
             onScrollToEdge?(.right)
         }
     }
