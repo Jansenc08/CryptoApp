@@ -59,6 +59,15 @@ final class CandlestickChartView: CombinedChartView {
         case left, right
     }
     
+    // Public method to dismiss tooltip - called from parent view
+    func dismissTooltip() {
+        print("🕯️💥 CandlestickChartView: dismissTooltip() called")
+        print("🕯️💥 Highlighted count before dismiss: \(highlighted.count)")
+        highlightValue(nil)
+        resetToLatestValues()
+        print("🕯️💥 Highlighted count after dismiss: \(highlighted.count)")
+    }
+    
     // MARK: - Init
     
     override init(frame: CGRect) {
@@ -268,13 +277,29 @@ final class CandlestickChartView: CombinedChartView {
         longPressGesture.minimumPressDuration = 0.5
         addGestureRecognizer(longPressGesture)
         
-        // Tooltip marker when tapping a point in the chart
-        let marker = CandlestickBalloonMarker(color: .tertiarySystemBackground,
-                                             font: .systemFont(ofSize: 10, weight: .medium),
-                                             textColor: .label,
-                                             insets: UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12))
+        // OKX-style tooltip marker - adapts to light/dark mode
+        let adaptiveBackgroundColor = UIColor { traitCollection in
+            switch traitCollection.userInterfaceStyle {
+            case .dark:
+                return UIColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 0.95) // Dark gray for dark mode
+            default:
+                return UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.95)   // White for light mode
+            }
+        }
+        let adaptiveTextColor = UIColor { traitCollection in
+            switch traitCollection.userInterfaceStyle {
+            case .dark:
+                return UIColor.white    // White text for dark mode
+            default:
+                return UIColor.black    // Black text for light mode
+            }
+        }
+        let marker = CandlestickBalloonMarker(color: adaptiveBackgroundColor,
+                                             font: .monospacedSystemFont(ofSize: 10, weight: .medium),
+                                             textColor: adaptiveTextColor,
+                                             insets: UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10))
         marker.chartView = self
-        marker.setMinimumSize(CGSize(width: 140, height: 90))
+        marker.setMinimumSize(CGSize(width: 130, height: 90))  // Slightly wider for better spacing
         self.marker = marker
         
         // Enable smooth dragging in the chart
@@ -310,6 +335,8 @@ final class CandlestickChartView: CombinedChartView {
             impactFeedback.impactOccurred()
         }
     }
+    
+
     
     private func resetYAxisToOriginalRange() {
         guard !allOHLCData.isEmpty else { return }
@@ -522,6 +549,7 @@ final class CandlestickChartView: CombinedChartView {
         // UPDATED: Use CombinedChartData for consistency with technical indicators
         let combinedData = CombinedChartData()
         combinedData.candleData = CandleChartData(dataSet: dataSet)
+
         self.data = combinedData
         
         // ENHANCEMENT: Allow scrolling past the first candlestick by extending the X-axis range
@@ -874,28 +902,28 @@ extension CandlestickChartView: ChartViewDelegate {
     
     // Handle crosshair interaction for dynamic value updates
     func chartValueSelected(_ chartView: ChartViewBase, entry: ChartDataEntry, highlight: Highlight) {
+
+        
         // Update indicator labels dynamically based on crosshair position
         updateDynamicValues(at: Int(entry.x))
         
-        // Show tooltip for longer since candlestick has more data
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self, weak chartView] in
-            chartView?.highlightValue(nil)
-            // Reset to latest values when tooltip disappears
+        // Auto-dismiss after 4 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+            self?.highlightValue(nil)
             self?.resetToLatestValues()
         }
         
-        // Log selection for debugging
-        if let candleEntry = entry as? CandleChartDataEntry {
-            let isBullish = candleEntry.close >= candleEntry.open
-            // Candlestick selected
-        }
+
     }
     
     func chartValueNothingSelected(_ chartView: ChartViewBase) {
         chartView.highlightValue(nil)
         // Reset to latest values when nothing is selected
         resetToLatestValues()
+
     }
+    
+
     
     // MARK: - Zoom Event Handling
     

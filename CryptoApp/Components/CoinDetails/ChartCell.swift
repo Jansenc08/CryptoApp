@@ -61,6 +61,8 @@ final class ChartCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         
+
+        
         // Reset to ready state - prepared to receive new data
         currentState = .ready
         updateViewsForState()
@@ -397,10 +399,21 @@ final class ChartCell: UITableViewCell {
     
     // Switch chart type
     func switchChartType(to chartType: ChartType) {
-        guard chartType != currentChartType else { return }
+        print("🔄 ChartCell: switchChartType called - from \(currentChartType) to \(chartType)")
+        guard chartType != currentChartType else { 
+            print("🔄 ChartCell: No change needed, already \(chartType)")
+            return 
+        }
         
         let previousChartType = currentChartType
         currentChartType = chartType
+        print("🔄 ChartCell: Chart type switched from \(previousChartType) to \(currentChartType)")
+        
+        // Debug chart visibility after switch
+        DispatchQueue.main.async {
+            print("🔄 Line chart isHidden: \(self.lineChartView.isHidden)")
+            print("🔄 Candlestick chart isHidden: \(self.candlestickChartView.isHidden)")
+        }
         
         // Only update views if we're in data state
         if case .data = currentState {

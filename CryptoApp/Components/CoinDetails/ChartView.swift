@@ -47,6 +47,13 @@ final class ChartView: LineChartView {
         case left, right
     }
     
+    // Public method to dismiss tooltip - called from parent view
+    func dismissTooltip() {
+        highlightValue(nil)
+        // Note: ChartView doesn't have resetToLatestValues like CandlestickChartView
+        // but highlightValue(nil) is sufficient for dismissing tooltips
+    }
+    
     // MARK: - Init
 
     override init(frame: CGRect) {
@@ -561,9 +568,9 @@ extension ChartView: ChartViewDelegate {
         // Update indicator labels dynamically based on crosshair position
         updateDynamicValues(at: entry.x)
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self, weak chartView] in
-            chartView?.highlightValue(nil)
-            // Reset to latest values when tooltip disappears
+        // Auto-dismiss after 2.5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            self?.highlightValue(nil)
             self?.resetToLatestValues()
         }
     }

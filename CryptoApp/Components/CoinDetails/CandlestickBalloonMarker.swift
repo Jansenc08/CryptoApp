@@ -60,6 +60,9 @@ class CandlestickBalloonMarker: MarkerImage {
     /// Cached text rendering attributes for drawing performance
     private var drawAttributes: [NSAttributedString.Key : Any] = [:]
     
+    /// Attributed string with color-coded changes for better visual feedback
+    private var attributedLabel: NSAttributedString?
+    
     // MARK: - Init
     
     /**
@@ -105,16 +108,98 @@ class CandlestickBalloonMarker: MarkerImage {
         self.currentRange = range
     }
     
+    // MARK: - Price Formatting
+    
+    /**
+     * Formats price values to match your chart's format (e.g., 117,128.00)
+     * Uses number formatter with commas and 2 decimal places
+     */
+    private func formatPrice(_ price: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.groupingSeparator = ","
+        formatter.usesGroupingSeparator = true
+        
+        return formatter.string(from: NSNumber(value: price)) ?? String(format: "%.2f", price)
+    }
+    
+    /**
+     * Creates color-coded attributed string with green/red for positive/negative values only
+     */
+    private func createColorCodedTooltip(label: String, changeValue: Double) -> NSAttributedString {
+        let lines = label.components(separatedBy: "\n")
+        let attributedString = NSMutableAttributedString()
+        
+        // Create tab stops for proper alignment with more spacing between titles and values
+        let tabStop = NSTextTab(textAlignment: .right, location: 110.0) // Increased spacing
+        
+        // Base styling with tab stops for alignment
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .left
+        paragraphStyle.lineSpacing = 1.0
+        paragraphStyle.tabStops = [tabStop]
+        
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedSystemFont(ofSize: 10, weight: .medium),
+            .paragraphStyle: paragraphStyle,
+            .foregroundColor: self.textColor
+        ]
+        
+        for (index, line) in lines.enumerated() {
+            // Parse each line to separate label and value
+            let components = line.components(separatedBy: " ")
+            if components.count >= 2 {
+                let label = components[0]
+                let value = components.dropFirst().joined(separator: " ")
+                
+                // Create formatted line with tab separation for alignment
+                let formattedLine = "\(label)\t\(value)"
+                
+                // Handle Chg and %Chg lines specially to color only the values
+                if label == "Chg" || label == "%Chg" {
+                    // Add label part
+                    let labelString = NSAttributedString(string: "\(label)\t", attributes: baseAttributes)
+                    attributedString.append(labelString)
+                    
+                    // Add colored value part
+                    let valueColor = changeValue >= 0 ? UIColor.systemGreen : UIColor.systemRed
+                    var valueAttributes = baseAttributes
+                    valueAttributes[.foregroundColor] = valueColor
+                    let valueString = NSAttributedString(string: value, attributes: valueAttributes)
+                    attributedString.append(valueString)
+                } else {
+                    // Regular line with tab alignment
+                    let attributedLine = NSAttributedString(string: formattedLine, attributes: baseAttributes)
+                    attributedString.append(attributedLine)
+                }
+            } else {
+                // Fallback for lines that don't follow the pattern
+                let attributedLine = NSAttributedString(string: line, attributes: baseAttributes)
+                attributedString.append(attributedLine)
+            }
+            
+            // Add newline except for the last line
+            if index < lines.count - 1 {
+                attributedString.append(NSAttributedString(string: "\n", attributes: baseAttributes))
+            }
+        }
+        
+        return attributedString
+    }
+    
     // MARK: - Update Content
     
     /**
      * Called by DGCharts when a candlestick is highlighted to refresh tooltip content
      * 
-     * This method creates a comprehensive OHLC tooltip containing:
-     * 1. Date/time formatted based on current range
-     * 2. Open, High, Low, Close prices
-     * 3. Price change and percentage change
-     * 4. Trend indicator (📈 for bullish, 📉 for bearish)
+     * Creates an OKX-style tooltip with clean layout and professional formatting:
+     * 1. Current price prominently displayed at the top
+     * 2. Date/time in header format
+     * 3. OHLC data in structured layout
+     * 4. Change percentage with color coding
+     * 5. Additional metrics (Range, Amount, Turnover) when available
      * 
      * - Parameters:
      *   - entry: The selected candlestick data point (CandleChartDataEntry)
@@ -136,53 +221,61 @@ class CandlestickBalloonMarker: MarkerImage {
         let formatter = DateFormatter()
         // Ensure tooltip shows local timezone (Singapore time for this user)
         formatter.timeZone = TimeZone.current
-        // Adaptive date formatting optimized for different trading timeframes
-        if currentRange == "24h" {
-            // For intraday trading, show precise time with AM/PM
-            formatter.dateFormat = "h:mm a"  // "9:30 AM", "12:45 PM"
-        } else {
-            // For longer periods, show date + time for context
-            formatter.dateFormat = "MM/dd HH:mm"  // "07/22 14:30"
-        }
+        // Always show date and time like OKX
+        formatter.dateFormat = "MM/dd HH:mm"  // "08/08 13:05"
         
-        // Extract OHLC data and create comprehensive tooltip content
+        // Extract OHLC data and create OKX-style tooltip content
         if let candleEntry = entry as? CandleChartDataEntry {
-            // Analyze candlestick sentiment (bullish vs bearish)
+            // Analyze candlestick sentiment for color coding
             let isBullish = candleEntry.close >= candleEntry.open
-            let trendIcon = isBullish ? "📈" : "📉"
             
-            // Calculate price change metrics for trader insight
+            // Calculate price change metrics
             let changeValue = candleEntry.close - candleEntry.open
             let changePercent = (changeValue / candleEntry.open) * 100
+            let changeSign = changeValue >= 0 ? "+" : "-"
             
-            // Build professional multi-line OHLC tooltip with all essential trading data
+            // Calculate additional metrics like OKX
+            let range = candleEntry.high - candleEntry.low
+            let rangePercent = (range / candleEntry.low) * 100
+            
+            // Format the current price (close) prominently like OKX
+            let formattedPrice = formatPrice(candleEntry.close)
+            let formattedChangePercent = String(format: "%.2f", abs(changePercent))
+            
+            // Build compact tooltip - more vertical and concise
             label = """
-            \(trendIcon) \(formatter.string(from: date))
-            Open: $\(String(format: "%.2f", candleEntry.open))
-            High: $\(String(format: "%.2f", candleEntry.high))
-            Low:  $\(String(format: "%.2f", candleEntry.low))
-            Close: $\(String(format: "%.2f", candleEntry.close))
-            Change: \(changeValue >= 0 ? "+" : "")\(String(format: "%.2f", changePercent))%
+            \(formatter.string(from: date))
+            Open \(formatPrice(candleEntry.open))
+            High \(formatPrice(candleEntry.high))
+            Low \(formatPrice(candleEntry.low))
+            Close \(formatPrice(candleEntry.close))
+            Chg \(changeSign)\(formatPrice(abs(changeValue)))
+            %Chg \(changeSign)\(formattedChangePercent)%
+            Range \(String(format: "%.2f", rangePercent))%
             """
         } else {
-            // Safety fallback for non-candlestick entries (shouldn't happen in normal usage)
-            label = "\(formatter.string(from: date))\n$\(String(format: "%.2f", entry.y))"
+            // Safety fallback for non-candlestick entries
+            label = "\(formatPrice(entry.y))\nTime \(formatter.string(from: date))"
         }
         
-        // Configure text rendering attributes for consistent tooltip appearance
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .paragraphStyle: paragraphStyle ?? NSParagraphStyle.default,
-            .foregroundColor: textColor
-        ]
+        // Extract change value for color coding
+        let changeValue: Double
+        if let candleEntry = entry as? CandleChartDataEntry {
+            changeValue = candleEntry.close - candleEntry.open
+        } else {
+            changeValue = 0
+        }
+        
+        // Create color-coded attributed string for the tooltip
+        let colorCodedLabel = createColorCodedTooltip(label: label, changeValue: changeValue)
         
         // Calculate total tooltip dimensions including padding for proper positioning
-        let size = label.size(withAttributes: attributes)
+        let size = colorCodedLabel.size()
         labelSize = CGSize(width: size.width + insets.left + insets.right,
                           height: size.height + insets.top + insets.bottom)
         
-        // Cache attributes for efficient drawing performance
-        drawAttributes = attributes
+        // Store the attributed string for drawing
+        self.attributedLabel = colorCodedLabel
     }
     
     // MARK: - Positioning
@@ -258,9 +351,9 @@ class CandlestickBalloonMarker: MarkerImage {
         // Layer 1: Add subtle drop shadow for depth and better readability
         context.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.1).cgColor)
         
-        // Layer 2: Draw rounded background for modern appearance
-        context.setFillColor(color.cgColor)
-        let cornerRadius: CGFloat = 12.0
+        // Layer 2: Draw adaptive background (dark gray for dark mode, white for light mode)
+        context.setFillColor(self.color.cgColor)
+        let cornerRadius: CGFloat = 6.0  // More compact radius
         let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
         context.addPath(path.cgPath)
         context.fillPath()
@@ -268,19 +361,19 @@ class CandlestickBalloonMarker: MarkerImage {
         // Clear shadow before drawing border and text
         context.setShadow(offset: .zero, blur: 0, color: nil)
         
-        // Layer 3: Add subtle border for definition against chart background
-        context.setStrokeColor(UIColor.separator.withAlphaComponent(0.3).cgColor)
-        context.setLineWidth(0.5)
+        // Layer 3: Add adaptive border (light border in dark mode, dark border in light mode)
+        let borderColor = self.textColor == UIColor.white ? 
+            UIColor.white.withAlphaComponent(0.1) :  // Light border for dark mode
+            UIColor.black.withAlphaComponent(0.1)    // Dark border for light mode
+        context.setStrokeColor(borderColor.cgColor)
+        context.setLineWidth(1.0)
         context.addPath(path.cgPath)
         context.strokePath()
         
-        // Layer 4: Draw connection line to clearly indicate which candle is selected
-        drawConnectionLine(context: context, from: point, to: rect)
-        
-        // Layer 5: Render the formatted OHLC text content
-        if !label.isEmpty {
+        // Layer 4: Render the color-coded OHLC text content (no connection line for cleaner OKX look)
+        if let attributedLabel = attributedLabel {
             let textRect = rect.insetBy(dx: insets.left, dy: insets.top)
-            label.draw(in: textRect, withAttributes: drawAttributes)
+            attributedLabel.draw(in: textRect)
         }
     }
     

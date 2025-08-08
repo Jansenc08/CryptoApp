@@ -35,7 +35,7 @@ enum NetworkError: Error, Equatable {
 final class CoinService: CoinServiceProtocol {
 
     private let baseURL = "https://pro-api.coinmarketcap.com/v1"
-    private let apiKey = "c0fca41d-740f-4fb9-83e1-7b2788ceba0a"       // CoinMarketCap Demo API Key
+    private let apiKey = "75a2f1e1-2522-4937-8d50-4e1d80b80b8b"       // CoinMarketCap Demo API Key
     private let coinGeckoBaseURL = "https://api.coingecko.com/api/v3" // CoinGecko Base URL
     private let coinGeckoApiKey = "CG-yzBqmCqY8VybDQbMxbRZhaL9"       // CoinGecko Demo API Key
     
