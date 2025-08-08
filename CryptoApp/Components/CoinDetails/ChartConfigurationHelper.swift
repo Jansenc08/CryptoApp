@@ -45,7 +45,7 @@ class ChartConfigurationHelper {
         
         // Y-axis Price (Right side)
         chartView.rightAxis.enabled = true
-        chartView.rightAxis.labelTextColor = .secondaryLabel
+        chartView.rightAxis.labelTextColor = .label // Better visibility in dark mode
         chartView.rightAxis.labelFont = .systemFont(ofSize: 10)
         chartView.rightAxis.drawGridLinesEnabled = true
         chartView.rightAxis.gridColor = .systemGray5
@@ -57,7 +57,7 @@ class ChartConfigurationHelper {
         
         // X axis - Time / Date
         chartView.xAxis.labelPosition = .bottom
-        chartView.xAxis.labelTextColor = .secondaryLabel
+        chartView.xAxis.labelTextColor = .label // Better visibility in dark mode
         chartView.xAxis.drawGridLinesEnabled = false
         chartView.xAxis.drawAxisLineEnabled = false
         chartView.xAxis.labelFont = .systemFont(ofSize: 10)
@@ -88,7 +88,7 @@ class ChartConfigurationHelper {
         
         // Y-axis Price (Right side)
         chartView.rightAxis.enabled = true
-        chartView.rightAxis.labelTextColor = .secondaryLabel
+        chartView.rightAxis.labelTextColor = .label // Better visibility in dark mode
         chartView.rightAxis.labelFont = .systemFont(ofSize: 10)
         chartView.rightAxis.drawGridLinesEnabled = true
         chartView.rightAxis.gridColor = .systemGray5
@@ -100,7 +100,7 @@ class ChartConfigurationHelper {
         
         // X axis - Time / Date
         chartView.xAxis.labelPosition = .bottom
-        chartView.xAxis.labelTextColor = .secondaryLabel
+        chartView.xAxis.labelTextColor = .label // Better visibility in dark mode
         chartView.xAxis.drawGridLinesEnabled = false
         chartView.xAxis.drawAxisLineEnabled = false
         chartView.xAxis.labelFont = .systemFont(ofSize: 10)

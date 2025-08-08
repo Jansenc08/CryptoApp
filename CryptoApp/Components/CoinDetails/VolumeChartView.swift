@@ -140,10 +140,10 @@ final class VolumeChartView: BarChartView {
         
         // MARK: Right Axis Configuration (Volume Values Display)
         rightAxis.enabled = true                    // Enable right axis for volume values
-        rightAxis.labelTextColor = .secondaryLabel // Grey color to match main chart styling
+        rightAxis.labelTextColor = .label // Better visibility in dark mode
         rightAxis.labelFont = .systemFont(ofSize: 11, weight: .medium)  // Readable font size
         rightAxis.drawGridLinesEnabled = false     // No grid lines for clean appearance
-        rightAxis.drawAxisLineEnabled = false      // No axis line for minimal design
+        rightAxis.drawAxisLineEnabled = false      // No axis line for seamless design
         rightAxis.valueFormatter = VolumeFormatter() // Format values as "1.2M", "500K", etc.
         rightAxis.labelCount = 3                   // Show 3 labels (min, mid, max volume)
         rightAxis.minWidth = 40                    // Reserve space for volume labels

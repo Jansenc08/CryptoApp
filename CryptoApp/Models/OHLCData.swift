@@ -97,4 +97,14 @@ enum ChartType: String, CaseIterable {
             return "chart.bar.fill"
         }
     }
+    
+    /// Returns the icon for the chart type you can switch TO (opposite of current)
+    var toggleImageName: String {
+        switch self {
+        case .line:
+            return "chart.bar.fill" // Show candlestick icon when on line chart
+        case .candlestick:
+            return "chart.line.uptrend.xyaxis" // Show line icon when on candlestick chart
+        }
+    }
 } 

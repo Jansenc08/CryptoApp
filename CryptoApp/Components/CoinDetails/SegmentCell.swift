@@ -83,9 +83,9 @@ final class SegmentCell: UITableViewCell {
     }
     
     private func updateChartTypeToggleAppearance() {
-        // Use just an icon for cleaner look
+        // Use just an icon for cleaner look - show the chart type you can switch TO
         let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        let image = UIImage(systemName: currentChartType.systemImageName, withConfiguration: config)
+        let image = UIImage(systemName: currentChartType.toggleImageName, withConfiguration: config)
         
         // Simple color scheme
         let (tintColor, backgroundColor): (UIColor, UIColor)

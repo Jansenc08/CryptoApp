@@ -125,11 +125,25 @@ final class CandlestickChartView: CombinedChartView {
         // Convert price to Y position on chart
         let yPosition = getYPositionForPrice(currentPrice)
         
+        // CRITICAL: Validate Y position to prevent NaN errors
+        guard yPosition.isFinite else {
+            print("⚠️ Invalid yPosition in price indicator: \(yPosition) for price: \(currentPrice)")
+            return
+        }
+        
         // Get the actual chart content area for accurate line positioning
         let chartContentRect = contentRect
         let lineStartX = max(0, chartContentRect.minX)
         let lineEndX = min(bounds.width, chartContentRect.maxX)
         let lineWidth = lineEndX - lineStartX
+        
+        // CRITICAL: Validate all frame values to prevent CoreGraphics errors
+        guard lineStartX.isFinite && lineWidth.isFinite && lineWidth > 0 && 
+              (yPosition - 0.5).isFinite else {
+            print("⚠️ Invalid frame values in price indicator")
+            print("lineStartX: \(lineStartX), lineWidth: \(lineWidth), yPosition: \(yPosition)")
+            return
+        }
         
         // Position the horizontal line across the chart content area
         // Make sure the Y position is relative to the chart view bounds
@@ -150,6 +164,12 @@ final class CandlestickChartView: CombinedChartView {
         dottedLine.lineDashPattern = [4, 4] // 4 points dash, 4 points gap
         
         // Create the path for the line using the actual line width
+        // CRITICAL: Validate lineWidth to prevent CGPath errors
+        guard lineWidth.isFinite && lineWidth > 0 else {
+            print("⚠️ Invalid lineWidth in dotted line: \(lineWidth)")
+            return
+        }
+        
         let path = UIBezierPath()
         path.move(to: CGPoint(x: 0, y: 0.5))
         path.addLine(to: CGPoint(x: lineWidth, y: 0.5))
@@ -168,6 +188,12 @@ final class CandlestickChartView: CombinedChartView {
     private var cachedRightAxisTransformer: Transformer?
     
     private func getYPositionForPrice(_ price: Double) -> CGFloat {
+        // CRITICAL: Validate input price to prevent NaN propagation
+        guard price.isFinite else {
+            print("⚠️ Invalid price in getYPositionForPrice: \(price)")
+            return contentRect.midY
+        }
+        
         // SWIFT BEST PRACTICE: Cache expensive transformer calls
         if cachedRightAxisTransformer == nil {
             cachedRightAxisTransformer = getTransformer(forAxis: .right)
@@ -179,8 +205,17 @@ final class CandlestickChartView: CombinedChartView {
         
         let pixelY = transformer.pixelForValues(x: 0, y: price)
         
+        // CRITICAL: Validate pixelY before using it
+        guard pixelY.y.isFinite else {
+            print("⚠️ Invalid pixelY from transformer: \(pixelY) for price: \(price)")
+            return contentRect.midY
+        }
+        
         // Swift best practice: Safe bounds checking
-        return max(contentRect.minY, min(contentRect.maxY, pixelY.y))
+        let result = max(contentRect.minY, min(contentRect.maxY, pixelY.y))
+        
+        // Final validation of result
+        return result.isFinite ? result : contentRect.midY
     }
     
     private func hideCurrentPriceIndicator() {
@@ -240,19 +275,21 @@ final class CandlestickChartView: CombinedChartView {
         // Configure axes for combined chart
         leftAxis.enabled = false
         rightAxis.enabled = true
-        rightAxis.labelFont = .systemFont(ofSize: 9)
-        rightAxis.labelTextColor = .tertiaryLabel
+        rightAxis.labelFont = .systemFont(ofSize: 10) // Slightly larger for better readability
+        rightAxis.labelTextColor = .label // Use primary label color for better visibility
         rightAxis.drawGridLinesEnabled = true
         rightAxis.gridColor = .systemGray5
         rightAxis.gridLineWidth = 0.5
+        rightAxis.drawAxisLineEnabled = false // Remove axis line for seamless look
         
         xAxis.enabled = true
         xAxis.labelPosition = .bottom
-        xAxis.labelFont = .systemFont(ofSize: 9)
-        xAxis.labelTextColor = .tertiaryLabel
+        xAxis.labelFont = .systemFont(ofSize: 10) // Slightly larger for better readability
+        xAxis.labelTextColor = .label // Use primary label color for better visibility
         xAxis.drawGridLinesEnabled = false  // Remove vertical grid lines
         xAxis.gridColor = .systemGray5
         xAxis.gridLineWidth = 0.5
+        xAxis.drawAxisLineEnabled = false // Remove axis line for seamless look
         
         // Candlestick chart specific settings  
         scaleXEnabled = true                // ENABLE X-axis zoom for proper zoom out functionality
@@ -470,7 +507,7 @@ final class CandlestickChartView: CombinedChartView {
         self.allDates = ohlcData.map { $0.timestamp }
         self.currentScrollPosition = 0
         
-        // SWIFT BEST PRACTICE: Invalidate cache when data changes
+        // SWIFT BEST PRACTICE: Invalidate cache when data changes to prevent stale transformer references
         cachedRightAxisTransformer = nil
         
         updateChart()
@@ -523,9 +560,20 @@ final class CandlestickChartView: CombinedChartView {
         // Main chart area - price data only
         let baseBuffer = minRange * 0.15  // Standard buffer for price context
         
+        // Calculate axis bounds
+        let axisMin = minY - baseBuffer
+        let axisMax = maxY + baseBuffer
+        
+        // CRITICAL: Validate axis values before setting to prevent NaN errors
+        guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
+            print("⚠️ Invalid axis values in CandlestickChartView - skipping axis configuration")
+            print("axisMin: \(axisMin), axisMax: \(axisMax), minY: \(minY), maxY: \(maxY)")
+            return
+        }
+        
         // Price chart axis (RSI will use separate coordinate space)
-        rightAxis.axisMinimum = minY - baseBuffer
-        rightAxis.axisMaximum = maxY + baseBuffer
+        rightAxis.axisMinimum = axisMin
+        rightAxis.axisMaximum = axisMax
         
         let dataSet = CandleChartDataSet(entries: entries, label: "")
         

@@ -292,7 +292,7 @@ final class LandscapeChartVC: UIViewController {
     
     private func updateChartTypeToggleAppearance() {
         let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-        let image = UIImage(systemName: selectedChartType.systemImageName, withConfiguration: config)
+        let image = UIImage(systemName: selectedChartType.toggleImageName, withConfiguration: config)
         
         let (tintColor, backgroundColor): (UIColor, UIColor)
         switch selectedChartType {

@@ -205,13 +205,18 @@ final class StatsCell: UITableViewCell {
         let lowPrice = parsePrice(from: lowValue)
         let highPrice = parsePrice(from: highValue)
         
-        // Calculate new position
+        // Calculate new position with enhanced precision for high-value coins
         let priceRange = highPrice - lowPrice
         let clampedPosition: Double
         
-        if priceRange > 0 {
+        if priceRange > 0 && priceRange.isFinite && currentPrice.isFinite {
             let rawPosition = (currentPrice - lowPrice) / priceRange
-            clampedPosition = min(max(rawPosition, 0.0), 1.0)
+            // Ensure we get a valid position, especially for high-precision calculations
+            if rawPosition.isFinite {
+                clampedPosition = min(max(rawPosition, 0.0), 1.0)
+            } else {
+                clampedPosition = 0.5 // Safe fallback
+            }
         } else {
             clampedPosition = 0.5
         }
@@ -545,21 +550,31 @@ class HighLowBarContainer: UIView {
         
         // Only animate if the position actually changed significantly
         let positionDifference = abs(targetPosition - pricePosition)
-        if positionDifference < 0.01 {
-            // Small change, just update directly
+        if positionDifference < 0.005 {
+            // Very small change, just update directly for instant response
             pricePosition = targetPosition
             setNeedsLayout()
             return
         }
         
-        // Perform smooth animation
+        // Prevent rapid successive animations (throttling for high-frequency updates)
+        if isAnimating {
+            // If already animating, just update the target position
+            // The current animation will complete with the new target
+            return
+        }
+        
+        // Cancel any existing animations for immediate response to new data
+        layer.removeAllAnimations()
+        
+        // Perform fast, responsive animation
         isAnimating = true
         UIView.animate(
-            withDuration: 0.6, // Smooth duration
+            withDuration: 0.25, // Faster duration for responsiveness
             delay: 0,
-            usingSpringWithDamping: 0.8, // Spring animation for natural feel
-            initialSpringVelocity: 0.5,
-            options: [.curveEaseInOut, .allowUserInteraction],
+            usingSpringWithDamping: 0.9, // Higher damping for quicker settling
+            initialSpringVelocity: 0.3,
+            options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
             animations: { [weak self] in
                 guard let self = self else { return }
                 self.pricePosition = self.targetPosition
