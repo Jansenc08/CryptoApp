@@ -178,23 +178,28 @@ final class ChartView: LineChartView {
     // MARK: - Intelligent Zoom
     
     private func setInitialZoom() {
-        // Set optimal zoom level based on data range and time frame
-        let dataCount = allDataPoints.count
-        
-        // Calculate optimal visible points based on range
-        let optimalVisiblePoints: Double
+        // Time-based initial zoom to match x-axis in seconds
+        guard allDates.count >= 2 else { return }
+
+        let firstX = allDates.first!.timeIntervalSince1970
+        let lastX = allDates.last!.timeIntervalSince1970
+        let totalTimeRange = max(1.0, lastX - firstX)
+
+        let ratio: Double
         switch currentRange {
-        case "24h": optimalVisiblePoints = min(24, Double(dataCount))  // Show hourly points
-        case "7d": optimalVisiblePoints = min(35, Double(dataCount))   // Show ~week view
-        case "30d": optimalVisiblePoints = min(60, Double(dataCount))  // Show ~month view
-        case "All": optimalVisiblePoints = min(100, Double(dataCount)) // Show broader view
-        default: optimalVisiblePoints = min(50, Double(dataCount))
+        case "24h": ratio = 0.35
+        case "7d": ratio = 0.30
+        case "30d": ratio = 0.25
+        case "All": ratio = 0.15
+        default: ratio = 0.30
         }
-        
-        // Apply the zoom
-        setVisibleXRangeMaximum(optimalVisiblePoints)
-        
-        // Set initial zoom level
+
+        let secondsPerPoint = max(totalTimeRange / max(1.0, Double(allDataPoints.count - 1)), 1.0)
+        let minVisible = secondsPerPoint * 3
+        let visibleTimeRange = max(minVisible, totalTimeRange * ratio)
+
+        setVisibleXRangeMaximum(visibleTimeRange)
+        setVisibleXRangeMinimum(max(minVisible, visibleTimeRange * 0.2))
     }
     
     // MARK: - Layout
@@ -244,6 +249,13 @@ final class ChartView: LineChartView {
                                          range == "30d" ? 2592000 : 31536000
         let start = now.addingTimeInterval(-timeInterval)
         
+        // Guard against single-point datasets to avoid division by zero which
+        // results in NaN timestamps and an invisible chart.
+        guard dataPoints.count >= 2 else {
+            allDates = [start, now]
+            return
+        }
+        
         let step = timeInterval / Double(dataPoints.count - 1)
         allDates = (0..<dataPoints.count).map { i in
             start.addingTimeInterval(Double(i) * step)
@@ -254,6 +266,11 @@ final class ChartView: LineChartView {
 
     private func updateChart() {
         guard !allDataPoints.isEmpty, !allDates.isEmpty else { return }
+
+        // Reset any previous zoom/translation before configuring a new dataset.
+        // This prevents stale viewPort transforms from making the chart appear blank
+        // after switching smoothing algorithms while zoomed.
+        fitScreen()
 
         // Combine data and dates into chart entries, filtering out any NaN values
         let entries = zip(allDates, allDataPoints).compactMap { date, value -> ChartDataEntry? in
@@ -312,13 +329,16 @@ final class ChartView: LineChartView {
 
         self.data = LineChartData(dataSet: dataSet)
 
-        // Adjust visible time range
-        let visibleRange = Double(visibleDataPointsCount)
+        // Adjust visible time range using time-based units (seconds).
+        // Ensure minimum and maximum are sensible and not identical.
+        let visiblePoints = Double(visibleDataPointsCount)
         let totalTimeRange = entries.last!.x - entries.first!.x
-        let visibleTimeRange = totalTimeRange * (visibleRange / Double(allDataPoints.count))
+        let secondsPerPoint = max(totalTimeRange / max(1.0, Double(allDataPoints.count - 1)), 1.0)
+        let visibleTimeRange = max(secondsPerPoint * visiblePoints, secondsPerPoint * 3)
 
+        // Allow zooming further in, but cap the maximum to our desired initial view.
         setVisibleXRangeMaximum(visibleTimeRange)
-        setVisibleXRangeMinimum(visibleTimeRange)
+        setVisibleXRangeMinimum(max(secondsPerPoint * 2, visibleTimeRange * 0.2))
         
         // Scroll to the latest entry
         moveViewToX(entries.last?.x ?? 0)
@@ -334,7 +354,7 @@ final class ChartView: LineChartView {
             balloonMarker.updateRange(currentRange)
         }
 
-        // Set intelligent initial zoom based on data range
+        // Set intelligent initial zoom based on data range (uses time-based range)
         setInitialZoom()
 
         notifyDataSetChanged()
