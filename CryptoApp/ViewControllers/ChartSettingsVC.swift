@@ -313,14 +313,28 @@ final class ChartSettingsVC: UIViewController {
         button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
         button.backgroundColor = .secondarySystemBackground
         button.layer.cornerRadius = 8
-        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        if #available(iOS 15.0, *) {
+            var config = UIButton.Configuration.filled()
+            config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
+            config.baseBackgroundColor = .secondarySystemBackground
+            button.configuration = config
+        } else {
+            button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        }
     }
     
     private func setupPresetButton(_ button: UIButton, title: String, subtitle: String) {
         button.backgroundColor = .secondarySystemBackground
         button.layer.cornerRadius = 12
         button.contentHorizontalAlignment = .left
-        button.contentEdgeInsets = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        if #available(iOS 15.0, *) {
+            var config = UIButton.Configuration.filled()
+            config.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
+            config.baseBackgroundColor = .secondarySystemBackground
+            button.configuration = config
+        } else {
+            button.contentEdgeInsets = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        }
         
         // Create attributed title
         let attributedTitle = NSMutableAttributedString()
@@ -758,7 +772,7 @@ final class ChartSettingsVC: UIViewController {
             (.loess, "Smooth", "Follows market trends with flowing curves", "Best for: Presentations, trend analysis")
         ]
         
-        for (type, title, description, useCase) in algorithms {
+        for (type, title, _, _) in algorithms {  // description, useCase unused
             let isSelected = currentSmoothingType == type
             let checkmark = isSelected ? " ✓" : ""
             

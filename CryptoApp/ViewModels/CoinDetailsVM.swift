@@ -751,13 +751,7 @@ final class CoinDetailsVM: ObservableObject {
         // Only add high/low item when we have real data
         if let highPrice = high, let lowPrice = low, !isLoading {
             // We have real data and not loading
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .currency
-            formatter.currencyCode = "USD"
-            formatter.maximumFractionDigits = 2
-            
-            let lowString = formatter.string(from: NSNumber(value: lowPrice)) ?? "$0"
-            let highString = formatter.string(from: NSNumber(value: highPrice)) ?? "$0"
+            // Formatting handled in view layer; avoid unused local variables here
             
             let currentPrice = currentPriceForStatsRange(range) ?? 0.0
             

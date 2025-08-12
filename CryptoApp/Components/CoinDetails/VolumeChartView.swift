@@ -74,6 +74,7 @@ final class VolumeChartView: BarChartView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure()
+        setupTraitObservation()
     }
     
     /**
@@ -83,6 +84,7 @@ final class VolumeChartView: BarChartView {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         configure()
+        setupTraitObservation()
     }
     
     // MARK: - Configuration
@@ -424,13 +426,27 @@ final class VolumeChartView: BarChartView {
      * 
      * - Parameter previousTraitCollection: Previous trait collection for comparison
      */
+    private func setupTraitObservation() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
+                self.backgroundColor = .systemBackground       // Update background for new mode
+                self.updateChart()                            // Refresh all colors for new appearance
+            }
+        }
+    }
+    
+    @available(iOS, deprecated: 17.0, message: "Use registerForTraitChanges instead")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         
-        // Check if the color appearance actually changed (light <-> dark mode)
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            backgroundColor = .systemBackground       // Update background for new mode
-            updateChart()                            // Refresh all colors for new appearance
+        if #available(iOS 17.0, *) {
+            // Handled by registerForTraitChanges
+        } else {
+            // Fallback for iOS < 17.0
+            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+                backgroundColor = .systemBackground       // Update background for new mode
+                updateChart()                            // Refresh all colors for new appearance
+            }
         }
     }
 }

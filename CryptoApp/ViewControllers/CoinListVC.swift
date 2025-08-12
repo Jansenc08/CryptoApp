@@ -90,6 +90,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         configureDataSource()
         configureEmptyState()
         bindViewModel()
+        setupTraitObservation()
         
         // Preload both tabs for seamless switching
         preloadAllTabData()
@@ -150,12 +151,26 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         }
     }
     
+    private func setupTraitObservation() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
+                // Update button border color when switching between light/dark mode
+                self.updateBackToTopButtonAppearance()
+            }
+        }
+    }
+    
+    @available(iOS, deprecated: 17.0, message: "Use registerForTraitChanges instead")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         
-        // Update button border color when switching between light/dark mode
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            updateBackToTopButtonAppearance()
+        if #available(iOS 17.0, *) {
+            // Handled by registerForTraitChanges
+        } else {
+            // Fallback for iOS < 17.0
+            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+                updateBackToTopButtonAppearance()
+            }
         }
     }
     
@@ -480,7 +495,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         
         // Calculate progress based on how far we've moved
         var progress: CGFloat = 0.0
-        var fromIndex = currentIndex
+        let fromIndex = currentIndex
         var toIndex = currentIndex
         
         if currentIndex == 0 { // Currently on Coins page
@@ -1278,7 +1293,7 @@ extension CoinListVC {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         // Allow horizontal page swiping to work with vertical collection view scrolling
         if let panGesture = gestureRecognizer as? UIPanGestureRecognizer,
-           let otherPanGesture = otherGestureRecognizer as? UIPanGestureRecognizer {
+           let _ = otherGestureRecognizer as? UIPanGestureRecognizer {  // otherPanGesture unused
             
             let velocity = panGesture.velocity(in: view)
             

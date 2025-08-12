@@ -227,7 +227,7 @@ class CandlestickBalloonMarker: MarkerImage {
         // Extract OHLC data and create OKX-style tooltip content
         if let candleEntry = entry as? CandleChartDataEntry {
             // Analyze candlestick sentiment for color coding
-            let isBullish = candleEntry.close >= candleEntry.open
+            let _ = candleEntry.close >= candleEntry.open  // isBullish unused
             
             // Calculate price change metrics
             let changeValue = candleEntry.close - candleEntry.open
@@ -239,7 +239,7 @@ class CandlestickBalloonMarker: MarkerImage {
             let rangePercent = (range / candleEntry.low) * 100
             
             // Format the current price (close) prominently like OKX
-            let formattedPrice = formatPrice(candleEntry.close)
+            let _ = formatPrice(candleEntry.close)  // formattedPrice unused
             let formattedChangePercent = String(format: "%.2f", abs(changePercent))
             
             // Build compact tooltip - more vertical and concise

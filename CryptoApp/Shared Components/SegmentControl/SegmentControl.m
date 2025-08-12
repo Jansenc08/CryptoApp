@@ -72,8 +72,22 @@
             [button setTitleColor:[UIColor labelColor] forState:UIControlStateSelected];
             button.titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightMedium];
             
-            button.adjustsImageWhenHighlighted = NO;
-            button.showsTouchWhenHighlighted = NO;
+            // Configure button highlighting behavior
+            if (@available(iOS 15.0, *)) {
+                // Use configuration update handler for iOS 15+
+                button.configurationUpdateHandler = ^(UIButton *button) {
+                    // Disable highlight adjustments by keeping configuration unchanged
+                    // This replicates the behavior of adjustsImageWhenHighlighted = NO
+                    // and showsTouchWhenHighlighted = NO
+                };
+            } else {
+                // Fallback for iOS < 15.0 - suppress deprecation warnings for intentional backward compatibility
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                button.adjustsImageWhenHighlighted = NO;
+                button.showsTouchWhenHighlighted = NO;
+#pragma clang diagnostic pop
+            }
             
             // Remove all background images for all states
             [button setBackgroundImage:nil forState:UIControlStateNormal];

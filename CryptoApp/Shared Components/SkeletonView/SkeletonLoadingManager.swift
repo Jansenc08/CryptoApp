@@ -24,7 +24,7 @@ final class SkeletonLoadingManager {
         collectionView.dataSource = skeletonDataSource
         
         // Store skeleton data source to prevent deallocation
-        objc_setAssociatedObject(collectionView, &AssociatedKeys.skeletonDataSource, skeletonDataSource, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(collectionView, AssociatedKeys.skeletonDataSource, skeletonDataSource, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         
         collectionView.reloadData()
         
@@ -41,7 +41,7 @@ final class SkeletonLoadingManager {
         stopSkeletonAnimationInCollectionView(collectionView)
         
         // Remove skeleton data source
-        objc_setAssociatedObject(collectionView, &AssociatedKeys.skeletonDataSource, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        objc_setAssociatedObject(collectionView, AssociatedKeys.skeletonDataSource, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         
         collectionView.tag = 0
         // Note: The actual data source should be reset by the calling view controller
@@ -144,5 +144,5 @@ private class SkeletonCollectionViewDataSource: NSObject, UICollectionViewDataSo
 // MARK: - Associated Object Keys
 
 private struct AssociatedKeys {
-    static var skeletonDataSource = "skeletonDataSource"
+    static let skeletonDataSource = UnsafeRawPointer(bitPattern: "skeletonDataSource".hashValue)!
 } 

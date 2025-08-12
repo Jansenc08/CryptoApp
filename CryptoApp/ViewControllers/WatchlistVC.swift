@@ -143,7 +143,7 @@ final class WatchlistVC: UIViewController {
         )
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Clear All", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "Clear All", style: .destructive) { _ in
             Dependencies.container.watchlistManager().clearWatchlist()
         })
         

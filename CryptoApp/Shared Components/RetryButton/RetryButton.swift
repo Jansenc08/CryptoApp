@@ -37,8 +37,15 @@ final class RetryButton: UIButton {
         layer.cornerRadius = 8
         layer.cornerCurve = .continuous
         
-        // Add padding for better touch area
-        contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        // Add padding for better touch area (use configuration-friendly contentInsets when available)
+        if #available(iOS 15.0, *) {
+            var config = UIButton.Configuration.filled()
+            config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+            config.baseBackgroundColor = .systemGray
+            self.configuration = config
+        } else {
+            contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        }
         
         // Configure icon
         iconImageView.image = UIImage(systemName: "arrow.clockwise")

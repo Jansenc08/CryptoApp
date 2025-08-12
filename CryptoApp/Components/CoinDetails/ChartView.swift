@@ -61,6 +61,7 @@ final class ChartView: LineChartView {
         self.delegate = self
         configure()
         setupLabelManager()
+        setupTraitObservation()
     }
 
     required init?(coder: NSCoder) {
@@ -68,6 +69,7 @@ final class ChartView: LineChartView {
         self.delegate = self
         configure()
         setupLabelManager()
+        setupTraitObservation()
     }
     
     private func setupLabelManager() {
@@ -212,15 +214,30 @@ final class ChartView: LineChartView {
     
     // MARK: - Dark Mode Support
     
+    private func setupTraitObservation() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
+                // Update gradient colors when appearance changes
+                self.configurationHelper.updateFadingEdgeColors()
+                
+                // Force background color update
+                self.backgroundColor = .systemBackground
+            }
+        }
+    }
+    
+    @available(iOS, deprecated: 17.0, message: "Use registerForTraitChanges instead")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         
-        // Update gradient colors when appearance changes
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            configurationHelper.updateFadingEdgeColors()
-            
-            // Force background color update
-            backgroundColor = .systemBackground
+        if #available(iOS 17.0, *) {
+            // Handled by registerForTraitChanges
+        } else {
+            // Fallback for iOS < 17.0
+            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+                configurationHelper.updateFadingEdgeColors()
+                backgroundColor = .systemBackground
+            }
         }
     }
     
@@ -410,7 +427,7 @@ final class ChartView: LineChartView {
     private func findIndexForTimestamp(_ timestamp: Double) -> Int {
         guard !allDates.isEmpty else { return 0 }
         
-        let targetDate = Date(timeIntervalSince1970: timestamp)
+        let _ = Date(timeIntervalSince1970: timestamp)  // targetDate unused
         var closestIndex = 0
         var minDifference = abs(allDates[0].timeIntervalSince1970 - timestamp)
         

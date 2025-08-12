@@ -76,6 +76,7 @@ final class CandlestickChartView: CombinedChartView {
         configure()
         setupLabelManager()
         setupCurrentPriceIndicator()
+        setupTraitObservation()
     }
     
     required init?(coder: NSCoder) {
@@ -84,6 +85,7 @@ final class CandlestickChartView: CombinedChartView {
         configure()
         setupLabelManager()
         setupCurrentPriceIndicator()
+        setupTraitObservation()
     }
     
     private func setupLabelManager() {
@@ -479,15 +481,30 @@ final class CandlestickChartView: CombinedChartView {
     
     // MARK: - Dark Mode Support
     
+    private func setupTraitObservation() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
+                // Update gradient colors when appearance changes
+                self.configurationHelper.updateFadingEdgeColors()
+                
+                // Force background color update
+                self.backgroundColor = .systemBackground
+            }
+        }
+    }
+    
+    @available(iOS, deprecated: 17.0, message: "Use registerForTraitChanges instead")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         
-        // Update gradient colors when appearance changes
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            configurationHelper.updateFadingEdgeColors()
-            
-            // Force background color update
-            backgroundColor = .systemBackground
+        if #available(iOS 17.0, *) {
+            // Handled by registerForTraitChanges
+        } else {
+            // Fallback for iOS < 17.0
+            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+                configurationHelper.updateFadingEdgeColors()
+                backgroundColor = .systemBackground
+            }
         }
     }
     
@@ -906,7 +923,7 @@ final class CandlestickChartView: CombinedChartView {
               index < allOHLCData.count else { return }
         
         // Get chart dimensions
-        let chartBounds = bounds
+        let _ = bounds  // chartBounds unused
         let contentRect = contentRect
         
         // Calculate position
@@ -1120,8 +1137,8 @@ extension CandlestickChartView {
         
         // DEBUG: Log price range for normalization
         let allPrices = allOHLCData.flatMap { [$0.open, $0.high, $0.low, $0.close] }
-        if let minPrice = allPrices.min(), let maxPrice = allPrices.max() {
-            // Price range calculated
+        if let _ = allPrices.min(), let _ = allPrices.max() {
+            // Price range calculated but unused
         }
         
         // Extract closing prices for indicator calculations

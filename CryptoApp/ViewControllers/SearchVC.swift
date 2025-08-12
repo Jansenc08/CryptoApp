@@ -114,6 +114,7 @@ import Combine
         configureDataSource()
         bindViewModel()
         setupEmptyState()
+        setupTraitObservation()
         loadRecentSearches()
         
         // Set initial state to show popular coins
@@ -214,12 +215,26 @@ import Combine
         searchBarComponent.resignFirstResponder()
     }
     
+    private func setupTraitObservation() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
+                // Update popular coins container border color for dark mode
+                self.popularCoinsContainer?.layer.borderColor = UIColor.systemGray5.cgColor
+            }
+        }
+    }
+    
+    @available(iOS, deprecated: 17.0, message: "Use registerForTraitChanges instead")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         
-        // Update popular coins container border color for dark mode
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            popularCoinsContainer?.layer.borderColor = UIColor.systemGray5.cgColor
+        if #available(iOS 17.0, *) {
+            // Handled by registerForTraitChanges
+        } else {
+            // Fallback for iOS < 17.0
+            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+                popularCoinsContainer?.layer.borderColor = UIColor.systemGray5.cgColor
+            }
         }
     }
     

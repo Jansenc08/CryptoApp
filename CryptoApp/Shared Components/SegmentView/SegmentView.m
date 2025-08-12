@@ -51,7 +51,7 @@
 
 - (void)setSelectedIndexSilently:(NSInteger)index {
     // Store the original callback temporarily
-    id originalCallback = self.onSelectionChanged;
+    void (^originalCallback)(NSInteger) = self.onSelectionChanged;
     self.onSelectionChanged = nil;
     
     // Set the selected index without triggering callback

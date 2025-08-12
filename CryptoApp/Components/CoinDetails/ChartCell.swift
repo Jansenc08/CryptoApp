@@ -450,7 +450,7 @@ final class ChartCell: UITableViewCell {
         if let ohlcData = ohlcData {
             self.currentOHLCData = ohlcData
             if !ohlcData.isEmpty {
-                let volumeCount = ohlcData.compactMap { $0.volume }.count
+                let _ = ohlcData.compactMap { $0.volume }.count  // volumeCount unused
                 // Process OHLC data
                 
                 candlestickChartView.update(ohlcData, range: range)
@@ -579,16 +579,34 @@ final class ChartCell: UITableViewCell {
     
     // MARK: - Dark Mode Support
     
+    private func setupTraitObservation() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
+                // Ensure container background updates with appearance changes
+                self.containerView.backgroundColor = .clear
+                self.contentView.backgroundColor = .clear
+                self.backgroundColor = .clear
+                self.loadingView.backgroundColor = .systemBackground
+                self.errorView.backgroundColor = .systemBackground
+            }
+        }
+    }
+    
+    @available(iOS, deprecated: 17.0, message: "Use registerForTraitChanges instead")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         
-        // Ensure container background updates with appearance changes
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            containerView.backgroundColor = .clear
-            contentView.backgroundColor = .clear
-            backgroundColor = .clear
-            loadingView.backgroundColor = .systemBackground
-            errorView.backgroundColor = .systemBackground
+        if #available(iOS 17.0, *) {
+            // Handled by registerForTraitChanges
+        } else {
+            // Fallback for iOS < 17.0
+            if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+                containerView.backgroundColor = .clear
+                contentView.backgroundColor = .clear
+                backgroundColor = .clear
+                loadingView.backgroundColor = .systemBackground
+                errorView.backgroundColor = .systemBackground
+            }
         }
     }
 }
