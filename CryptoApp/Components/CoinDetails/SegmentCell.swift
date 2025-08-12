@@ -83,10 +83,6 @@ final class SegmentCell: UITableViewCell {
     }
     
     private func updateChartTypeToggleAppearance() {
-        // Use just an icon for cleaner look - show the chart type you can switch TO
-        let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        let image = UIImage(systemName: currentChartType.toggleImageName, withConfiguration: config)
-        
         // Simple color scheme
         let (tintColor, backgroundColor): (UIColor, UIColor)
         
@@ -94,13 +90,32 @@ final class SegmentCell: UITableViewCell {
         case .line:
             tintColor = UIColor.systemBlue
             backgroundColor = UIColor.systemBlue.withAlphaComponent(0.15)
+            
+            // Show candlestick icon when on line chart (to switch TO candlestick)
+            if let candlestickImage = UIImage(named: "candlestick_icon") {
+                // Option 1: Use custom image asset if available
+                chartTypeToggle.setImage(candlestickImage.withRenderingMode(.alwaysTemplate), for: .normal)
+            } else if let generatedIcon = CandlestickIconGenerator.generateCandlestickIcon() {
+                // Option 2: Use programmatically generated icon
+                chartTypeToggle.setImage(generatedIcon.withRenderingMode(.alwaysOriginal), for: .normal)
+            } else {
+                // Option 3: Fallback to SF Symbol
+                let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+                let image = UIImage(systemName: currentChartType.toggleImageName, withConfiguration: config)
+                chartTypeToggle.setImage(image, for: .normal)
+            }
+            
         case .candlestick:
             tintColor = UIColor.systemOrange
             backgroundColor = UIColor.systemOrange.withAlphaComponent(0.15)
+            
+            // Show line chart icon when on candlestick chart (to switch TO line)
+            let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+            let image = UIImage(systemName: currentChartType.toggleImageName, withConfiguration: config)
+            chartTypeToggle.setImage(image, for: .normal)
         }
         
         // Clean icon-only design
-        chartTypeToggle.setImage(image, for: .normal)
         chartTypeToggle.setTitle("", for: .normal) // Remove text to avoid wrapping
         chartTypeToggle.backgroundColor = backgroundColor
         chartTypeToggle.tintColor = tintColor
@@ -155,6 +170,8 @@ final class SegmentCell: UITableViewCell {
     }
     
     @objc private func chartTypeToggleTapped() {
+        print("🎯 Chart type toggle tapped! Current: \(currentChartType)")
+        
         // Toggle chart type
         currentChartType = currentChartType == .line ? .candlestick : .line
         updateChartTypeToggleAppearance()
@@ -165,6 +182,8 @@ final class SegmentCell: UITableViewCell {
         
         // Notify callback
         onChartTypeToggle?(currentChartType)
+        
+        print("🎯 Chart type toggled to: \(currentChartType)")
     }
 
 

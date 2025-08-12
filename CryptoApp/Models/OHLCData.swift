@@ -102,7 +102,12 @@ enum ChartType: String, CaseIterable {
     var toggleImageName: String {
         switch self {
         case .line:
-            return "chart.bar.fill" // Show candlestick icon when on line chart
+            // Try newer SF Symbols for better candlestick representation
+            if #available(iOS 16.0, *) {
+                return "chart.bar.doc.horizontal" // More candlestick-like
+            } else {
+                return "chart.bar.fill" // Fallback
+            }
         case .candlestick:
             return "chart.line.uptrend.xyaxis" // Show line icon when on candlestick chart
         }
