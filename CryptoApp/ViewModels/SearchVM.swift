@@ -162,6 +162,28 @@ final class SearchVM: ObservableObject {
         AppLogger.performance("SearchVM: Cancelled API requests (keeping search functionality intact)")
     }
     
+    // MARK: - Error Handling
+    
+    /// Setup error handling for SharedCoinDataManager
+    private func setupErrorHandling() {
+        // 🚨 SUBSCRIBE TO SHARED ERRORS: Listen to errors from shared data manager
+        sharedCoinDataManager.errors.sinkForUI(
+            { [weak self] error in
+                self?.handleSharedDataError(error)
+            },
+            storeIn: &cancellables
+        )
+    }
+    
+    /// Handle errors from SharedCoinDataManager
+    private func handleSharedDataError(_ error: Error) {
+        AppLogger.error("SearchVM: SharedCoinDataManager error", error: error)
+        
+        // Generate user-friendly error message using ErrorMessageProvider
+        let retryInfo = ErrorMessageProvider.shared.getSearchRetryInfo(for: error)
+        errorMessageSubject.send(retryInfo.message)
+    }
+    
     // MARK: - Init
     
     // MARK: - Dependency Injection Initializer
@@ -180,6 +202,7 @@ final class SearchVM: ObservableObject {
         loadInitialData()
         setupCacheUpdateListener()
         setupSharedCoinDataListener()
+        setupErrorHandling()
     }
     
     // MARK: - Cache Update Listener
@@ -459,6 +482,10 @@ final class SearchVM: ObservableObject {
             // Use pre-calculated results instantly
             let cachedResults = filter == .topGainers ? cachedTopGainers : cachedTopLosers
             popularCoinsSubject.send(cachedResults)
+            
+            // Clear any error messages when using cached data
+            errorMessageSubject.send(nil)
+            
             fetchLogosIfNeeded(for: cachedResults)
             
         } else {
@@ -570,6 +597,9 @@ final class SearchVM: ObservableObject {
                 // Send the requested filter's results
                 let requestedResults = filter == .topGainers ? topGainers : topLosers
                 self.popularCoinsSubject.send(requestedResults)
+                
+                // Clear any error messages when data loads successfully
+                self.errorMessageSubject.send(nil)
                 
                 print("🌟 Popular Coins: ✅ Updated UI with \(requestedResults.count) \(filter.displayName.lowercased()) in \(String(format: "%.3f", processingTime))s")
                 print("🌟 Popular Coins: 💾 Both gainers and losers cached for instant switching")

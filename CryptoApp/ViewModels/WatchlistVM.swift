@@ -168,6 +168,14 @@ final class WatchlistVM: ObservableObject {
             storeIn: &cancellables
         )
         
+        // 🚨 SUBSCRIBE TO SHARED ERRORS: Listen to errors from shared data manager
+        sharedCoinDataManager.errors.sinkForUI(
+            { [weak self] error in
+                self?.handleSharedDataError(error)
+            },
+            storeIn: &cancellables
+        )
+        
         loadInitialData()
         startOptimizedPeriodicUpdates()
     }
@@ -177,6 +185,20 @@ final class WatchlistVM: ObservableObject {
         updateTimer = nil
         cancellables.removeAll()
         requestCancellables.removeAll()
+    }
+    
+    // MARK: - Error Handling
+    
+    /// Handle errors from SharedCoinDataManager
+    private func handleSharedDataError(_ error: Error) {
+        AppLogger.error("WatchlistVM: SharedCoinDataManager error", error: error)
+        
+        // Generate user-friendly error message using ErrorMessageProvider
+        let retryInfo = ErrorMessageProvider.shared.getWatchlistRetryInfo(for: error)
+        errorMessageSubject.send(retryInfo.message)
+        
+        // Update loading state
+        isLoadingSubject.send(false)
     }
     
     // MARK: - Optimized Public Methods
@@ -420,6 +442,9 @@ final class WatchlistVM: ObservableObject {
         // Always update UI with new data
         watchlistCoinsSubject.send(watchlistCoins)
         isLoadingSubject.send(false)
+        
+        // Clear any error messages when data loads successfully
+        errorMessageSubject.send(nil)
         
         // If prices changed, trigger animation updates
         if !changedCoinIds.isEmpty {

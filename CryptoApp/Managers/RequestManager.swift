@@ -104,7 +104,7 @@ final class RequestManager: RequestManagerProtocol {
     /**
      * ENTER COOLDOWN MODE AFTER RATE LIMIT
      * 
-     * Implements smart progressive backoff based on rate limit patterns:
+     * Implements progressive backoff based on rate limit patterns:
      * - Quick consecutive hits = longer cooldown
      * - Spaced out hits = shorter cooldown
      * - First hit = minimal cooldown
