@@ -329,7 +329,9 @@ final class ChartView: LineChartView {
         let dataSet = LineChartDataSet(entries: entries, label: "")
         dataSet.drawCirclesEnabled = false
         dataSet.mode = .cubicBezier
-        dataSet.lineWidth = 2.5
+        // Apply saved user-preferred line thickness (fallback to default)
+        let savedThickness = UserDefaults.standard.double(forKey: "ChartLineThickness")
+        dataSet.lineWidth = CGFloat(savedThickness > 0 ? savedThickness : 2.5)
         dataSet.setColor(lineColor)
         dataSet.drawValuesEnabled = false
         dataSet.drawFilledEnabled = true
@@ -669,17 +671,16 @@ extension ChartView {
     func updateLineThickness(_ thickness: CGFloat) {
         guard let dataSet = data?.dataSets.first as? LineChartDataSet else { return }
 
-        // Preserve viewport state (avoid jump when zoomed)
-        let savedScaleX = scaleX
-        let savedScaleY = scaleY
-        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
-        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        // Preserve full viewport matrix to avoid compounding zoom
+        let savedMatrix = viewPortHandler.touchMatrix
 
         dataSet.lineWidth = thickness
+        // Ensure the underlying data object and chart are both notified
+        data?.notifyDataChanged()
         notifyDataSetChanged()
-
-        // Restore viewport state
-        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+        // Restore previous matrix precisely (no extra zoom)
+        _ = viewPortHandler.refresh(newMatrix: savedMatrix, chart: self, invalidate: true)
+        setNeedsDisplay()
     }
     
     func toggleGridLines(_ enabled: Bool) {
@@ -706,11 +707,8 @@ extension ChartView {
     func applyColorTheme(_ theme: ChartColorTheme) {
         guard let dataSet = data?.dataSets.first as? LineChartDataSet else { return }
 
-        // Preserve viewport state (avoid jump when zoomed)
-        let savedScaleX = scaleX
-        let savedScaleY = scaleY
-        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
-        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        // Preserve full viewport matrix to avoid compounding zoom
+        let savedMatrix = viewPortHandler.touchMatrix
 
         // Determine if current trend is positive or negative
         let firstPrice = allDataPoints.first ?? 0
@@ -729,9 +727,8 @@ extension ChartView {
         dataSet.fill = LinearGradientFill(gradient: gradient, angle: 90)
 
         notifyDataSetChanged()
-
-        // Restore viewport state
-        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+        // Restore previous matrix precisely (no extra zoom)
+        _ = viewPortHandler.refresh(newMatrix: savedMatrix, chart: self, invalidate: true)
     }
     
     func setAnimationSpeed(_ speed: Double) {

@@ -605,7 +605,8 @@ final class CandlestickChartView: CombinedChartView {
         dataSet.decreasingFilled = true
         
         // Shadow (wick) styling - SAME COLOR as candle bodies
-        dataSet.shadowWidth = 1.5  // Increased for better visibility when zoomed out
+        let savedThickness = UserDefaults.standard.double(forKey: "ChartLineThickness")
+        dataSet.shadowWidth = CGFloat(savedThickness > 0 ? savedThickness : 1.5)  // Respect saved thickness
         dataSet.shadowColorSameAsCandle = true  // Wicks match their candle color
         
         // Minimal spacing between bars for better visibility when zoomed out
@@ -1053,20 +1054,41 @@ extension CandlestickChartView: ChartViewDelegate {
 extension CandlestickChartView {
     
     func updateLineThickness(_ thickness: CGFloat) {
-        guard let dataSet = data?.dataSets.first as? CandleChartDataSet else { return }
+        // Combined charts can wrap candle data inside CombinedChartData
+        var candleDataSet: CandleChartDataSet?
+        if let combined = data as? CombinedChartData {
+            candleDataSet = combined.candleData?.dataSets.first as? CandleChartDataSet
+        } else {
+            candleDataSet = data?.dataSets.first as? CandleChartDataSet
+        }
+        guard let dataSet = candleDataSet else { return }
         
-        // Preserve viewport state
-        let savedScaleX = scaleX
-        let savedScaleY = scaleY
-        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
-        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        // Preserve full viewport matrix to avoid compounding zoom
+        let savedMatrix = viewPortHandler.touchMatrix
         
         // For candlestick charts, we can adjust the shadow width
         dataSet.shadowWidth = thickness
+        // Ensure data object and chart refresh
+        if let combined = data as? CombinedChartData {
+            combined.notifyDataChanged()
+        } else {
+            data?.notifyDataChanged()
+        }
         notifyDataSetChanged()
-        
-        // Restore viewport state
-        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+        // Restore previous matrix precisely (no extra zoom)
+        _ = viewPortHandler.refresh(newMatrix: savedMatrix, chart: self, invalidate: true)
+        // Clamp viewport if restored window is invalid
+        if let d = data {
+            let minX = d.xMin
+            let maxX = d.xMax
+            let low = lowestVisibleX
+            let high = highestVisibleX
+            if !low.isFinite || !high.isFinite || high <= minX || low >= maxX {
+                let center = (minX + maxX) / 2
+                moveViewToX(center)
+            }
+        }
+        setNeedsDisplay()
     }
     
     func toggleGridLines(_ enabled: Bool) {
@@ -1091,13 +1113,17 @@ extension CandlestickChartView {
     }
     
     func applyColorTheme(_ theme: ChartColorTheme) {
-        guard let dataSet = data?.dataSets.first as? CandleChartDataSet else { return }
+        // Support both CombinedChartData and direct CandleChartData
+        var candleDataSet: CandleChartDataSet?
+        if let combined = data as? CombinedChartData {
+            candleDataSet = combined.candleData?.dataSets.first as? CandleChartDataSet
+        } else {
+            candleDataSet = data?.dataSets.first as? CandleChartDataSet
+        }
+        guard let dataSet = candleDataSet else { return }
         
-        // Preserve viewport state
-        let savedScaleX = scaleX
-        let savedScaleY = scaleY
-        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
-        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        // Preserve full viewport matrix
+        let savedMatrix = viewPortHandler.touchMatrix
         
         // Apply colors to candlestick chart
         dataSet.increasingColor = theme.positiveColor
@@ -1105,10 +1131,25 @@ extension CandlestickChartView {
         dataSet.shadowColor = .label
         dataSet.neutralColor = .systemGray
         
+        if let combined = data as? CombinedChartData {
+            combined.notifyDataChanged()
+        } else {
+            data?.notifyDataChanged()
+        }
         notifyDataSetChanged()
-        
-        // Restore viewport state
-        zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
+        // Restore previous matrix precisely (no extra zoom) and clamp if needed
+        _ = viewPortHandler.refresh(newMatrix: savedMatrix, chart: self, invalidate: true)
+        if let d = data {
+            let minX = d.xMin
+            let maxX = d.xMax
+            let low = lowestVisibleX
+            let high = highestVisibleX
+            if !low.isFinite || !high.isFinite || high <= minX || low >= maxX {
+                let center = (minX + maxX) / 2
+                moveViewToX(center)
+            }
+        }
+        setNeedsDisplay()
     }
     
     func setAnimationSpeed(_ speed: Double) {
