@@ -24,6 +24,8 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     private let selectedRange = CurrentValueSubject<String, Never>("24h")
     private let selectedChartType = CurrentValueSubject<ChartType, Never>(.line)
     private var cancellables = Set<AnyCancellable>()
+    // Coalesce rapid stats updates into a single UI refresh
+    private let statsUpdateSubject = PassthroughSubject<Void, Never>()
     
     // UI state tracking
     private var lastChartUpdateTime: Date?
@@ -214,6 +216,14 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // MARK: - OPTIMIZED: Combine Bindings
     
     private func bindViewModel() {
+        // Debounce stats updates in one place
+        statsUpdateSubject
+            .receive(on: DispatchQueue.main)
+            .debounce(for: .milliseconds(80), scheduler: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.updateStatsCell()
+            }
+            .store(in: &cancellables)
         
         // Chart updates with throttling and debouncing to reduce flashing
         viewModel.chartPoints
@@ -282,14 +292,14 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             .receive(on: DispatchQueue.main)
             .removeDuplicates()
             .sink { [weak self] _ in
-                self?.updateStatsCell()
+                self?.statsUpdateSubject.send(())
             }
             .store(in: &cancellables)
         
         // Stats updates with reactive high/low data
         viewModel.stats.sinkForUI(
             { [weak self] _ in
-                self?.updateStatsCell()
+                self?.statsUpdateSubject.send(())
             },
             storeIn: &cancellables
         )
@@ -304,9 +314,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 // Update StatsCell when OHLC data becomes available for Low/High section
                 if !newOHLCData.isEmpty {
                     // OHLC data loaded, refresh stats
-                    DispatchQueue.main.async {
-                        self.updateStatsCell()
-                    }
+                    self.statsUpdateSubject.send(())
                 } else {
                     // No OHLC data available
                 }
@@ -319,7 +327,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 guard let self = self else { return }
                 self.updateInfoCellWithRealTimeData(updatedCoin)
                 self.updatePriceChangeOverviewCell(updatedCoin) // Update price change overview
-                self.updateStatsCell() // Also update stats with fresh data
+                self.statsUpdateSubject.send(()) // Also update stats with fresh data
             },
             storeIn: &cancellables
         )

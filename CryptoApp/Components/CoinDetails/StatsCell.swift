@@ -10,6 +10,8 @@ final class StatsCell: UITableViewCell {
     private var rightColumn = UIStackView()
 
     private var onSegmentChange: ((String) -> Void)?
+     // Avoid reconfiguring the segment control on every update
+     private var isSegmentConfigured = false
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -103,8 +105,13 @@ final class StatsCell: UITableViewCell {
         let options = ["24h", "30d", "1y"]
         let selectedIndex = options.firstIndex(of: selectedRange) ?? 0
         
-        segmentView.configure(withItems: options)
-        segmentView.setSelectedIndex(selectedIndex)
+        // Configure items only once to prevent layout churn and jank
+        if !isSegmentConfigured {
+            segmentView.configure(withItems: options)
+            isSegmentConfigured = true
+        }
+        // Update selection silently so we don't trigger callbacks or animations
+        segmentView.setSelectedIndexSilently(selectedIndex)
         segmentView.onSelectionChanged = { [weak self] index in
             self?.onSegmentChange?(options[index])
         }
@@ -114,7 +121,7 @@ final class StatsCell: UITableViewCell {
         var regularStats: [StatItem] = []
         
         for item in stats {
-            if item.title == "Low / High" && item.value.contains("|") {
+            if item.title == "Low / High" && (item.value.contains("|") || item.highLowPayload != nil) {
                 highLowItem = item
             } else {
                 regularStats.append(item)
@@ -177,15 +184,31 @@ final class StatsCell: UITableViewCell {
     
     // ADDED: Method to smoothly update existing high/low bar
     private func updateHighLowBarAnimated(container: HighLowBarContainer, with item: StatItem) {
-        let values = item.value.components(separatedBy: "|")
-        guard values.count >= 2 else { 
-            return 
+        // Prefer typed payload
+        var lowValue = ""
+        var highValue = ""
+        var currentPrice: Double = 0.0
+        var isLoading = false
+        
+        if let payload = item.highLowPayload {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencyCode = "USD"
+            formatter.maximumFractionDigits = 2
+            if let low = payload.low { lowValue = formatter.string(from: NSNumber(value: low)) ?? "$0" }
+            if let high = payload.high { highValue = formatter.string(from: NSNumber(value: high)) ?? "$0" }
+            currentPrice = payload.current ?? 0.0
+            isLoading = payload.isLoading
+        } else {
+            let values = item.value.components(separatedBy: "|")
+            guard values.count >= 2 else { return }
+            lowValue = values[0]
+            highValue = values[1]
+            currentPrice = values.count > 2 ? Double(values[2]) ?? 0.0 : 0.0
+            isLoading = values.count > 3 ? (values[3] == "true") : false
         }
         
-        let lowValue = values[0]
-        let highValue = values[1]
-        let currentPrice = values.count > 2 ? Double(values[2]) ?? 0.0 : 0.0
-        let isLoading = values.count > 3 ? (values[3] == "true") : false
+
         
         // FIXED: Better price parsing for formatted currency strings
         func parsePrice(from string: String) -> Double {
@@ -202,8 +225,8 @@ final class StatsCell: UITableViewCell {
             return Double(cleanString) ?? 0.0
         }
         
-        let lowPrice = parsePrice(from: lowValue)
-        let highPrice = parsePrice(from: highValue)
+        let lowPrice = item.highLowPayload?.low ?? parsePrice(from: lowValue)
+        let highPrice = item.highLowPayload?.high ?? parsePrice(from: highValue)
         
         // Calculate new position with enhanced precision for high-value coins
         let priceRange = highPrice - lowPrice
@@ -234,7 +257,8 @@ final class StatsCell: UITableViewCell {
             }
         }
         
-        // Use the new animation method
+        // Constraint-driven progress and indicator
+
         container.animateToPosition(clampedPosition, currentPrice: currentPrice, lowValue: lowValue, highValue: highValue, isLoading: isLoading)
         
         // Update loading state
@@ -278,16 +302,30 @@ final class StatsCell: UITableViewCell {
 
 
     private func makeHighLowBarRow(for item: StatItem) -> UIView {
-        let values = item.value.components(separatedBy: "|")
-        guard values.count >= 2 else {
-            // Fallback to regular row if parsing fails
-            return makeRegularStatRow(for: item)
-        }
+        // Prefer typed payload if available (no string parsing). Fallback to legacy string format.
+        var lowValue = ""
+        var highValue = ""
+        var currentPrice: Double = 0.0
+        var isLoading = false
         
-        let lowValue = values[0]
-        let highValue = values[1]
-        let currentPrice = values.count > 2 ? Double(values[2]) ?? 0.0 : 0.0
-        let isLoading = values.count > 3 ? (values[3] == "true") : false
+        if let payload = item.highLowPayload {
+            // Format labels; keep numbers for bar math
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencyCode = "USD"
+            formatter.maximumFractionDigits = 2
+            if let low = payload.low { lowValue = formatter.string(from: NSNumber(value: low)) ?? "$0" }
+            if let high = payload.high { highValue = formatter.string(from: NSNumber(value: high)) ?? "$0" }
+            currentPrice = payload.current ?? 0.0
+            isLoading = payload.isLoading
+        } else {
+            let values = item.value.components(separatedBy: "|")
+            guard values.count >= 2 else { return makeRegularStatRow(for: item) }
+            lowValue = values[0]
+            highValue = values[1]
+            currentPrice = values.count > 2 ? Double(values[2]) ?? 0.0 : 0.0
+            isLoading = values.count > 3 ? (values[3] == "true") : false
+        }
         
         // Container for the entire high/low section
         let container = HighLowBarContainer()
@@ -325,7 +363,7 @@ final class StatsCell: UITableViewCell {
         let progressView = UIView()
         progressView.backgroundColor = .systemGray // Medium gray - good contrast but not harsh
         progressView.layer.cornerRadius = 3
-        
+
         // Loading indicator overlay
         let loadingOverlay = UIView()
         loadingOverlay.backgroundColor = UIColor.systemGray.withAlphaComponent(0.3)
@@ -343,9 +381,10 @@ final class StatsCell: UITableViewCell {
         priceIndicator.layer.shadowOffset = CGSize(width: 0, height: 1)
         priceIndicator.layer.shadowRadius = 2
         
+        // Store references for positioning
         // Create width constraint for progress view
         let progressWidthConstraint = progressView.widthAnchor.constraint(equalToConstant: 0)
-        
+
         // Store references for positioning
         container.barView = barView
         container.priceIndicator = priceIndicator
@@ -389,11 +428,20 @@ final class StatsCell: UITableViewCell {
             return Double(cleanString) ?? 0.0
         }
         
-        let lowPrice = parsePrice(from: lowValue)
-        let highPrice = parsePrice(from: highValue)
+        let lowPrice = item.highLowPayload?.low ?? parsePrice(from: lowValue)
+        let highPrice = item.highLowPayload?.high ?? parsePrice(from: highValue)
         let priceRange = highPrice - lowPrice
-        let pricePosition = priceRange > 0 ? (currentPrice - lowPrice) / priceRange : 0.5
-        let clampedPosition = max(0.0, min(1.0, pricePosition)) // Ensure it's between 0 and 1
+        
+        let pricePosition: Double
+        if priceRange > 0 && priceRange.isFinite {
+            pricePosition = (currentPrice - lowPrice) / priceRange
+        } else {
+            pricePosition = 0.5
+        }
+        
+        let clampedPosition = max(0.0, min(1.0, pricePosition))
+        
+
         
         container.pricePosition = clampedPosition
         
@@ -407,7 +455,7 @@ final class StatsCell: UITableViewCell {
             barView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             barView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             barView.heightAnchor.constraint(equalToConstant: 6).withPriority(UILayoutPriority(999)), // Increased height for better visibility
-            
+
             // Progress view shows filled portion up to current price
             progressView.topAnchor.constraint(equalTo: barView.topAnchor),
             progressView.leadingAnchor.constraint(equalTo: barView.leadingAnchor),
@@ -420,7 +468,7 @@ final class StatsCell: UITableViewCell {
             loadingOverlay.trailingAnchor.constraint(equalTo: barView.trailingAnchor),
             loadingOverlay.bottomAnchor.constraint(equalTo: barView.bottomAnchor),
             
-            // Price indicator circle positioned at current price (will be positioned in layoutSubviews)
+            // Price indicator circle follows bar (we'll pin via centerX to barView; moved in layout)
             priceIndicator.centerYAnchor.constraint(equalTo: barView.centerYAnchor),
             priceIndicator.widthAnchor.constraint(equalToConstant: 12),
             priceIndicator.heightAnchor.constraint(equalToConstant: 12),
@@ -439,6 +487,11 @@ final class StatsCell: UITableViewCell {
             lowLabel.trailingAnchor.constraint(lessThanOrEqualTo: highLabel.leadingAnchor, constant: -8)
         ])
         
+        // Link indicator X to progressView trailing edge
+        let indicatorCenterX = priceIndicator.centerXAnchor.constraint(equalTo: progressView.trailingAnchor)
+        indicatorCenterX.isActive = true
+        container.priceIndicatorCenterXConstraint = indicatorCenterX
+
         // Set initial progress width
         DispatchQueue.main.async {
             if let barView = container.barView, barView.frame.width > 0 {
@@ -497,6 +550,8 @@ class HighLowBarContainer: UIView {
     var progressView: UIView?
     var loadingOverlay: UIView?
     var progressWidthConstraint: NSLayoutConstraint?
+    // Keep the indicator tied to progress trailing for layout-driven updates
+    var priceIndicatorCenterXConstraint: NSLayoutConstraint?
     var pricePosition: Double = 0.5
     var currentPrice: Double = 0.0
     var lowValue: String = ""
@@ -510,30 +565,16 @@ class HighLowBarContainer: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         
-        // Position the price indicator based on the calculated position
-        guard let barView = barView, let priceIndicator = priceIndicator else { return }
+        // Ensure we have necessary views
+        guard let barView = barView else { return }
         
-        // Only position if we have valid dimensions
-        guard barView.frame.width > 0, priceIndicator.frame.width > 0 else { return }
-        
-        let barWidth = barView.frame.width
-        let indicatorWidth = priceIndicator.frame.width
-        let safePosition = max(0.0, min(1.0, pricePosition)) // Ensure position is between 0 and 1
-        
-        // Calculate X position: bar start + (bar width * position) - (indicator width / 2)
-        let targetX = barView.frame.minX + (barWidth * CGFloat(safePosition)) - (indicatorWidth / 2)
-        
-        // Ensure the indicator stays within the bar bounds
-        let minX = barView.frame.minX - (indicatorWidth / 2)
-        let maxX = barView.frame.maxX - (indicatorWidth / 2)
-        let clampedX = max(minX, min(maxX, targetX))
-        
-        priceIndicator.frame.origin.x = clampedX
-        
-        // Update progress view width using constraint
+        // Update progress view width using constraint (indicator follows via constraint linkage)
         if let progressWidthConstraint = progressWidthConstraint {
-            let newWidth = barWidth * CGFloat(safePosition)
-            progressWidthConstraint.constant = newWidth
+            let barWidth = barView.frame.width
+            if barWidth > 0 {
+                let safePosition = max(0.0, min(1.0, pricePosition))
+                progressWidthConstraint.constant = barWidth * CGFloat(safePosition)
+            }
         }
     }
     
@@ -548,43 +589,25 @@ class HighLowBarContainer: UIView {
         // Calculate the new target position
         targetPosition = max(0.0, min(1.0, newPosition))
         
-        // Only animate if the position actually changed significantly
-        let positionDifference = abs(targetPosition - pricePosition)
-        if positionDifference < 0.005 {
-            // Very small change, just update directly for instant response
-            pricePosition = targetPosition
-            setNeedsLayout()
-            return
-        }
+        // Always update position (remove the threshold check that was preventing updates)
+        pricePosition = targetPosition
         
-        // Prevent rapid successive animations (throttling for high-frequency updates)
-        if isAnimating {
-            // If already animating, just update the target position
-            // The current animation will complete with the new target
-            return
-        }
-        
-        // Cancel any existing animations for immediate response to new data
+        // Always restart the animation to the newest target for snappy updates
         layer.removeAllAnimations()
-        
-        // Perform fast, responsive animation
         isAnimating = true
         UIView.animate(
-            withDuration: 0.25, // Faster duration for responsiveness
+            withDuration: 0.18,
             delay: 0,
-            usingSpringWithDamping: 0.9, // Higher damping for quicker settling
-            initialSpringVelocity: 0.3,
             options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
             animations: { [weak self] in
                 guard let self = self else { return }
-                self.pricePosition = self.targetPosition
-                
-                // Update progress width constraint
                 if let progressWidthConstraint = self.progressWidthConstraint,
                    let barView = self.barView,
                    barView.frame.width > 0 {
                     let newWidth = barView.frame.width * CGFloat(self.targetPosition)
                     progressWidthConstraint.constant = newWidth
+                    // Because the indicator is constraint-linked to progress trailing,
+                    // layoutIfNeeded will move them together without drift.
                     self.layoutIfNeeded()
                 }
             },

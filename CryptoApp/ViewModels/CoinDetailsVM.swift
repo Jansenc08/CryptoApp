@@ -739,6 +739,15 @@ final class CoinDetailsVM: ObservableObject {
         // Determine if we're in a loading state for this range
         let isLoading = loadingStates.contains(range)
         
+        // Prefer using the last close from the OHLC series for the same range to avoid
+        // discrepancies with live ticks from a different feed.
+        func currentPriceForStatsRange(_ range: String) -> Double? {
+            if let series = statsOhlcDataSubject.value[range], let last = series.last { 
+                return last.close 
+            }
+            return coinDataSubject.value.quote?["USD"]?.price
+        }
+        
         // Only add high/low item when we have real data
         if let highPrice = high, let lowPrice = low, !isLoading {
             // We have real data and not loading
@@ -750,22 +759,25 @@ final class CoinDetailsVM: ObservableObject {
             let lowString = formatter.string(from: NSNumber(value: lowPrice)) ?? "$0"
             let highString = formatter.string(from: NSNumber(value: highPrice)) ?? "$0"
             
-            let currentCoinData = coinDataSubject.value
-            let currentPrice = currentCoinData.quote?["USD"]?.price ?? 0.0
+            let currentPrice = currentPriceForStatsRange(range) ?? 0.0
             
             // Create StatItem with actual high/low data
+            let payload = HighLowPayload(low: lowPrice, high: highPrice, current: currentPrice, isLoading: false)
             let highLowItem = StatItem(
-                title: "Low / High", 
-                value: "\(lowString)|\(highString)|\(currentPrice)|false",
-                valueColor: nil
+                title: "Low / High",
+                value: "",
+                valueColor: nil,
+                highLowPayload: payload
             )
             items.append(highLowItem)
         } else if isLoading {
             // Add a special loading indicator item that tells StatsCell to preserve current state
+            let payload = HighLowPayload(low: nil, high: nil, current: nil, isLoading: true)
             let highLowItem = StatItem(
-                title: "Low / High", 
-                value: "LOADING|LOADING|0|true", // Special loading marker
-                valueColor: nil
+                title: "Low / High",
+                value: "LOADING|LOADING|0|true",
+                valueColor: nil,
+                highLowPayload: payload
             )
             items.append(highLowItem)
         }
