@@ -89,7 +89,7 @@ final class SegmentCell: UITableViewCell {
         switch currentChartType {
         case .line:
             tintColor = UIColor.systemBlue
-            backgroundColor = UIColor.systemBlue.withAlphaComponent(0.15)
+            backgroundColor = UIColor.systemGray6  // Match landscape button background
             
             // Show candlestick icon when on line chart (to switch TO candlestick)
             if let candlestickImage = UIImage(named: "candlestick_icon") {
@@ -106,8 +106,8 @@ final class SegmentCell: UITableViewCell {
             }
             
         case .candlestick:
-            tintColor = UIColor.systemOrange
-            backgroundColor = UIColor.systemOrange.withAlphaComponent(0.15)
+            tintColor = UIColor.systemBlue  // Keep blue tint for line chart icon
+            backgroundColor = UIColor.systemGray6  // Match landscape button background
             
             // Show line chart icon when on candlestick chart (to switch TO line)
             let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)

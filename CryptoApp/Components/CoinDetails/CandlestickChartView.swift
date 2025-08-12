@@ -1226,8 +1226,15 @@ extension CandlestickChartView {
             // No technical indicators to display
         }
         
+        // Preserve current viewport state to avoid breaking zoom/scroll when applying settings
+        let savedScaleX = scaleX
+        let savedScaleY = scaleY
+        let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
+        let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
+        let wasZoomed = abs(savedScaleX - 1.0) > 0.01 || abs(savedScaleY - 1.0) > 0.01
+
         // FORCE CHART REFRESH: Ensure everything happens on main thread
-        DispatchQueue.main.async { [weak self, smaDataSet, emaDataSet, rsiResult, settings, theme] in
+        DispatchQueue.main.async { [weak self, smaDataSet, emaDataSet, rsiResult, settings, theme, savedScaleX, savedScaleY, savedCenterX, savedCenterY, wasZoomed] in
             guard let self = self else { return }
             
             // Apply the combined data (candlesticks + technical indicators)
@@ -1242,11 +1249,9 @@ extension CandlestickChartView {
             // Force chart to recognize the data change
             self.invalidateIntrinsicContentSize()
             
-            // Additional DGCharts refresh methods
-            if let data = self.data, data.entryCount > 0 {
-                self.fitScreen()
-                self.setVisibleXRangeMaximum(Double(min(20, data.entryCount)))
-            }
+            // IMPORTANT: Do not force fit/visible range here; preserve user's current viewport
+            // Restore viewport state captured before data change
+            self.zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
             
             // Calculate RSI area coordinates for label positioning
             let chartHeight = self.bounds.height
@@ -1265,11 +1270,17 @@ extension CandlestickChartView {
                 dataPointCount: closingPrices.count
             )
             
-            // Auto-scroll to latest data (rightmost position)
+            // Maintain current viewport if the user was zoomed; otherwise keep existing UX
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.scrollToLatestData()
-                self.updateValuesForVisibleRange()
-                self.startViewportMonitoring() // Start monitoring for scroll-based updates
+                if wasZoomed {
+                    // When zoomed, do not auto-scroll; just update labels for current view
+                    self.updateValuesForVisibleRange()
+                } else {
+                    // Not zoomed: keep previous behavior of showing latest and monitoring
+                    self.scrollToLatestData()
+                    self.updateValuesForVisibleRange()
+                    self.startViewportMonitoring()
+                }
             }
             
             // Chart refreshed with technical indicators

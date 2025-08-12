@@ -668,16 +668,16 @@ extension ChartView {
     
     func updateLineThickness(_ thickness: CGFloat) {
         guard let dataSet = data?.dataSets.first as? LineChartDataSet else { return }
-        
-        // Preserve viewport state
+
+        // Preserve viewport state (avoid jump when zoomed)
         let savedScaleX = scaleX
         let savedScaleY = scaleY
         let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
         let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
-        
+
         dataSet.lineWidth = thickness
         notifyDataSetChanged()
-        
+
         // Restore viewport state
         zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
     }
@@ -705,31 +705,31 @@ extension ChartView {
     
     func applyColorTheme(_ theme: ChartColorTheme) {
         guard let dataSet = data?.dataSets.first as? LineChartDataSet else { return }
-        
-        // Preserve viewport state
+
+        // Preserve viewport state (avoid jump when zoomed)
         let savedScaleX = scaleX
         let savedScaleY = scaleY
         let savedCenterX = (lowestVisibleX + highestVisibleX) / 2
         let savedCenterY = (rightAxis.axisMinimum + rightAxis.axisMaximum) / 2
-        
+
         // Determine if current trend is positive or negative
         let firstPrice = allDataPoints.first ?? 0
         let lastPrice = allDataPoints.last ?? 0
         let isPositive = lastPrice >= firstPrice
-        
+
         let color = isPositive ? theme.positiveColor : theme.negativeColor
-        
+
         dataSet.setColor(color)
         dataSet.highlightColor = color.withAlphaComponent(0.8)
-        
+
         // Update gradient fill
         let gradientColors = [color.withAlphaComponent(0.3).cgColor,
                               color.withAlphaComponent(0.0).cgColor]
         let gradient = CGGradient(colorsSpace: nil, colors: gradientColors as CFArray, locations: nil)!
         dataSet.fill = LinearGradientFill(gradient: gradient, angle: 90)
-        
+
         notifyDataSetChanged()
-        
+
         // Restore viewport state
         zoom(scaleX: savedScaleX, scaleY: savedScaleY, x: savedCenterX, y: savedCenterY)
     }
