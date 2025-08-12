@@ -141,6 +141,9 @@ final class CacheService: NSObject, CacheServiceProtocol {
             return coins.count * 500 + 64
         case let logos as [Int: String]:
             return logos.count * 100 + 32
+        case let image as UIImage:
+            // Estimate image memory size based on dimensions
+            return Int(image.size.width * image.size.height * 4) // 4 bytes per pixel (RGBA)
         case let quotes as [Int: Quote]:
             return quotes.count * 200 + 32
         default:
@@ -202,6 +205,20 @@ final class CacheService: NSObject, CacheServiceProtocol {
     func storeCoinLogos(_ logos: [Int: String]) {
         let key = "logos_all"
         set(key: key, value: logos, ttl: CacheService.logoTTL)
+    }
+    
+    // MARK: - Image Data Caching
+    
+    @objc(getCachedImageFor:)
+    func getCachedImage(for url: String) -> UIImage? {
+        let key = "image_\(url.hash)"
+        return get(key: key, type: UIImage.self)
+    }
+    
+    @objc(storeCachedImage:forUrl:)
+    func storeCachedImage(_ image: UIImage, for url: String) {
+        let key = "image_\(url.hash)"
+        set(key: key, value: image, ttl: CacheService.logoTTL) // Same TTL as logo URLs
     }
 
     func getQuotes(for ids: [Int], convert: String) -> [Int: Quote]? {

@@ -16,7 +16,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     var cancellables = Set<AnyCancellable>()                                // Stores Combine subscriptions
     var dataSource: UICollectionViewDiffableDataSource<CoinSection, Coin>!  // Data source for applying snapshots
     
-    let imageCache = NSCache<NSString, UIImage>()                           // Optional image cache for coin logos
+    // Image cache removed - now using shared ImageCacheService for optimal performance
     let refreshControl = UIRefreshControl()                                 // Pull-to-refresh controller
     private var segmentControl: SegmentControl!                             // Segment control for Coins/Watchlist tabs
     private var coinsContainerView: UIView!                                 // Container for coins tab content
@@ -695,6 +695,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         }
         
         collectionView.dataSource = dataSource
+        
+        // Set up prefetching data source for optimized image loading
+        collectionView.prefetchDataSource = self
     }
     
     private func configureEmptyState() {
@@ -1093,6 +1096,32 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     }
 
       // MARK: - Configuration
+}
+
+// MARK: - UICollectionViewDataSourcePrefetching
+
+extension CoinListVC: UICollectionViewDataSourcePrefetching {
+    
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        // Extract coin IDs that will be displayed soon
+        let coins = indexPaths.compactMap { indexPath -> Coin? in
+            guard let coin = dataSource.itemIdentifier(for: indexPath) else { return nil }
+            return coin
+        }
+        
+        // Get logo URLs for prefetching
+        let logoURLs = coins.compactMap { coin -> String? in
+            return viewModel.currentCoinLogos[coin.id]
+        }
+        
+        // Prefetch images for smooth scrolling
+        ImageLoader.shared.prefetchImages(urls: logoURLs)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+        // Cancel prefetching when cells are no longer needed
+        ImageLoader.shared.cancelPrefetching()
+    }
 }
 
 // MARK: - Scroll Pagination

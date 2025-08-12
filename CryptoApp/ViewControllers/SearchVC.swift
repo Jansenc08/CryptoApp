@@ -593,6 +593,7 @@ import Combine
         }
         
         collectionView.dataSource = dataSource
+        collectionView.prefetchDataSource = self
     }
     
     // MARK: - ViewModel Binding
@@ -971,6 +972,28 @@ extension SearchVC: PopularCoinsHeaderViewDelegate {
     func popularCoinsHeaderView(_ headerView: PopularCoinsHeaderView, didSelectFilter filter: PopularCoinsFilter) {
         AppLogger.search("Popular Coins: User selected \(filter.displayName)")
         viewModel.updatePopularCoinsFilter(filter)
+    }
+}
+
+// MARK: - UICollectionViewDataSourcePrefetching
+
+extension SearchVC: UICollectionViewDataSourcePrefetching {
+    
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        let coins = indexPaths.compactMap { indexPath -> Coin? in
+            guard let coin = dataSource.itemIdentifier(for: indexPath) else { return nil }
+            return coin
+        }
+        
+        let logoURLs = coins.compactMap { coin -> String? in
+            return viewModel.currentCoinLogos[coin.id]
+        }
+        
+        ImageLoader.shared.prefetchImages(urls: logoURLs)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+        ImageLoader.shared.cancelPrefetching()
     }
 }
 

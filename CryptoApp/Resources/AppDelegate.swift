@@ -15,6 +15,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
         
+        // Configure a shared URLCache to improve repeat image fetches (logos)
+        let memoryCapacity = 50 * 1024 * 1024 // 50 MB
+        let diskCapacity = 200 * 1024 * 1024  // 200 MB
+        URLCache.shared = URLCache(memoryCapacity: memoryCapacity, diskCapacity: diskCapacity, diskPath: "com.cryptoapp.urlcache")
+        AppLogger.network("URLCache configured: memory=\(memoryCapacity)B disk=\(diskCapacity)B")
+
         // 🏗️ INITIALIZE DEPENDENCY CONTAINER: Set up dependency injection first
         Dependencies.initialize()
         AppLogger.ui("AppDelegate: Dependency container initialized")

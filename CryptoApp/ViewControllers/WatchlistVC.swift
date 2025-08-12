@@ -257,6 +257,7 @@ final class WatchlistVC: UIViewController {
         }
         
         collectionView.dataSource = dataSource
+        collectionView.prefetchDataSource = self
     }
     
     private func bindViewModel() {
@@ -455,6 +456,28 @@ final class WatchlistVC: UIViewController {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+}
+
+// MARK: - UICollectionViewDataSourcePrefetching
+
+extension WatchlistVC: UICollectionViewDataSourcePrefetching {
+    
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        let coins = indexPaths.compactMap { indexPath -> Coin? in
+            guard let coin = dataSource.itemIdentifier(for: indexPath) else { return nil }
+            return coin
+        }
+        
+        let logoURLs = coins.compactMap { coin -> String? in
+            return viewModel.currentCoinLogos[coin.id]
+        }
+        
+        ImageLoader.shared.prefetchImages(urls: logoURLs)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+        ImageLoader.shared.cancelPrefetching()
     }
 }
 
