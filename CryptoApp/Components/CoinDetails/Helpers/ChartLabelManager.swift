@@ -257,13 +257,28 @@ class ChartLabelManager {
     func updateCurrentPrice(price: Double, isBullish: Bool) {
         guard let label = currentPriceLabel else { return }
         
-        // Format price with proper currency formatting and "Close:" prefix
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = "$"
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        let formattedPrice = formatter.string(from: NSNumber(value: price)) ?? String(format: "$%.2f", price)
+        // Adaptive price formatting for micro-priced coins
+        let formattedPrice: String
+        if price >= 1 {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencySymbol = "$"
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            formattedPrice = formatter.string(from: NSNumber(value: price)) ?? String(format: "$%.2f", price)
+        } else if price > 0 {
+            var decimals = 6
+            var v = price
+            while v < 1 && v > 0 && decimals < 10 {
+                v *= 10
+                if v >= 1 { break }
+                decimals += 1
+            }
+            let clamped = max(4, min(decimals, 10))
+            formattedPrice = String(format: "$%.*f", clamped, price)
+        } else {
+            formattedPrice = "$0"
+        }
         label.text = "Close: \(formattedPrice)"
         
         // Update color based on price movement
@@ -389,17 +404,29 @@ class ChartLabelManager {
     
     // MARK: - Private Helpers
     
-    /// Formats currency values with full precision (not abbreviated) like CoinMarketCap
+    /// Formats currency values with adaptive precision so micro-prices don't collapse to $0.00
     private func formatCurrency(_ value: Double) -> String {
-        // Use NumberFormatter for proper currency formatting with commas
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = "$"
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        formatter.locale = Locale(identifier: "en_US")
-        
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        if value >= 1 {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencySymbol = "$"
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            formatter.locale = Locale(identifier: "en_US")
+            return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        } else if value > 0 {
+            var decimals = 6
+            var v = value
+            while v < 1 && v > 0 && decimals < 10 {
+                v *= 10
+                if v >= 1 { break }
+                decimals += 1
+            }
+            let clamped = max(4, min(decimals, 10))
+            return String(format: "$%.*f", clamped, value)
+        } else {
+            return "$0"
+        }
     }
     
     /// Legacy abbreviated formatter (kept for compatibility)

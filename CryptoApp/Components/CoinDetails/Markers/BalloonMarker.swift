@@ -112,7 +112,24 @@ class BalloonMarker: MarkerImage {
         }
 
         // Create a two-line tooltip: date/time on top, price below
-        label = "\(formatter.string(from: date))\n$\(String(format: "%.2f", entry.y))"
+        let priceString: String
+        if entry.y >= 1 {
+            priceString = String(format: "$%.2f", entry.y)
+        } else if entry.y > 0 {
+            // Choose decimals dynamically so first non-zero is visible (max 10)
+            var decimals = 6
+            var v = entry.y
+            while v < 1 && v > 0 && decimals < 10 {
+                v *= 10
+                if v >= 1 { break }
+                decimals += 1
+            }
+            let clamped = max(4, min(decimals, 10))
+            priceString = String(format: "$%.*f", clamped, entry.y)
+        } else {
+            priceString = "$0"
+        }
+        label = "\(formatter.string(from: date))\n\(priceString)"
 
         // Configure text rendering attributes for consistent appearance
         let attributes: [NSAttributedString.Key: Any] = [

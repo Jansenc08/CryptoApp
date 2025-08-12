@@ -578,8 +578,15 @@ final class CandlestickChartView: CombinedChartView {
         let baseBuffer = minRange * 0.15  // Standard buffer for price context
         
         // Calculate axis bounds
-        let axisMin = minY - baseBuffer
-        let axisMax = maxY + baseBuffer
+        var axisMin = minY - baseBuffer
+        var axisMax = maxY + baseBuffer
+        // Never show negative price on Y-axis for price section
+        if axisMin < 0 {
+            axisMin = 0
+            if axisMax <= axisMin {
+                axisMax = axisMin + max(minRange, 1e-12)
+            }
+        }
         
         // CRITICAL: Validate axis values before setting to prevent NaN errors
         guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
@@ -1503,7 +1510,24 @@ extension CandlestickChartView {
             
             // Disable auto-scaling to prevent zoom issues
             self.rightAxis.granularityEnabled = true
-            self.rightAxis.granularity = granularityValue
+            // Dynamically compute granularity so micro-priced coins still show labels
+            let span = axisMaximum - axisMinimum
+            let targetTickCount = 6.0
+            let rawGranularity = max(span / targetTickCount, 1e-12)
+            // Round to 1-2-5 scaling for pleasant ticks
+            let exponent = floor(log10(rawGranularity))
+            let base = pow(10.0, exponent)
+            let mantissa = rawGranularity / base
+            let niceMantissa: Double
+            if mantissa < 1.5 { niceMantissa = 1 }
+            else if mantissa < 3.5 { niceMantissa = 2 }
+            else if mantissa < 7.5 { niceMantissa = 5 }
+            else { niceMantissa = 10 }
+            let dynamicGranularity = niceMantissa * base
+            self.rightAxis.granularity = dynamicGranularity
+            self.rightAxis.labelCount = 6
+            self.rightAxis.minWidth = 60
+            self.rightAxis.valueFormatter = PriceFormatter()
             
             // Use custom formatter for RSI section (only if all values are valid)
             self.rightAxis.valueFormatter = RSISeparateAxisFormatter(

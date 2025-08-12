@@ -191,12 +191,31 @@ final class StatsCell: UITableViewCell {
         var isLoading = false
         
         if let payload = item.highLowPayload {
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .currency
-            formatter.currencyCode = "USD"
-            formatter.maximumFractionDigits = 2
-            if let low = payload.low { lowValue = formatter.string(from: NSNumber(value: low)) ?? "$0" }
-            if let high = payload.high { highValue = formatter.string(from: NSNumber(value: high)) ?? "$0" }
+            let formatCurrency: (Double) -> String = { value in
+                if value >= 1 {
+                    let f = NumberFormatter()
+                    f.numberStyle = .currency
+                    f.currencyCode = "USD"
+                    f.minimumFractionDigits = 2
+                    f.maximumFractionDigits = 2
+                    return f.string(from: NSNumber(value: value)) ?? "$0"
+                } else if value > 0 {
+                    // Keep standard decimal form; visual micro formatting is applied to the label via attributedText
+                    var decimals = 6
+                    var v = value
+                    while v < 1 && v > 0 && decimals < 10 {
+                        v *= 10
+                        if v >= 1 { break }
+                        decimals += 1
+                    }
+                    let clamped = max(4, min(decimals, 10))
+                    return String(format: "US$%.*f", clamped, value)
+                } else {
+                    return "US$0.00"
+                }
+            }
+            if let low = payload.low { lowValue = formatCurrency(low) }
+            if let high = payload.high { highValue = formatCurrency(high) }
             currentPrice = payload.current ?? 0.0
             isLoading = payload.isLoading
         } else {
@@ -244,14 +263,23 @@ final class StatsCell: UITableViewCell {
             clampedPosition = 0.5
         }
         
-        // Update the low and high labels
+        // Update the low and high labels (preserve micro formatting)
         for subview in container.subviews {
-            if let label = subview as? UILabel {
-                if label.textColor == .systemRed {
-                    // This is the low label
+            guard let label = subview as? UILabel else { continue }
+            if label.textColor == .systemRed {
+                // Low label
+                if lowPrice > 0 && lowPrice < 0.01 {
+                    label.attributedText = MicroPriceFormatter.formatUSD(lowPrice, font: label.font)
+                } else {
+                    label.attributedText = nil
                     label.text = lowValue
-                } else if label.textColor == .systemGreen {
-                    // This is the high label
+                }
+            } else if label.textColor == .systemGreen {
+                // High label
+                if highPrice > 0 && highPrice < 0.01 {
+                    label.attributedText = MicroPriceFormatter.formatUSD(highPrice, font: label.font)
+                } else {
+                    label.attributedText = nil
                     label.text = highValue
                 }
             }
@@ -310,12 +338,30 @@ final class StatsCell: UITableViewCell {
         
         if let payload = item.highLowPayload {
             // Format labels; keep numbers for bar math
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .currency
-            formatter.currencyCode = "USD"
-            formatter.maximumFractionDigits = 2
-            if let low = payload.low { lowValue = formatter.string(from: NSNumber(value: low)) ?? "$0" }
-            if let high = payload.high { highValue = formatter.string(from: NSNumber(value: high)) ?? "$0" }
+            let formatCurrency: (Double) -> String = { value in
+                if value >= 1 {
+                    let f = NumberFormatter()
+                    f.numberStyle = .currency
+                    f.currencyCode = "USD"
+                    f.minimumFractionDigits = 2
+                    f.maximumFractionDigits = 2
+                    return f.string(from: NSNumber(value: value)) ?? "$0"
+                } else if value > 0 {
+                    var decimals = 6
+                    var v = value
+                    while v < 1 && v > 0 && decimals < 10 {
+                        v *= 10
+                        if v >= 1 { break }
+                        decimals += 1
+                    }
+                    let clamped = max(4, min(decimals, 10))
+                    return String(format: "US$%.*f", clamped, value)
+                } else {
+                    return "US$0.00"
+                }
+            }
+            if let low = payload.low { lowValue = formatCurrency(low) }
+            if let high = payload.high { highValue = formatCurrency(high) }
             currentPrice = payload.current ?? 0.0
             isLoading = payload.isLoading
         } else {
@@ -340,19 +386,27 @@ final class StatsCell: UITableViewCell {
         titleLabel.textColor = .secondaryLabel
         titleLabel.text = item.title
         
-        // Low value label
+        // Low value label (supports micro-price formatting)
         let lowLabel = UILabel()
         lowLabel.font = .boldSystemFont(ofSize: 13)
         lowLabel.textColor = .systemRed
-        lowLabel.text = lowValue
         lowLabel.textAlignment = .left
+        if let lowDouble = item.highLowPayload?.low, lowDouble > 0, lowDouble < 0.01 {
+            lowLabel.attributedText = MicroPriceFormatter.formatUSD(lowDouble, font: lowLabel.font)
+        } else {
+            lowLabel.text = lowValue
+        }
         
-        // High value label
+        // High value label (supports micro-price formatting)
         let highLabel = UILabel()
         highLabel.font = .boldSystemFont(ofSize: 13)
         highLabel.textColor = .systemGreen
-        highLabel.text = highValue
         highLabel.textAlignment = .right
+        if let highDouble = item.highLowPayload?.high, highDouble > 0, highDouble < 0.01 {
+            highLabel.attributedText = MicroPriceFormatter.formatUSD(highDouble, font: highLabel.font)
+        } else {
+            highLabel.text = highValue
+        }
         
         // Horizontal bar view (background)
         let barView = UIView()

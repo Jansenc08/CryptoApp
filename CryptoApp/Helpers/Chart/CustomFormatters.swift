@@ -9,6 +9,7 @@
 
 import Foundation
 import DGCharts
+import UIKit
 
 // MARK: - Price Formatter for Chart Y-Axis
 
@@ -47,15 +48,25 @@ class PriceFormatter: AxisValueFormatter {
      */
     func stringForValue(_ value: Double, axis: AxisBase?) -> String {
         // Format large numbers with abbreviations for chart space efficiency
-        if value >= 1000000 {
-            return String(format: "$%.1fM", value / 1000000)
-        } else if value >= 1000 {
-            return String(format: "$%.1fK", value / 1000)
+        if value >= 1_000_000 {
+            return String(format: "$%.1fM", value / 1_000_000)
+        } else if value >= 1_000 {
+            return String(format: "$%.1fK", value / 1_000)
         } else if value >= 1 {
             return String(format: "$%.0f", value)
+        } else if value > 0 { // Micro-priced coins
+            // Dynamically choose decimals so first non-zero digit is shown
+            var decimals = 6
+            var v = value
+            while v < 1 && v > 0 && decimals < 10 {
+                v *= 10
+                if v >= 1 { break }
+                decimals += 1
+            }
+            let clamped = max(4, min(decimals, 10))
+            return String(format: "$%.*f", clamped, value)
         } else {
-            // Show more precision for low-value cryptocurrencies (e.g., altcoins)
-            return String(format: "$%.4f", value)
+            return "$0"
         }
     }
 }

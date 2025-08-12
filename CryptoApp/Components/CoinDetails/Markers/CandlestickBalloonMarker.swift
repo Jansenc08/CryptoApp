@@ -111,18 +111,32 @@ class CandlestickBalloonMarker: MarkerImage {
     // MARK: - Price Formatting
     
     /**
-     * Formats price values to match your chart's format (e.g., 117,128.00)
-     * Uses number formatter with commas and 2 decimal places
+     * Formats price values with adaptive precision for micro-priced coins
+     * - >= 1: 2 decimals with grouping
+     * - < 1: increase decimals up to 10 so first non-zero digit is visible
      */
     private func formatPrice(_ price: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        formatter.groupingSeparator = ","
-        formatter.usesGroupingSeparator = true
-        
-        return formatter.string(from: NSNumber(value: price)) ?? String(format: "%.2f", price)
+        if price >= 1 {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            formatter.groupingSeparator = ","
+            formatter.usesGroupingSeparator = true
+            return formatter.string(from: NSNumber(value: price)) ?? String(format: "%.2f", price)
+        }
+        if price > 0 {
+            var decimals = 6
+            var v = price
+            while v < 1 && v > 0 && decimals < 10 {
+                v *= 10
+                if v >= 1 { break }
+                decimals += 1
+            }
+            let clamped = max(4, min(decimals, 10))
+            return String(format: "%.*f", clamped, price)
+        }
+        return "0"
     }
     
     /**
@@ -236,7 +250,8 @@ class CandlestickBalloonMarker: MarkerImage {
             
             // Calculate additional metrics like OKX
             let range = candleEntry.high - candleEntry.low
-            let rangePercent = (range / candleEntry.low) * 100
+            let denominator = candleEntry.low != 0 ? candleEntry.low : max(candleEntry.high, 1e-12)
+            let rangePercent = (range / denominator) * 100
             
             // Format the current price (close) prominently like OKX
             let _ = formatPrice(candleEntry.close)  // formattedPrice unused

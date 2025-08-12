@@ -305,8 +305,16 @@ final class ChartView: LineChartView {
         let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
         let minRange = max(range, fallbackRange) // Ensure at least 1% range
         let buffer = minRange * 0.05
-        let axisMin = minY - buffer
-        let axisMax = maxY + buffer
+        var axisMin = minY - buffer
+        var axisMax = maxY + buffer
+        // Never show negative price on Y-axis
+        if axisMin < 0 {
+            axisMin = 0
+            // Ensure non-zero range
+            if axisMax <= axisMin {
+                axisMax = axisMin + max(minRange, 1e-12)
+            }
+        }
         
         // CRITICAL: Validate axis values before setting to prevent NaN errors
         guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
@@ -317,6 +325,24 @@ final class ChartView: LineChartView {
         
         rightAxis.axisMinimum = axisMin
         rightAxis.axisMaximum = axisMax
+        // Ensure labels render for very small price spans
+        let span = axisMax - axisMin
+        let targetTickCount = 6.0
+        let rawGranularity = max(span / targetTickCount, 1e-12)
+        let exponent = floor(log10(rawGranularity))
+        let base = pow(10.0, exponent)
+        let mantissa = rawGranularity / base
+        let niceMantissa: Double
+        if mantissa < 1.5 { niceMantissa = 1 }
+        else if mantissa < 3.5 { niceMantissa = 2 }
+        else if mantissa < 7.5 { niceMantissa = 5 }
+        else { niceMantissa = 10 }
+        rightAxis.granularityEnabled = true
+        rightAxis.granularity = niceMantissa * base
+        // Use adaptive price formatter for Y-axis
+        rightAxis.valueFormatter = PriceFormatter()
+        rightAxis.labelCount = 6
+        rightAxis.minWidth = 60
 
         // Color based on price trend
         // Green if lastprice >= firstPrice(Positive) else red.
