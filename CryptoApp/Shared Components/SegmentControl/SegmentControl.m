@@ -2,8 +2,6 @@
 //  SegmentControl.m
 //  CryptoApp
 //
-//  Created by Assistant on 25/6/25.
-//
 
 #import "SegmentControl.h"
 

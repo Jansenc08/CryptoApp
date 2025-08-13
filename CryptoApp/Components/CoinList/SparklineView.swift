@@ -2,7 +2,6 @@
 //  SparklineView.swift
 //  CryptoApp
 //
-//  Created by Assistant on 1/7/25.
 //
 
 import UIKit

@@ -1,10 +1,3 @@
-//
-//  AddCoinCell.h
-//  CryptoApp
-//
-//  Created by AI Assistant on 7/8/25.
-//
-
 #import <UIKit/UIKit.h>
 #import "CoinImageView.h"
 

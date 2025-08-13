@@ -1,10 +1,3 @@
-//
-//  FilterModels.swift
-//  CryptoApp
-//
-//  Created by AI Assistant on 7/7/25.
-//
-
 import Foundation
 
 // MARK: - Price Change Filter Types

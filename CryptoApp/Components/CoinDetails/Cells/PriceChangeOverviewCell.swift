@@ -1,10 +1,3 @@
-//
-//  PriceChangeOverviewCell.swift
-//  CryptoApp
-//
-//  Created by AI Assistant on 1/9/25.
-//
-
 import UIKit
 
 final class PriceChangeOverviewCell: UITableViewCell {

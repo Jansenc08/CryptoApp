@@ -1,10 +1,3 @@
-//
-//  SearchVC.swift
-//  CryptoApp
-//
-//  Created by AI Assistant on 1/7/25.
-//
-
 import UIKit
 import Combine
 

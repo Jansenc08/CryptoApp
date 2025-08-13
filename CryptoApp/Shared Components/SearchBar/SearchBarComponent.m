@@ -1,9 +1,3 @@
-//
-//  SearchBarComponent.m
-//  CryptoApp
-//
-//  Created by AI Assistant on 7/8/25.
-//
 
 #import "SearchBarComponent.h"
 

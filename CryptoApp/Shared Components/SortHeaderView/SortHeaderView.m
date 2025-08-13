@@ -1,9 +1,3 @@
-//
-//  SortHeaderView.m
-//  CryptoApp
-//
-//  Created by AI Assistant on 7/7/25.
-//
 
 #import "SortHeaderView.h"
 

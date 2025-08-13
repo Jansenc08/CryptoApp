@@ -1,10 +1,3 @@
-//
-//  FilterModalVC.swift
-//  CryptoApp
-//
-//  Created by AI Assistant on 7/7/25.
-//
-
 import UIKit
 
 // MARK: - FilterModalVC Delegate

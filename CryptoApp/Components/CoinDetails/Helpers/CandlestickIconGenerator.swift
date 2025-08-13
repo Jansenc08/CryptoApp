@@ -2,7 +2,6 @@
 //  CandlestickIconGenerator.swift
 //  CryptoApp
 //
-//  Created by Assistant on 1/31/25.
 //
 
 import UIKit

@@ -1,10 +1,3 @@
-//
-//  SharedCoinDataManager.swift
-//  CryptoApp
-//
-//  Created by AI Assistant on 1/8/25.
-//
-
 import Foundation
 import Combine
 

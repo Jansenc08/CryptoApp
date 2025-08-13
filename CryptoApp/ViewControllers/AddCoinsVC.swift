@@ -1,10 +1,3 @@
-//
-//  AddCoinsVC.swift
-//  CryptoApp
-//
-//  Created by AI Assistant on 7/8/25.
-//
-
 import UIKit
 import Combine
 import Foundation

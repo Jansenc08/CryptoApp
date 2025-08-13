@@ -2,7 +2,6 @@
 //  ChartSmoothingHelper.swift
 //  CryptoApp
 //
-//  Created by Assistant on 1/29/25.
 //
 
 

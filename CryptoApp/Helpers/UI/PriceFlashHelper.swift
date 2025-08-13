@@ -1,10 +1,3 @@
-//
-//  PriceFlashHelper.swift
-//  CryptoApp
-//
-//  Created by AI Assistant on 1/8/25.
-//
-
 import UIKit
 
 /// Simple helper to flash price labels when they change

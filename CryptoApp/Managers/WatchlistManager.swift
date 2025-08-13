@@ -179,7 +179,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             
             let _ = CFAbsoluteTimeGetCurrent()
             let context = self.coreDataManager.context
-            let _ = WatchlistItem(context: context, coin: coin, logoURL: logoURL)
+            context.performAndWait {
+                let _ = WatchlistItem(context: context, coin: coin, logoURL: logoURL)
+            }
             
             do {
                 try context.save()
@@ -198,6 +200,7 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             } catch {
                 // Rollback optimistic update on failure
                 print("❌ Failed to save to database: \(error)")
+                context.rollback()
                 self.syncQueue.async(flags: .barrier) {
                     self.localWatchlistCoinIds.remove(coin.id)
                     
@@ -261,7 +264,20 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
                 return
             }
             
-            self.coreDataManager.delete(item)
+            let context = self.coreDataManager.context
+            context.performAndWait {
+                context.delete(item)
+            }
+            do {
+                try context.save()
+            } catch {
+                // Restore optimistic removal on failure
+                context.rollback()
+                self.syncQueue.async(flags: .barrier) {
+                    self.localWatchlistCoinIds.insert(coinId)
+                    DispatchQueue.main.async { self.watchlistCoinIds = self.localWatchlistCoinIds }
+                }
+            }
             let deleteTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
             
             // Update the actual watchlist items after successful delete
@@ -330,9 +346,11 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             let startTime = CFAbsoluteTimeGetCurrent()
             let context = self.coreDataManager.context
             
-            // Create all items in single transaction
-            let _ = coinsToAdd.map { coin in
-                WatchlistItem(context: context, coin: coin, logoURL: logoURLs[coin.id])
+            // Create all items in single transaction on context queue
+            context.performAndWait {
+                let _ = coinsToAdd.map { coin in
+                    WatchlistItem(context: context, coin: coin, logoURL: logoURLs[coin.id])
+                }
             }
             
             do {
@@ -357,6 +375,7 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             } catch {
                 // Rollback all optimistic updates
                 print("❌ Batch operation failed: \(error)")
+                context.rollback()
                 self.syncQueue.async(flags: .barrier) {
                     coinsToAdd.forEach { coin in
                         self.localWatchlistCoinIds.remove(coin.id)
@@ -403,7 +422,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             let items = self.coreDataManager.fetchWatchlistItems(where: predicate)
             
             let context = self.coreDataManager.context
-            items.forEach { context.delete($0) }
+            context.performAndWait {
+                items.forEach { context.delete($0) }
+            }
             
             do {
                 try context.save()
@@ -427,6 +448,7 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             } catch {
                 // Rollback optimistic updates
                 print("❌ Batch remove failed: \(error)")
+                context.rollback()
                 self.syncQueue.async(flags: .barrier) {
                     validIds.forEach { coinId in
                         self.localWatchlistCoinIds.insert(coinId)
@@ -584,7 +606,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             let items = self.coreDataManager.fetchWatchlistItems()
             
             let context = self.coreDataManager.context
-            items.forEach { context.delete($0) }
+            context.performAndWait {
+                items.forEach { context.delete($0) }
+            }
             
             do {
                 try context.save()
@@ -608,6 +632,7 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             } catch {
                 // Rollback on failure - restore all items by fetching from database
                 print("❌ Clear operation failed: \(error)")
+                context.rollback()
                 self.fetchWatchlistFromDatabase()
                 
                 self.syncQueue.async(flags: .barrier) {

@@ -2,7 +2,6 @@
 //  VolumeChartView.swift
 //  CryptoApp
 //
-//  Created by Assistant on 1/30/25.
 //
 
 import UIKit

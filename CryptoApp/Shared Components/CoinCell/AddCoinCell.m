@@ -1,10 +1,3 @@
-//
-//  AddCoinCell.m
-//  CryptoApp
-//
-//  Created by AI Assistant on 7/8/25.
-//
-
 #import "AddCoinCell.h"
 #import "GFBodyLabel.h"
 

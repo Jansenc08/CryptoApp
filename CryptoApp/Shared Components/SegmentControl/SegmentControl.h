@@ -2,7 +2,6 @@
 //  SegmentControl.h
 //  CryptoApp
 //
-//  Created by Assistant on 25/6/25.
 //
 
 #import <UIKit/UIKit.h>
