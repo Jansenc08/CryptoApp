@@ -21,6 +21,7 @@ import Combine
     
     private var mainScrollView: UIScrollView!
     private var scrollContentView: UIView!
+    private let refreshControl = UIRefreshControl()
     
     // MARK: - Recent Searches Properties
     
@@ -105,6 +106,7 @@ import Combine
         configurePopularCoins()
         configureCollectionView()
         configureDataSource()
+        setupRefreshControl()
         bindViewModel()
         setupEmptyState()
         setupTraitObservation()
@@ -292,6 +294,34 @@ import Combine
             scrollContentView.bottomAnchor.constraint(equalTo: mainScrollView.bottomAnchor),
             scrollContentView.widthAnchor.constraint(equalTo: view.widthAnchor)
         ])
+    }
+    
+    // MARK: - Pull to Refresh Setup
+    
+    private func setupRefreshControl() {
+        refreshControl.addTarget(self, action: #selector(handleRefresh), for: .valueChanged)
+        mainScrollView.refreshControl = refreshControl
+    }
+    
+    @objc private func handleRefresh() {
+        AppLogger.ui("SearchVC: Pull-to-refresh triggered")
+        
+        // Only refresh if not currently in a search
+        let currentSearchText = searchBarComponent.text ?? ""
+        guard currentSearchText.isEmpty else {
+            AppLogger.ui("SearchVC: Pull-to-refresh ignored - search is active")
+            refreshControl.endRefreshing()
+            return
+        }
+        
+        // Refresh popular coins with current filter
+        let currentFilter = viewModel.currentPopularCoinsState.selectedFilter
+        AppLogger.ui("SearchVC: Refreshing popular coins for filter: \(currentFilter.displayName)")
+        
+        // Force fresh data fetch
+        viewModel.fetchFreshPopularCoins(for: currentFilter)
+        
+        // End refreshing when loading completes (handled in bindViewModel)
     }
     
     private func configureSearchBar() {
@@ -626,6 +656,10 @@ import Combine
                     SkeletonLoadingManager.dismissSkeletonFromCollectionView(self.popularCoinsCollectionView)
                     self.popularCoinsCollectionView.dataSource = self.popularCoinsDataSource
                     self.popularCoinsHeaderView.setLoading(false) // Re-enable buttons
+                    
+                    // End pull-to-refresh if active
+                    self.refreshControl.endRefreshing()
+                    
                     AppLogger.ui("Popular Coins: Loading finished, skeleton dismissed")
                     
                     // Immediately apply any pending data updates
