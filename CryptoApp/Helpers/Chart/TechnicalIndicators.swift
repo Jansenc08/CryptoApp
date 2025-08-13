@@ -296,6 +296,7 @@ final class TechnicalIndicators {
             rs1 = avgGain / avgLoss
         }
         
+        // Convert to RSI (0-100 scale)
         let rsi1 = 100 - (100 / (1 + rs1))
         
         // Validate first RSI calculation and ensure it's within expected range
@@ -307,7 +308,7 @@ final class TechnicalIndicators {
         
         // Calculate subsequent RSI values using Wilder's smoothing method
         for i in period..<gains.count {
-            // Apply Wilder's smoothing: new average = ((previous average × (period-1)) + current value) / period
+            // Apply Wilder's smoothing: New Average = ((Previous Average × 13) + Today's Value) ÷ 14
             avgGain = ((avgGain * Double(period - 1)) + gains[i]) / Double(period)
             avgLoss = ((avgLoss * Double(period - 1)) + losses[i]) / Double(period)
             
