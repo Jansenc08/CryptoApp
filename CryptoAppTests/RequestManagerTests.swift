@@ -2,7 +2,6 @@
 //  RequestManagerTests.swift
 //  CryptoAppTests
 //
-//  Created by Test Suite on 7/18/25.
 //
 
 import XCTest
