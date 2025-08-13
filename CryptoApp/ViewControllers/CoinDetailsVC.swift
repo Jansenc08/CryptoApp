@@ -670,6 +670,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             price: coin.priceString,
             priceChange: priceChange24h,
             percentageChange: percentChange24h,
+            currentPrice: currentPrice,
             isInWatchlist: isInWatchlist
         ) { [weak self] isNowInWatchlist in
             self?.handleWatchlistToggle(isNowInWatchlist: isNowInWatchlist)
@@ -1035,6 +1036,7 @@ extension CoinDetailsVC: UITableViewDataSource {
                 price: currentCoin.priceString,
                 priceChange: priceChange24h,
                 percentageChange: percentChange24h,
+                currentPrice: currentPrice,
                 isInWatchlist: isInWatchlist
             ) { [weak self] isNowInWatchlist in
                 self?.handleWatchlistToggle(isNowInWatchlist: isNowInWatchlist)

@@ -18,6 +18,12 @@ final class InfoCell: UITableViewCell {
     private let starButton = UIButton(type: .custom)
     private var onStarTapped: ((Bool) -> Void)? // Callback for star tap with current state
     private var isInWatchlist = false
+    
+    // MARK: - Toggle Display Mode
+    private var showPercentage = true // Toggle between percentage and dollar change
+    private var cachedPriceChange: Double = 0
+    private var cachedPercentageChange: Double = 0
+    private var cachedCurrentPrice: Double = 0
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -65,6 +71,11 @@ final class InfoCell: UITableViewCell {
         priceChangeContainer.isHidden = true
         priceChangeContainer.translatesAutoresizingMaskIntoConstraints = false
         priceChangeContainer.addSubview(priceChangeLabel)
+        
+        // Add tap gesture for toggling display mode
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(toggleDisplayMode))
+        priceChangeContainer.addGestureRecognizer(tapGesture)
+        priceChangeContainer.isUserInteractionEnabled = true
         
         // MODERN CONSTRAINT-BASED LAYOUT
         priceChangeLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -210,11 +221,16 @@ final class InfoCell: UITableViewCell {
     }
     
     /// Configure with price change indicator and watchlist functionality
-    func configure(name: String, rank: Int, price: String, priceChange: Double?, percentageChange: Double?, isInWatchlist: Bool, onStarTapped: @escaping (Bool) -> Void) {
+    func configure(name: String, rank: Int, price: String, priceChange: Double?, percentageChange: Double?, currentPrice: Double?, isInWatchlist: Bool, onStarTapped: @escaping (Bool) -> Void) {
         // Configure basic info
         nameLabel.text = name
         rankLabel.text = "#\(rank)"
         priceLabel.text = price
+        
+        // Cache current price for calculations
+        if let currentPrice = currentPrice {
+            cachedCurrentPrice = currentPrice
+        }
         
         // Configure price change indicator
         if let change = priceChange, let percentage = percentageChange {
@@ -231,13 +247,16 @@ final class InfoCell: UITableViewCell {
     
     /// Show permanent price change indicator (24h change)
     func showPermanentPriceChangeIndicator(priceChange: Double, percentageChange: Double) {
-        let isPositive = percentageChange >= 0
-        let changeText = "\(isPositive ? "+" : "")\(String(format: "%.2f", percentageChange))%"
+        // Cache the values for toggling
+        cachedPriceChange = priceChange
+        cachedPercentageChange = percentageChange
         
-        priceChangeLabel.text = changeText
+        let isPositive = percentageChange >= 0
         priceChangeContainer.backgroundColor = isPositive ? .systemGreen : .systemRed
         priceChangeContainer.isHidden = false
         priceChangeContainer.alpha = 1 // Always visible
+        
+        updateDisplayText()
     }
     
     /// Update the price change indicator with new values (for real-time changes)
@@ -296,6 +315,53 @@ final class InfoCell: UITableViewCell {
             self?.priceChangeContainer.layer.removeAllAnimations()
             self?.priceChangeContainer.alpha = 1
                             AppLogger.price("Price change indicator settled - keeping new color visible")
+        }
+    }
+    
+    // MARK: - Toggle Display Mode
+    
+    @objc private func toggleDisplayMode() {
+        showPercentage.toggle()
+        updateDisplayText()
+        
+        // Add haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        // Add subtle animation to indicate the toggle
+        UIView.animate(withDuration: 0.2, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0.5) {
+            self.priceChangeContainer.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+        } completion: { _ in
+            UIView.animate(withDuration: 0.15) {
+                self.priceChangeContainer.transform = .identity
+            }
+        }
+    }
+    
+    private func updateDisplayText() {
+        if showPercentage {
+            // Show percentage change
+            let isPositive = cachedPercentageChange >= 0
+            let changeText = "\(isPositive ? "+" : "")\(String(format: "%.2f", cachedPercentageChange))%"
+            priceChangeLabel.text = changeText
+        } else {
+            // Show dollar change with smart formatting
+            let isPositive = cachedPriceChange >= 0
+            let absChange = abs(cachedPriceChange)
+            
+            let changeText: String
+            if absChange >= 1.0 {
+                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.2f", absChange))"
+            } else if absChange >= 0.01 {
+                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.4f", absChange))"
+            } else if absChange >= 0.0001 {
+                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.6f", absChange))"
+            } else {
+                // For very small amounts, use scientific notation or shortened format
+                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.2e", absChange))"
+            }
+            
+            priceChangeLabel.text = changeText
         }
     }
     
