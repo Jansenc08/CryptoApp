@@ -249,7 +249,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
             target: self,
             action: #selector(searchButtonTapped)
         )
-        searchButton.tintColor = .systemGreen
+        searchButton.tintColor = .systemBlue
         
         navigationItem.rightBarButtonItem = searchButton
     }

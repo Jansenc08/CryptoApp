@@ -38,6 +38,9 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // MARK: - Price Animation Support
     private var lastKnownPrice: String?
     
+    // MARK: - Navigation Title View
+    private var titleCoinImageView: CoinImageView?
+    
     // MARK: - Dependency Injection Initializer
     
     /**
@@ -67,7 +70,9 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // MARK: - Setup
     
     private func setupNavigationBar() {
-        title = coin.symbol.uppercased()
+        // Create custom title view with coin logo and symbol
+        let titleView = createCustomTitleView()
+        navigationItem.titleView = titleView
         
         // Add filter/settings button to navigation bar
         let settingsButton = UIBarButtonItem(
@@ -77,6 +82,82 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             action: #selector(settingsButtonTapped)
         )
         navigationItem.rightBarButtonItem = settingsButton
+    }
+    
+    private func createCustomTitleView() -> UIView {
+        let containerView = UIView()
+        
+        // Create coin image view
+        let coinImageView = CoinImageView()
+        coinImageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Store reference for logo updates
+        titleCoinImageView = coinImageView
+        
+        // Create symbol label
+        let symbolLabel = UILabel()
+        symbolLabel.text = coin.symbol.uppercased()
+        symbolLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        symbolLabel.textColor = .label
+        symbolLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Add subviews
+        containerView.addSubview(coinImageView)
+        containerView.addSubview(symbolLabel)
+        
+        // Set up constraints
+        NSLayoutConstraint.activate([
+            // Coin image
+            coinImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            coinImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            coinImageView.widthAnchor.constraint(equalToConstant: 24),
+            coinImageView.heightAnchor.constraint(equalToConstant: 24),
+            
+            // Symbol label
+            symbolLabel.leadingAnchor.constraint(equalTo: coinImageView.trailingAnchor, constant: 8),
+            symbolLabel.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            symbolLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            
+            // Container size
+            containerView.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // Load coin logo - first try cached logos from persistence
+        let persistenceService = Dependencies.container.persistenceService()
+        if let cachedLogos = persistenceService.loadCoinLogos(),
+           let logoURL = cachedLogos[coin.id] {
+            coinImageView.downloadImage(fromURL: logoURL)
+        } else {
+            coinImageView.setPlaceholder()
+            
+            // Try to fetch logo if not available
+            let coinManager = Dependencies.container.coinManager()
+            coinManager.getCoinLogos(forIDs: [coin.id], priority: .low)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] logos in
+                    guard let self = self else { return }
+                    if let logoURL = logos[self.coin.id] {
+                        coinImageView.downloadImage(fromURL: logoURL)
+                    }
+                }
+                .store(in: &cancellables)
+        }
+        
+        return containerView
+    }
+    
+    private func updateNavigationTitleLogo() {
+        // Update the navigation title logo when new logos are fetched
+        guard let imageView = titleCoinImageView else { return }
+        
+        // Check cached logos from persistence
+        let persistenceService = Dependencies.container.persistenceService()
+        if let cachedLogos = persistenceService.loadCoinLogos(),
+           let logoURL = cachedLogos[coin.id] {
+            imageView.downloadImage(fromURL: logoURL)
+        } else {
+            imageView.setPlaceholder()
+        }
     }
     
     @objc private func settingsButtonTapped() {
@@ -331,6 +412,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             },
             storeIn: &cancellables
         )
+
         
         // 💰 PRICE CHANGE ANIMATIONS: Listen for price change indicators
         viewModel.priceChange

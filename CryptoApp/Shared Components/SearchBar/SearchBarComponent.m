@@ -92,7 +92,7 @@
 - (void)configureForFullScreenSearch {
     // Configuration for SearchVC - full screen search experience
     self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
-    self.searchBar.tintColor = UIColor.systemGreenColor;
+    self.searchBar.tintColor = UIColor.systemBlueColor;
     self.searchBar.placeholder = @"Search cryptocurrencies...";
     self.automaticallyShowsCancelButton = YES;
     

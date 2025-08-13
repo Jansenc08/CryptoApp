@@ -12,7 +12,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    [UITabBar appearance].tintColor = [UIColor systemGreenColor];
+    [UITabBar appearance].tintColor = [UIColor systemBlueColor];
 
     self.viewControllers = @[[self createMarketsNC], [self createSearchNC]];
 }
