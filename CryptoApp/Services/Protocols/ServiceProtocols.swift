@@ -2,6 +2,23 @@ import Foundation
 import Combine
 import CoreData
 
+// MARK: - Network Connectivity Monitor Protocol
+
+/**
+ * NETWORK CONNECTIVITY MONITOR PROTOCOL
+ * 
+ * Defines the interface for network connectivity monitoring, enabling:
+ * - Mock implementations for testing
+ * - Different connectivity detection strategies
+ * - Clear separation of concerns
+ */
+protocol NetworkConnectivityMonitorProtocol: ObservableObject {
+    var isConnected: Bool { get }
+    var connectivityPublisher: AnyPublisher<Bool, Never> { get }
+    func start()
+    func stop()
+}
+
 // MARK: - Cache Service Protocol
 
 /**

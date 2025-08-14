@@ -24,16 +24,16 @@ extension URLSession {
     static func validateResponse(_ output: URLSession.DataTaskPublisher.Output) throws -> Data {
         guard let response = output.response as? HTTPURLResponse,
               response.statusCode == 200 else {
-            throw NetworkErrors.invalidResponse
+            throw NetworkError.invalidResponse
         }
         return output.data
     }
     
     // Maps network/decoding errors to NetworkError cases
-    static func mapToNetworkError(_ error: Error) -> NetworkErrors {
+    static func mapToNetworkError(_ error: Error) -> NetworkError {
                     AppLogger.error("Network request failed", error: error)
         
-        if let networkError = error as? NetworkErrors {
+        if let networkError = error as? NetworkError {
             return networkError
         } else if error is DecodingError {
             return .decodingError
@@ -55,7 +55,7 @@ extension NetworkService {
         endpoint: String,
         responseType: T.Type,
         additionalHeaders: [String: String] = [:]
-    ) -> AnyPublisher<T, NetworkErrors> {
+    ) -> AnyPublisher<T, NetworkError> {
         
         guard let url = URL(string: "\(baseURL)/\(endpoint)") else {
             return Fail(error: .badURL).eraseToAnyPublisher()

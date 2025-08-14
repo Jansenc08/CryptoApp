@@ -40,6 +40,7 @@ final class DependencyContainer {
     private lazy var _sharedCoinDataManager: SharedCoinDataManagerProtocol = SharedCoinDataManager(
         coinManager: coinManager()
     )
+    private lazy var _networkConnectivityMonitor: NetworkConnectivityMonitor = NetworkConnectivityMonitor()
     
     // MARK: - Singleton Service Access
     
@@ -152,6 +153,13 @@ final class DependencyContainer {
      */
     func coreDataManager() -> CoreDataManagerProtocol {
         return _coreDataManager
+    }
+    
+    /**
+     * Returns the shared NetworkConnectivityMonitor instance
+     */
+    func networkConnectivityMonitor() -> NetworkConnectivityMonitor {
+        return _networkConnectivityMonitor
     }
     
     // MARK: - Testing Support

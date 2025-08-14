@@ -7,14 +7,27 @@
 
 import Foundation
 
-enum NetworkErrors: Error {
+enum NetworkError: Error, Equatable {
     case badURL
     case invalidResponse
     case decodingError
     case unknown(Error)
+    
+    static func == (lhs: NetworkError, rhs: NetworkError) -> Bool {
+        switch (lhs, rhs) {
+        case (.badURL, .badURL),
+             (.invalidResponse, .invalidResponse),
+             (.decodingError, .decodingError):
+            return true
+        case (.unknown, .unknown):
+            return true // For simplicity, consider all unknown errors as equal
+        default:
+            return false
+        }
+    }
 }
 
-extension NetworkErrors: LocalizedError {
+extension NetworkError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .badURL:

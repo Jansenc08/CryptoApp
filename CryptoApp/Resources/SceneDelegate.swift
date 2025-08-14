@@ -24,6 +24,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
                 self.window = window
                 window.makeKeyAndVisible()
+                
+                // Initialize network connectivity monitoring and banner service
+                let connectivityMonitor = Dependencies.container.networkConnectivityMonitor()
+                NetworkBannerService.shared.startMonitoring(in: window, with: connectivityMonitor)
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {
@@ -31,6 +35,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // This occurs shortly after the scene enters the background, or when its session is discarded.
         // Release any resources associated with this scene that can be re-created the next time the scene connects.
         // The scene may re-connect later, as its session was not necessarily discarded (see `application:didDiscardSceneSessions` instead).
+        
+        // Clean up network banner service
+        NetworkBannerService.shared.stopMonitoring()
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
