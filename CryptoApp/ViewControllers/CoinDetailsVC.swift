@@ -327,6 +327,8 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
 
         
         // Error handling
+        // DISABLED: Redundant with network banner - user feedback requested removal
+        /*
         viewModel.errorMessage
             .receive(on: DispatchQueue.main)
             .compactMap { $0 }
@@ -345,6 +347,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 }
             }
             .store(in: &cancellables)
+        */
         
         // Combined loading state for sophisticated UI updates
         viewModel.chartLoadingState

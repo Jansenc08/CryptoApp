@@ -1,7 +1,7 @@
 import UIKit
 import Combine
 
-final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
+final class CoinListVC: UIViewController, UIGestureRecognizerDelegate, NetworkBannerDelegate {
     
     // MARK: - Section Enum for Diffable Data Source
 
@@ -43,6 +43,11 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     
     private var currentPageIndex: Int = 0
     private var isTransitioning: Bool = false
+    
+    // MARK: - Network Banner Properties
+    
+    private var networkBanner: NetworkBannerView?
+    private var segmentControlTopConstraint: NSLayoutConstraint?
     
     // MARK: - Dependency Injection Initializer
     
@@ -111,6 +116,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
+        // Register for network banner updates
+        NetworkBannerService.shared.registerViewController(self)
+        
         // Data is already preloaded in viewDidLoad - just start timers
         AppLogger.performance("📱 CoinListVC appeared - data preloaded, starting timers only")
         
@@ -135,6 +143,9 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         // Stop all timers and resources when leaving the entire CoinListVC
         stopAutoRefresh()
         watchlistVC?.pausePeriodicUpdates()
+        
+        // Unregister from network banner updates
+        NetworkBannerService.shared.unregisterViewController(self)
         
         AppLogger.performance("Stopped all timers - leaving CoinListVC")
     }
@@ -269,8 +280,11 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         segmentControl.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(segmentControl)
         
+        // Create dynamic constraint for segment control positioning
+        segmentControlTopConstraint = segmentControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12)
+        
         NSLayoutConstraint.activate([
-            segmentControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            segmentControlTopConstraint!,
             segmentControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             segmentControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
         ])
@@ -761,6 +775,8 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
         )
         
         // Bind error message to show alert with retry option
+        // DISABLED: Redundant with network banner - user feedback requested removal
+        /*
         viewModel.errorMessage
             .compactMap { $0 }
             .sinkForUI(
@@ -769,6 +785,7 @@ final class CoinListVC: UIViewController, UIGestureRecognizerDelegate {
                 },
                 storeIn: &cancellables
             )
+        */
         
         // Bind price updates - only update cells that actually changed
         viewModel.updatedCoinIds
@@ -1346,6 +1363,54 @@ extension CoinListVC {
             return abs(velocity.x) > abs(velocity.y) || abs(translation.x) > abs(translation.y)
         }
         return true
+    }
+}
+
+// MARK: - NetworkBannerDelegate
+
+extension CoinListVC {
+    
+    func showNetworkBanner() {
+        // Don't show if already visible
+        guard networkBanner == nil else { return }
+        
+        let banner = NetworkBannerView()
+        banner.alpha = 0
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(banner)
+        networkBanner = banner
+        
+        // Position banner between navigation bar and segment control
+        NSLayoutConstraint.activate([
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        ])
+        
+        // Adjust segment control position to make room for banner
+        segmentControlTopConstraint?.constant = 56 // 44 (banner height) + 12 (original spacing)
+        
+        // Animate banner in
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
+            banner.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        
+
+    }
+    
+    func hideNetworkBanner() {
+        guard let banner = networkBanner else { return }
+        
+        // Reset segment control position
+        segmentControlTopConstraint?.constant = 12
+        
+        // Immediate hide - no animation for faster response
+        banner.removeFromSuperview()
+        networkBanner = nil
+        view.layoutIfNeeded()
+        
+
     }
 }
 

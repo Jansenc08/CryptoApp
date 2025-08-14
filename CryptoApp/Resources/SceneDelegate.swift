@@ -27,7 +27,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 
                 // Initialize network connectivity monitoring and banner service
                 let connectivityMonitor = Dependencies.container.networkConnectivityMonitor()
-                NetworkBannerService.shared.startMonitoring(in: window, with: connectivityMonitor)
+                NetworkBannerService.shared.startMonitoring(with: connectivityMonitor)
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

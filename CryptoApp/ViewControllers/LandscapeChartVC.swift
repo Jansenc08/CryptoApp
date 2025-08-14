@@ -363,6 +363,8 @@ final class LandscapeChartVC: UIViewController {
             .store(in: &cancellables)
         
         // Bind error messages
+        // DISABLED: Redundant with network banner - user feedback requested removal
+        /*
         viewModel.errorMessage
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
@@ -370,6 +372,7 @@ final class LandscapeChartVC: UIViewController {
                 self?.showErrorAlert(message: error)
             }
             .store(in: &cancellables)
+        */
     }
     
     private func showErrorAlert(message: String) {

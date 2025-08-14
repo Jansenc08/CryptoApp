@@ -18,8 +18,11 @@ final class NetworkConnectivityMonitor: ObservableObject {
     
     // MARK: - Published Properties
     
-    /// Current connectivity status
-    @Published private(set) var isConnected: Bool = false
+    /// Current connectivity status (start with unknown state)
+    @Published private(set) var isConnected: Bool = true
+    
+    /// Track if initial connectivity test has completed
+    private(set) var hasCompletedInitialTest = false
     
     /// Publisher for connectivity changes
     var connectivityPublisher: AnyPublisher<Bool, Never> {
@@ -35,6 +38,12 @@ final class NetworkConnectivityMonitor: ObservableObject {
     // For practical connectivity testing
     private var connectivityTimer: Timer?
     private let session = URLSession.shared
+    
+    // Stability tracking to prevent false disconnections
+    private var consecutiveFailures = 0
+    private var consecutiveSuccesses = 0
+    private let requiredFailures = 1  // Immediate response to failures
+    private let requiredSuccesses = 1 // Immediate response to successes
     
     // MARK: - Initialization
     
@@ -80,45 +89,119 @@ final class NetworkConnectivityMonitor: ObservableObject {
     // MARK: - Private Methods
     
     private func setupMonitoring() {
-        // Start with actual connectivity test
-        testActualConnectivity()
+        // Perform initial connectivity test with completion tracking
+        testActualConnectivity(isInitial: true)
         
-        // Set up periodic real connectivity testing every 5 seconds
-        connectivityTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            self?.testActualConnectivity()
+        // Set up NWPathMonitor for immediate WiFi interface change detection
+        monitor.pathUpdateHandler = { [weak self] path in
+            AppLogger.network("🔄 NetworkConnectivityMonitor: NWPathMonitor detected interface change - status: \(path.status)")
+            // Immediate test when network interface changes
+            DispatchQueue.main.async {
+                self?.testActualConnectivity(isInitial: false)
+            }
         }
+        monitor.start(queue: queue)
         
-        AppLogger.network("🌐 NetworkConnectivityMonitor: Setup completed with periodic real connectivity testing")
+        // Start periodic testing
+        startConnectivityTimer()
+        
+        AppLogger.network("🌐 NetworkConnectivityMonitor: Setup completed with NWPathMonitor + fast periodic testing")
     }
     
-    private func testActualConnectivity() {
-        // Test with a simple, fast request to a reliable endpoint
-        guard let url = URL(string: "https://httpbin.org/status/200") else { return }
+    private func startConnectivityTimer() {
+        connectivityTimer?.invalidate()
+        
+        // Super fast intervals for immediate detection:
+        // 1 second when disconnected (fast reconnection detection)
+        // 5 seconds when connected (reasonable balance)
+        let interval: TimeInterval = isConnected ? 5.0 : 1.0
+        
+        connectivityTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.testActualConnectivity(isInitial: false)
+        }
+        
+        AppLogger.network("🔄 NetworkConnectivityMonitor: Timer restarted - \(interval)s interval for \(isConnected ? "CONNECTED" : "DISCONNECTED") state")
+    }
+    
+    private func testActualConnectivity(isInitial: Bool = false) {
+        // Use multiple reliable endpoints for better success rate
+        let testUrls = [
+            "https://google.com/generate_204",
+            "https://apple.com",
+            "https://httpbin.org/status/200"
+        ]
+        
+        guard let urlString = testUrls.randomElement(),
+              let url = URL(string: urlString) else { return }
         
         var request = URLRequest(url: url)
-        request.timeoutInterval = 3.0 // Quick timeout
+        request.timeoutInterval = 1.5 // Super fast detection
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         
-        AppLogger.network("🔍 NetworkConnectivityMonitor: Testing actual connectivity...")
+
         
         session.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 
-                let connected = error == nil && response != nil
+                let testPassed = error == nil && response != nil
                 
-                AppLogger.network("🔍 NetworkConnectivityMonitor: Connectivity test result: \(connected ? "Connected" : "Disconnected")")
                 if let error = error {
                     AppLogger.network("🔍 NetworkConnectivityMonitor: Error: \(error.localizedDescription)")
                 }
                 
-                // Only update if the value actually changed
-                if self.isConnected != connected {
-                    AppLogger.network("🌐 NetworkConnectivityMonitor: Network connectivity changed: \(connected ? "Connected" : "Disconnected")")
-                    AppLogger.network("🌐 NetworkConnectivityMonitor: Previous state: \(self.isConnected), New state: \(connected)")
-                    self.isConnected = connected
+                // For initial test, set state immediately without debouncing
+                if isInitial {
+                    if self.isConnected != testPassed {
+
+                        self.isConnected = testPassed
+                        // Restart timer with correct interval for initial state
+                        self.startConnectivityTimer()
+                    }
+                    self.hasCompletedInitialTest = true
+
+                    return
+                }
+                
+                // Update counters for stability (non-initial tests)
+                if testPassed {
+                    self.consecutiveSuccesses += 1
+                    self.consecutiveFailures = 0
                 } else {
-                    AppLogger.network("🌐 NetworkConnectivityMonitor: No change detected (still \(connected ? "connected" : "disconnected"))")
+                    self.consecutiveFailures += 1
+                    self.consecutiveSuccesses = 0
+                }
+                
+
+                
+                // Determine new connectivity state with debouncing
+                var newConnectedState = self.isConnected
+                
+                if !self.isConnected && self.consecutiveSuccesses >= self.requiredSuccesses {
+                    // Currently disconnected, but got enough successes -> connected
+                    newConnectedState = true
+                } else if self.isConnected && self.consecutiveFailures >= self.requiredFailures {
+                    // Currently connected, but got enough failures -> disconnected
+                    newConnectedState = false
+                }
+                
+                // Only update if the state actually changed
+                if self.isConnected != newConnectedState {
+                    let previousState = self.isConnected ? "CONNECTED" : "DISCONNECTED" 
+                    let newState = newConnectedState ? "CONNECTED" : "DISCONNECTED"
+                    
+                    AppLogger.network("🌐 NetworkConnectivityMonitor: Network connectivity changed: \(previousState) → \(newState)")
+                    
+                    self.isConnected = newConnectedState
+                    
+                    // Reset counters after state change
+                    self.consecutiveFailures = 0
+                    self.consecutiveSuccesses = 0
+                    
+                    // CRITICAL: Restart timer with new interval when connectivity changes
+                    self.startConnectivityTimer()
+                } else {
+
                 }
             }
         }.resume()

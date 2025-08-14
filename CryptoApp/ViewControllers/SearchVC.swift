@@ -1,7 +1,7 @@
 import UIKit
 import Combine
 
-@objc final class SearchVC: UIViewController {
+@objc final class SearchVC: UIViewController, NetworkBannerDelegate {
     
     // MARK: - Section Enum for Diffable Data Source
     
@@ -58,6 +58,11 @@ import Combine
     // MARK: - Search State
     
     private var currentSearchResults: [Coin] = [] // Track current search results for saving recent searches
+    
+    // MARK: - Network Banner Properties
+    
+    private var networkBanner: NetworkBannerView?
+    private var mainScrollViewTopConstraint: NSLayoutConstraint?
     
     // MARK: - Dependency Injection Initializer
     
@@ -126,6 +131,9 @@ import Combine
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        
+        // Register for network banner updates
+        NetworkBannerService.shared.registerViewController(self)
         
         // Refresh recent searches when returning to search
         loadRecentSearches()
@@ -210,6 +218,13 @@ import Combine
         searchBarComponent.resignFirstResponder()
     }
     
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        
+        // Unregister from network banner updates
+        NetworkBannerService.shared.unregisterViewController(self)
+    }
+    
     private func setupTraitObservation() {
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
@@ -281,8 +296,10 @@ import Combine
         mainScrollView.addSubview(scrollContentView)
         
         // Setup scroll view constraints - IMPORTANT: respect safe area and tab bar
+        mainScrollViewTopConstraint = mainScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        
         NSLayoutConstraint.activate([
-            mainScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            mainScrollViewTopConstraint!,
             mainScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             mainScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mainScrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor), // Respects tab bar
@@ -684,6 +701,8 @@ import Combine
         )
         
         // Bind error messages
+        // DISABLED: Redundant with network banner - user feedback requested removal
+        /*
         viewModel.errorMessage
             .compactMap { $0 }
             .sinkForUI(
@@ -692,6 +711,7 @@ import Combine
                 },
                 storeIn: &cancellables
             )
+        */
         
         // Bind logo updates
         viewModel.coinLogos.sinkForUI(
@@ -1535,5 +1555,58 @@ extension SearchVC: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         // Both main search results and popular coins use full width
         return CGSize(width: view.bounds.width, height: 80)
+    }
+}
+
+// MARK: - NetworkBannerDelegate
+
+extension SearchVC {
+    
+    func showNetworkBanner() {
+        // Don't show if already visible
+        guard networkBanner == nil else { 
+            return 
+        }
+        
+        let banner = NetworkBannerView()
+        banner.alpha = 0
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(banner)
+        networkBanner = banner
+        
+        // Position banner at the top of safe area (above Search title)
+        NSLayoutConstraint.activate([
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        ])
+        
+        // Adjust main scroll view to make room for banner
+        mainScrollViewTopConstraint?.constant = 44 // banner height
+        
+        // Animate banner in
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut) {
+            banner.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        
+
+    }
+    
+    func hideNetworkBanner() {
+        guard let banner = networkBanner else { 
+            // Still reset the constraint in case it's stuck
+            mainScrollViewTopConstraint?.constant = 0
+            view.layoutIfNeeded()
+            return 
+        }
+        
+        // Immediate hide - no animation for faster response
+        banner.removeFromSuperview()
+        networkBanner = nil
+        
+        // Reset main scroll view position AFTER removing banner
+        mainScrollViewTopConstraint?.constant = 0
+        view.layoutIfNeeded()
     }
 } 
