@@ -85,8 +85,14 @@ final class AddCoinsVC: UIViewController {
         // Clear all subscriptions (includes search debouncing)
         cancellables.removeAll()
         
+        // Ensure no pending UI operations can execute
+        if isViewLoaded {
+            collectionView?.dataSource = nil
+            collectionView?.delegate = nil
+        }
+        
         #if DEBUG
-        print("🗑️ AddCoinsVC: Deallocated successfully")
+        print("🗑️ AddCoinsVC: Deallocated successfully with all operations cancelled")
         #endif
     }
     
@@ -97,8 +103,8 @@ final class AddCoinsVC: UIViewController {
         configureView()
         configureHeader()
         configureSearchBar()
-        configureCollectionView()
         configureAddButton()
+        configureCollectionView()
         configureEmptyState()
         configureDataSource()
         bindViewModel()
@@ -123,9 +129,17 @@ final class AddCoinsVC: UIViewController {
         super.viewWillDisappear(animated)
         searchBarComponent.resignFirstResponder()
         
-        // Cancel any pending work items
+        // Cancel any pending work items to prevent UI updates during dismissal
         watchlistUpdateWorkItem?.cancel()
         dataSourceUpdateWorkItem?.cancel()
+        
+        // If being dismissed, clear subscriptions early to prevent further UI updates
+        if isBeingDismissed {
+            cancellables.removeAll()
+            #if DEBUG
+            print("🗑️ AddCoinsVC: Being dismissed - cancelled all subscriptions early")
+            #endif
+        }
     }
     
     override func viewDidLayoutSubviews() {
@@ -220,7 +234,7 @@ final class AddCoinsVC: UIViewController {
         let layout = UICollectionViewFlowLayout()
         layout.itemSize = CGSize(width: view.bounds.width - 32, height: 70)
         layout.minimumLineSpacing = 8
-        layout.sectionInset = UIEdgeInsets(top: 0, left: 16, bottom: 100, right: 16)
+        layout.sectionInset = UIEdgeInsets(top: 0, left: 16, bottom: 16, right: 16)
         layout.headerReferenceSize = CGSize(width: view.bounds.width, height: 32)
         
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -240,7 +254,7 @@ final class AddCoinsVC: UIViewController {
             collectionView.topAnchor.constraint(equalTo: searchBarComponent.bottomAnchor, constant: 8),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            collectionView.bottomAnchor.constraint(equalTo: addButton.topAnchor, constant: -16)
         ])
     }
     
@@ -397,7 +411,8 @@ final class AddCoinsVC: UIViewController {
         // Bind logo updates
         viewModel.coinLogos.sinkForUI(
             { [weak self] _ in
-                self?.collectionView.reloadData()
+                guard let self = self, self.isViewLoaded && self.view.window != nil else { return }
+                self.collectionView.reloadData()
             },
             storeIn: &cancellables
         )
@@ -405,7 +420,7 @@ final class AddCoinsVC: UIViewController {
         // Bind loading state
         viewModel.isLoading.sinkForUI(
             { [weak self] isLoading in
-                guard let self = self else { return }
+                guard let self = self, self.isViewLoaded && self.view.window != nil else { return }
                 
                 if isLoading {
                     // Show skeleton loading for AddCoinCell type
@@ -470,6 +485,14 @@ final class AddCoinsVC: UIViewController {
     // MARK: - Data Management
     
     private func updateFilteredCoins() {
+        // Safety check: only update if view controller is still in window hierarchy
+        guard isViewLoaded && view.window != nil && !isBeingDismissed else {
+            #if DEBUG
+            print("⚠️ AddCoinsVC: Skipping filtered coins update - view controller not in window hierarchy")
+            #endif
+            return
+        }
+        
         let searchText = searchBarComponent.text?.lowercased() ?? ""
         
         // Reset pagination flag when search changes to avoid conflicts
@@ -561,6 +584,14 @@ final class AddCoinsVC: UIViewController {
     }
     
     private func updateDataSource() {
+        // Safety check: only update if view controller is still in window hierarchy
+        guard isViewLoaded && view.window != nil && !isBeingDismissed else {
+            #if DEBUG
+            print("⚠️ AddCoinsVC: Skipping data source update - view controller not in window hierarchy")
+            #endif
+            return
+        }
+        
         // Don't apply snapshot if skeleton loading is active
         guard !SkeletonLoadingManager.isShowingSkeleton(in: collectionView) else { return }
         
@@ -797,12 +828,28 @@ final class AddCoinsVC: UIViewController {
     // MARK: - Helper Methods
     
     private func showAlert(title: String, message: String) {
+        // Safety check: only present alerts if view controller is still in window hierarchy
+        guard isViewLoaded && view.window != nil && !isBeingDismissed else {
+            #if DEBUG
+            print("⚠️ AddCoinsVC: Skipping alert presentation - view controller not in window hierarchy")
+            #endif
+            return
+        }
+        
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
     
     private func showSuccessFeedback(message: String) {
+        // Safety check: only present alerts if view controller is still in window hierarchy
+        guard isViewLoaded && view.window != nil && !isBeingDismissed else {
+            #if DEBUG
+            print("⚠️ AddCoinsVC: Skipping success feedback - view controller not in window hierarchy")
+            #endif
+            return
+        }
+        
         let alert = UIAlertController(title: "Success", message: message, preferredStyle: .alert)
         present(alert, animated: true)
         
@@ -1029,8 +1076,8 @@ extension AddCoinsVC: UICollectionViewDelegateFlowLayout {
             // First section (watchlisted) - extra bottom spacing to separate from Available Coins section
             return UIEdgeInsets(top: 0, left: 16, bottom: 50, right: 16)
         } else {
-            // Available coins section - minimal top so header stays close to first coin
-            return UIEdgeInsets(top: 0, left: 16, bottom: 100, right: 16)
+            // Available coins section - minimal top so header stays close to first coin, minimal bottom since button is now separate
+            return UIEdgeInsets(top: 0, left: 16, bottom: 16, right: 16)
         }
     }
 } 
