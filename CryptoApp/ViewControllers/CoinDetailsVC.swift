@@ -16,6 +16,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     private let viewModel: CoinDetailsVM
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let watchlistManager: WatchlistManagerProtocol
+    private let networkMonitor: NetworkConnectivityMonitor
     
     // FIXED: Prevent recursive updates during landscape synchronization
     private var isUpdatingFromLandscape = false
@@ -41,6 +42,9 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // MARK: - Navigation Title View
     private var titleCoinImageView: CoinImageView?
     
+    // MARK: - Offline Error View
+    private var offlineErrorView: OfflineErrorView?
+    
     // MARK: - Dependency Injection Initializer
     
     /**
@@ -53,6 +57,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         self.coin = coin
         self.viewModel = Dependencies.container.coinDetailsViewModel(coin: coin)
         self.watchlistManager = Dependencies.container.watchlistManager()
+        self.networkMonitor = Dependencies.container.networkConnectivityMonitor()
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -64,6 +69,8 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         // Clean up resources
         refreshTimer?.invalidate()
         refreshTimer = nil
+        offlineErrorView?.removeFromSuperview()
+        offlineErrorView = nil
         cancellables.removeAll()
     }
     
@@ -189,6 +196,8 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         bindViewModel()
         bindFilter()
         setupScrollDetection()
+        setupNetworkMonitoring()
+        checkInitialConnectivity()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -214,6 +223,10 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         isViewVisible = false
         refreshTimer?.invalidate()
         refreshTimer = nil
+        
+        // Reset any loading states in offline view
+        offlineErrorView?.setRetryButtonLoading(false)
+        
         resumeParentTimers()
     }
     
@@ -294,6 +307,185 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         }
     }
     
+    // MARK: - Network Monitoring Setup
+    
+    private func setupNetworkMonitoring() {
+        networkMonitor.connectivityPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                self?.handleConnectivityChange(isConnected: isConnected)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func checkInitialConnectivity() {
+        // Check initial connectivity state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            let isConnected = self.networkMonitor.isConnected
+            self.handleConnectivityChange(isConnected: isConnected)
+        }
+    }
+    
+    private func handleConnectivityChange(isConnected: Bool) {
+        if isConnected {
+            hideOfflineErrorView()
+        } else {
+            showOfflineErrorView()
+        }
+    }
+    
+    private func showOfflineErrorView() {
+        // Don't show offline view if we already have one
+        guard offlineErrorView == nil else { return }
+        
+        // Clear any existing chart errors first
+        clearChartErrors()
+        
+        let errorView = OfflineErrorView()
+        errorView.translatesAutoresizingMaskIntoConstraints = false
+        
+        errorView.onRetryTapped = { [weak self] in
+            self?.handleRetryConnection()
+        }
+        
+        view.addSubview(errorView)
+        
+        NSLayoutConstraint.activate([
+            errorView.topAnchor.constraint(equalTo: view.topAnchor),
+            errorView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            errorView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            errorView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        
+        offlineErrorView = errorView
+        
+        // Hide the table view and other content
+        tableView.isHidden = true
+        
+        // Animate in
+        errorView.alpha = 0
+        UIView.animate(withDuration: 0.3) {
+            errorView.alpha = 1
+        }
+    }
+    
+    private func hideOfflineErrorView() {
+        guard let errorView = offlineErrorView else { return }
+        
+        UIView.animate(withDuration: 0.3, animations: {
+            errorView.alpha = 0
+        }) { _ in
+            errorView.removeFromSuperview()
+            self.offlineErrorView = nil
+            
+            // Show the table view and other content
+            self.tableView.isHidden = false
+            
+            // Clear any lingering error states before loading new content
+            self.clearChartErrors()
+            
+            // Trigger data loading now that we're online
+            self.loadContentAfterReconnection()
+        }
+    }
+    
+    private func handleRetryConnection() {
+        guard let errorView = offlineErrorView else { return }
+        
+        // Show loading state
+        errorView.setRetryButtonLoading(true)
+        
+        // Test connectivity with multiple attempts to ensure stability
+        testNetworkStability(attempt: 1, maxAttempts: 3) { [weak self] isStable in
+            guard let self = self else { return }
+            
+            if isStable {
+                // Network is stable - the connectivity change handler will hide the error view
+                // Don't call hideOfflineErrorView directly, let the natural flow handle it
+            } else {
+                // Network still unstable - reset button
+                errorView.setRetryButtonLoading(false)
+                
+                // Show brief feedback
+                let impactGenerator = UINotificationFeedbackGenerator()
+                impactGenerator.notificationOccurred(.error)
+            }
+        }
+    }
+    
+    private func testNetworkStability(attempt: Int, maxAttempts: Int, completion: @escaping (Bool) -> Void) {
+        // Wait a bit longer for each attempt to let network stabilize
+        let delay = TimeInterval(attempt) * 0.5
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self else { 
+                completion(false)
+                return 
+            }
+            
+            let isConnected = self.networkMonitor.isConnected
+            
+            if isConnected {
+                // Connected, but wait a bit more to ensure stability
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    guard let self = self else { 
+                        completion(false)
+                        return 
+                    }
+                    
+                    // Check again after stability delay
+                    let stillConnected = self.networkMonitor.isConnected
+                    if stillConnected {
+                        completion(true)
+                    } else if attempt < maxAttempts {
+                        // Try again
+                        self.testNetworkStability(attempt: attempt + 1, maxAttempts: maxAttempts, completion: completion)
+                    } else {
+                        completion(false)
+                    }
+                }
+            } else if attempt < maxAttempts {
+                // Try again
+                self.testNetworkStability(attempt: attempt + 1, maxAttempts: maxAttempts, completion: completion)
+            } else {
+                completion(false)
+            }
+        }
+    }
+    
+    private func clearChartErrors() {
+        // Clear any chart error states to ensure clean transition
+        if let chartCell = getChartCell() {
+            chartCell.updateLoadingState(false)
+        }
+        
+        // Also clear any error states in the view model
+        viewModel.clearPreviousStates()
+    }
+    
+    private func loadContentAfterReconnection() {
+        // Give the network a moment to stabilize before attempting data reload
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self = self else { return }
+            
+            // Double-check we're still connected before reloading
+            guard self.networkMonitor.isConnected else {
+                // Network dropped again, don't reload
+                return
+            }
+            
+            // Reload all data now that we're connected and stable
+            self.viewModel.clearPreviousStates()
+            self.viewModel.fetchChartData(for: self.selectedRange.value)
+            
+            // Restart auto refresh
+            if self.isViewVisible {
+                self.startSmartAutoRefresh()
+            }
+        }
+    }
+    
     // MARK: - OPTIMIZED: Combine Bindings
     
     private func bindViewModel() {
@@ -354,17 +546,32 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             .receive(on: DispatchQueue.main)
             .removeDuplicates()
             .sink { [weak self] loadingState in
-                guard let self = self, let chartCell = self.getChartCell() else { return }
+                guard let self = self else { return }
+                
+                // If offline screen is showing, don't show chart-level errors
+                guard self.offlineErrorView == nil, let chartCell = self.getChartCell() else { return }
                 
                 switch loadingState {
                 case .loading:
                     chartCell.updateLoadingState(true)
                 case .loaded:
                     chartCell.updateLoadingState(false)
-                case .error(let retryInfo):
-                    chartCell.showRetryableError(retryInfo)
-                case .nonRetryableError(let message):
-                    chartCell.showNonRetryableError(message)
+                case .error(_):
+                    // Only show chart errors if we're online, otherwise show offline screen
+                    if self.networkMonitor.isConnected {
+                        chartCell.updateLoadingState(false)
+                    } else {
+                        // Network is offline, show offline screen instead of chart error
+                        self.showOfflineErrorView()
+                    }
+                case .nonRetryableError(_):
+                    // Only show chart errors if we're online, otherwise show offline screen
+                    if self.networkMonitor.isConnected {
+                        chartCell.updateLoadingState(false)
+                    } else {
+                        // Network is offline, show offline screen instead of chart error
+                        self.showOfflineErrorView()
+                    }
                 case .empty:
                     chartCell.updateLoadingState(false)
                 }
@@ -486,9 +693,14 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // MARK: - Retry Handling
     
     private func handleChartRetry() {
-        // Chart retry requested
+        // Chart retry - now handled by offline screen
+        // If we're offline, show offline screen instead
+        if !networkMonitor.isConnected {
+            showOfflineErrorView()
+            return
+        }
         
-        // Trigger retry in the view model
+        // Only do chart-level retry if we're online
         viewModel.retryAllChartData()
         
         // Provide haptic feedback
