@@ -291,20 +291,37 @@ final class LandscapeChartVC: UIViewController {
     }
     
     private func updateChartTypeToggleAppearance() {
-        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-        let image = UIImage(systemName: selectedChartType.toggleImageName, withConfiguration: config)
-        
         let (tintColor, backgroundColor): (UIColor, UIColor)
+        
         switch selectedChartType {
         case .line:
             tintColor = UIColor.systemBlue
             backgroundColor = UIColor.systemBlue.withAlphaComponent(0.15)
+            
+            // Show candlestick icon when on line chart (to switch TO candlestick)
+            if let candlestickImage = UIImage(named: "candlestick_icon") {
+                // Option 1: Use custom image asset if available
+                chartTypeToggle.setImage(candlestickImage.withRenderingMode(.alwaysTemplate), for: .normal)
+            } else if let generatedIcon = CandlestickIconGenerator.generateCandlestickIcon() {
+                // Option 2: Use programmatically generated icon (creates red/green candlestick)
+                chartTypeToggle.setImage(generatedIcon.withRenderingMode(.alwaysOriginal), for: .normal)
+            } else {
+                // Option 3: Fallback to SF Symbol
+                let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+                let image = UIImage(systemName: selectedChartType.toggleImageName, withConfiguration: config)
+                chartTypeToggle.setImage(image, for: .normal)
+            }
+            
         case .candlestick:
             tintColor = UIColor.systemOrange
             backgroundColor = UIColor.systemOrange.withAlphaComponent(0.15)
+            
+            // Show line chart icon when on candlestick chart (to switch TO line)
+            let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+            let image = UIImage(systemName: selectedChartType.toggleImageName, withConfiguration: config)
+            chartTypeToggle.setImage(image, for: .normal)
         }
         
-        chartTypeToggle.setImage(image, for: .normal)
         chartTypeToggle.backgroundColor = backgroundColor
         chartTypeToggle.tintColor = tintColor
     }

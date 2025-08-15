@@ -385,6 +385,10 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             // Clear any lingering error states before loading new content
             self.clearChartErrors()
             
+            // Refresh table layout to prevent spacing issues after offline mode
+            self.tableView.setNeedsLayout()
+            self.tableView.layoutIfNeeded()
+            
             // Trigger data loading now that we're online
             self.loadContentAfterReconnection()
         }

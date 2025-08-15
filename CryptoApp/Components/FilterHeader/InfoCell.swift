@@ -262,7 +262,7 @@ final class InfoCell: UITableViewCell {
     /// Update the price change indicator with new values (for real-time changes)
     func updatePriceChangeIndicator(priceChange: Double, percentageChange: Double) {
         let isPositive = priceChange >= 0
-        let changeText = "\(isPositive ? "+" : "")$\(String(format: "%.2f", abs(priceChange)))"
+        let changeText = "\(isPositive ? "+" : "-")$\(String(format: "%.2f", abs(priceChange)))"
         
         // Update to show the real-time change amount temporarily
         priceChangeLabel.text = changeText
@@ -351,14 +351,14 @@ final class InfoCell: UITableViewCell {
             
             let changeText: String
             if absChange >= 1.0 {
-                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.2f", absChange))"
+                changeText = "\(isPositive ? "+" : "-")$\(String(format: "%.2f", absChange))"
             } else if absChange >= 0.01 {
-                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.4f", absChange))"
+                changeText = "\(isPositive ? "+" : "-")$\(String(format: "%.4f", absChange))"
             } else if absChange >= 0.0001 {
-                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.6f", absChange))"
+                changeText = "\(isPositive ? "+" : "-")$\(String(format: "%.6f", absChange))"
             } else {
                 // For very small amounts, use scientific notation or shortened format
-                changeText = "\(isPositive ? "+" : "")$\(String(format: "%.2e", absChange))"
+                changeText = "\(isPositive ? "+" : "-")$\(String(format: "%.2e", absChange))"
             }
             
             priceChangeLabel.text = changeText
