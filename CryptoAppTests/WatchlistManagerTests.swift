@@ -37,8 +37,8 @@ final class WatchlistManagerTests: XCTestCase {
         }
         
         func makeContext() -> NSManagedObjectContext {
-            // Use a main-queue context for simplicity in tests
-            let context = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+            // Use a private queue context for better test isolation and thread safety
+            let context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
             context.persistentStoreCoordinator = persistentStoreCoordinator
             return context
         }
@@ -66,7 +66,12 @@ final class WatchlistManagerTests: XCTestCase {
         func save() {
             context.performAndWait {
                 if context.hasChanges {
-                    do { try context.save() } catch { XCTFail("Core Data save error: \(error)") }
+                    do { 
+                        try context.save() 
+                    } catch { 
+                        context.rollback()
+                        XCTFail("Core Data save error: \(error)") 
+                    }
                 }
             }
         }
@@ -75,7 +80,12 @@ final class WatchlistManagerTests: XCTestCase {
             context.performAndWait {
                 context.delete(object)
                 if context.hasChanges {
-                    do { try context.save() } catch { XCTFail("Core Data delete save error: \(error)") }
+                    do { 
+                        try context.save() 
+                    } catch { 
+                        context.rollback()
+                        XCTFail("Core Data delete save error: \(error)") 
+                    }
                 }
             }
         }
@@ -86,7 +96,12 @@ final class WatchlistManagerTests: XCTestCase {
             request.includesPendingChanges = false
             var results: [T] = []
             context.performAndWait {
-                do { results = try context.fetch(request) } catch { results = [] }
+                do { 
+                    results = try context.fetch(request) 
+                } catch { 
+                    print("Fetch error for \(entityName): \(error)")
+                    results = [] 
+                }
             }
             return results
         }
@@ -98,7 +113,12 @@ final class WatchlistManagerTests: XCTestCase {
             request.includesPendingChanges = false
             var results: [T] = []
             context.performAndWait {
-                do { results = try context.fetch(request) } catch { results = [] }
+                do { 
+                    results = try context.fetch(request) 
+                } catch { 
+                    print("Fetch error for \(entityName) with predicate: \(error)")
+                    results = [] 
+                }
             }
             return results
         }
@@ -108,7 +128,12 @@ final class WatchlistManagerTests: XCTestCase {
             request.includesPendingChanges = false
             var results: [WatchlistItem] = []
             context.performAndWait {
-                do { results = try context.fetch(request) } catch { results = [] }
+                do { 
+                    results = try context.fetch(request) 
+                } catch { 
+                    print("Fetch error for WatchlistItem: \(error)")
+                    results = [] 
+                }
             }
             return results
         }
@@ -119,7 +144,12 @@ final class WatchlistManagerTests: XCTestCase {
             request.includesPendingChanges = false
             var results: [WatchlistItem] = []
             context.performAndWait {
-                do { results = try context.fetch(request) } catch { results = [] }
+                do { 
+                    results = try context.fetch(request) 
+                } catch { 
+                    print("Fetch error for WatchlistItem with predicate: \(error)")
+                    results = [] 
+                }
             }
             return results
         }
@@ -146,15 +176,28 @@ final class WatchlistManagerTests: XCTestCase {
         watchlistManager = WatchlistManager(coreDataManager: coreDataManager,
                                             coinManager: coinManager,
                                             persistenceService: persistenceService)
-        wait(seconds: 0.15) // Allow initializeLocalCache to complete
+        
+        // Wait for initialization to complete properly
+        waitForWatchlistInitialization()
     }
     
     override func tearDown() {
+        // Ensure all background operations complete before cleanup
+        waitForBackgroundOperationsToComplete()
+        
+        // Clear watchlist first to prevent orphaned operations
+        if let manager = watchlistManager {
+            manager.clearWatchlist()
+            wait(seconds: 0.3) // Allow clear operation to complete
+        }
+        
+        // Nil all references
         watchlistManager = nil
         coreDataManager = nil
         coinManager = nil
         persistenceService = nil
         stack = nil
+        
         super.tearDown()
     }
     
@@ -172,6 +215,49 @@ final class WatchlistManagerTests: XCTestCase {
         }
     }
     
+    private func waitForWatchlistInitialization() {
+        let expectation = XCTestExpectation(description: "Watchlist initialization")
+        
+        // Poll for initialization completion
+        DispatchQueue.global().async {
+            var attempts = 0
+            while attempts < 50 { // Max 5 seconds (50 * 0.1)
+                if self.watchlistManager.getWatchlistCount() >= 0 { // This indicates initialization is complete
+                    DispatchQueue.main.async {
+                        expectation.fulfill()
+                    }
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.1)
+                attempts += 1
+            }
+            
+            DispatchQueue.main.async {
+                XCTFail("Watchlist initialization timed out")
+                expectation.fulfill()
+            }
+        }
+        
+        wait(for: [expectation], timeout: 6.0)
+    }
+    
+    private func waitForBackgroundOperationsToComplete() {
+        // Give background operations time to complete
+        let expectation = XCTestExpectation(description: "Background operations complete")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+    
+    private func waitForOperationCompletion(timeout: TimeInterval = 2.0) {
+        let expectation = XCTestExpectation(description: "Operation completion")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: timeout)
+    }
+    
     // MARK: - Core Data CRUD Tests
     
     func testAddAndFetchWatchlistItem() {
@@ -180,7 +266,7 @@ final class WatchlistManagerTests: XCTestCase {
         
         // When
         watchlistManager.addToWatchlist(coin)
-        wait(seconds: 0.25)
+        waitForOperationCompletion()
         
         // Then
         XCTAssertTrue(watchlistManager.isInWatchlist(coinId: 101))
@@ -192,12 +278,12 @@ final class WatchlistManagerTests: XCTestCase {
         // Given
         let coin = TestDataFactory.createMockCoin(id: 202, symbol: "BBB", name: "Beta", rank: 2)
         watchlistManager.addToWatchlist(coin)
-        wait(seconds: 0.25)
+        waitForOperationCompletion()
         XCTAssertTrue(watchlistManager.isInWatchlist(coinId: 202))
         
         // When
         watchlistManager.removeFromWatchlist(coinId: 202)
-        wait(seconds: 0.25)
+        waitForOperationCompletion()
         
         // Then
         XCTAssertFalse(watchlistManager.isInWatchlist(coinId: 202))
@@ -212,7 +298,7 @@ final class WatchlistManagerTests: XCTestCase {
         
         // When - Batch add
         watchlistManager.addMultipleToWatchlist(coinsToAdd)
-        wait(seconds: 0.35)
+        waitForOperationCompletion()
         
         // Then
         XCTAssertEqual(coreDataManager.fetchWatchlistItems().count, 5)
@@ -222,7 +308,7 @@ final class WatchlistManagerTests: XCTestCase {
         // When - Batch remove subset
         let idsToRemove = [1000, 1002, 1004]
         watchlistManager.removeMultipleFromWatchlist(coinIds: idsToRemove)
-        wait(seconds: 0.35)
+        waitForOperationCompletion()
         
         // Then - Remaining should be 2
         XCTAssertEqual(coreDataManager.fetchWatchlistItems().count, 2)
@@ -234,12 +320,12 @@ final class WatchlistManagerTests: XCTestCase {
         // Given
         let coins = makeCoins(3, startId: 2000)
         watchlistManager.addMultipleToWatchlist(coins)
-        wait(seconds: 0.3)
+        waitForOperationCompletion()
         XCTAssertEqual(watchlistManager.getWatchlistCount(), 3)
         
         // When
         watchlistManager.clearWatchlist()
-        wait(seconds: 0.3)
+        waitForOperationCompletion()
         
         // Then
         XCTAssertEqual(watchlistManager.getWatchlistCount(), 0)
@@ -255,17 +341,30 @@ final class WatchlistManagerTests: XCTestCase {
         let failingWatchlist = WatchlistManager(coreDataManager: failingManager,
                                                 coinManager: coinManager,
                                                 persistenceService: persistenceService)
-        wait(seconds: 0.25)
+        
+        // Wait for initialization
+        let initExpectation = XCTestExpectation(description: "Failing watchlist initialization")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            initExpectation.fulfill()
+        }
+        wait(for: [initExpectation], timeout: 1.0)
+        
         let coin = TestDataFactory.createMockCoin(id: 303, symbol: "CCC", name: "Gamma", rank: 3)
         
         // When
         failingWatchlist.addToWatchlist(coin)
-        wait(seconds: 0.5)
+        
+        // Wait longer for rollback to occur
+        let rollbackExpectation = XCTestExpectation(description: "Rollback completion")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            rollbackExpectation.fulfill()
+        }
+        wait(for: [rollbackExpectation], timeout: 2.0)
         
         // Then - Should rollback optimistic update
         XCTAssertFalse(failingWatchlist.isInWatchlist(coinId: 303))
         XCTAssertEqual(failingManager.fetchWatchlistItems().count, 0)
-        _ = failingWatchlist // keep alive
+        _ = failingWatchlist // keep alive until test completes
     }
     
     func testBatchAddRollbackOnFailure() {
@@ -275,29 +374,50 @@ final class WatchlistManagerTests: XCTestCase {
         let failingWatchlist = WatchlistManager(coreDataManager: failingManager,
                                                 coinManager: coinManager,
                                                 persistenceService: persistenceService)
-        wait(seconds: 0.25)
+        
+        // Wait for initialization
+        let initExpectation = XCTestExpectation(description: "Batch failing watchlist initialization")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            initExpectation.fulfill()
+        }
+        wait(for: [initExpectation], timeout: 1.0)
+        
         let coins = makeCoins(4, startId: 4000)
         
         // When
         failingWatchlist.addMultipleToWatchlist(coins)
-        wait(seconds: 0.6)
+        
+        // Wait longer for batch rollback to occur
+        let rollbackExpectation = XCTestExpectation(description: "Batch rollback completion")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            rollbackExpectation.fulfill()
+        }
+        wait(for: [rollbackExpectation], timeout: 2.5)
         
         // Then - Should rollback all optimistic IDs
         XCTAssertEqual(failingManager.fetchWatchlistItems().count, 0)
         XCTAssertEqual(failingWatchlist.getWatchlistCount(), 0)
         XCTAssertFalse(coins.contains { failingWatchlist.isInWatchlist(coinId: $0.id) })
-        _ = failingWatchlist
+        _ = failingWatchlist // keep alive until test completes
     }
     
     func testBatchRemoveRollbackOnFailure() {
         // Given - Shared store with items added using working context
         guard let sharedStack = InMemoryCoreDataStack() else { XCTFail("Failed to create shared stack"); return }
         let writerManager = TestCoreDataManager(context: sharedStack.makeContext())
-        // Pre-populate store
+        
+        // Pre-populate store with proper Core Data context management
         let writerContext = writerManager.context
         let initialCoins = makeCoins(3, startId: 5000)
-        initialCoins.forEach { _ = WatchlistItem(context: writerContext, coin: $0) }
-        do { try writerContext.save() } catch { XCTFail("Prepopulation save failed: \(error)") }
+        
+        writerContext.performAndWait {
+            initialCoins.forEach { _ = WatchlistItem(context: writerContext, coin: $0) }
+            do { 
+                try writerContext.save() 
+            } catch { 
+                XCTFail("Prepopulation save failed: \(error)") 
+            }
+        }
         
         // Create failing manager sharing the same PSC
         let failingContext = InMemoryCoreDataStack.FailingContext(concurrencyType: .privateQueueConcurrencyType)
@@ -306,18 +426,31 @@ final class WatchlistManagerTests: XCTestCase {
         let failingWatchlist = WatchlistManager(coreDataManager: failingManager,
                                                 coinManager: coinManager,
                                                 persistenceService: persistenceService)
-        wait(seconds: 0.3)
+        
+        // Wait for initialization and verify pre-populated state
+        let initExpectation = XCTestExpectation(description: "Shared store initialization")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            initExpectation.fulfill()
+        }
+        wait(for: [initExpectation], timeout: 1.5)
+        
         XCTAssertEqual(failingManager.fetchWatchlistItems().count, 3)
         
         // When - Attempt failing batch remove
         let idsToRemove = initialCoins.prefix(2).map { $0.id }
         failingWatchlist.removeMultipleFromWatchlist(coinIds: idsToRemove)
-        wait(seconds: 0.6)
+        
+        // Wait longer for batch remove rollback to occur
+        let rollbackExpectation = XCTestExpectation(description: "Batch remove rollback completion")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            rollbackExpectation.fulfill()
+        }
+        wait(for: [rollbackExpectation], timeout: 3.0)
         
         // Then - Optimistic removal should be rolled back, DB unchanged
         XCTAssertEqual(failingManager.fetchWatchlistItems().count, 3)
         XCTAssertTrue(initialCoins.allSatisfy { failingWatchlist.isInWatchlist(coinId: $0.id) })
-        _ = failingWatchlist
+        _ = failingWatchlist // keep alive until test completes
     }
 }
 

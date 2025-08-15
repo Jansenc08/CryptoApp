@@ -6,8 +6,8 @@ import Combine
  * NetworkConnectivityMonitor
  *
  * Practical network connectivity monitoring that detects REAL network issues.
- * Since NWPathMonitor is unreliable in simulator, we use actual network requests.
- * 
+ * Since NWPathMonitor is unreliable in simulator, I use actual network requests.
+ *
  * Features:
  * - Detects real network failures from URLSession errors
  * - Publishes immediate connectivity changes via Combine
