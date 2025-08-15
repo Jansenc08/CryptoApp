@@ -45,6 +45,10 @@ final class NetworkConnectivityMonitor: ObservableObject {
     private let requiredFailures = 1  // Immediate response to failures
     private let requiredSuccesses = 1 // Immediate response to successes
     
+    // API-aware connectivity tracking (prevents false disconnections)
+    private var lastAPISuccessTime: Date?
+    private let apiSuccessGracePeriod: TimeInterval = 10.0 // 10 seconds
+    
     // MARK: - Initialization
     
     init() {
@@ -84,6 +88,17 @@ final class NetworkConnectivityMonitor: ObservableObject {
         isMonitoring = false
         
         AppLogger.network("NetworkConnectivityMonitor stopped")
+    }
+    
+    /**
+     * Report successful API activity to prevent false disconnection reports
+     * Call this whenever your app successfully completes an API request
+     */
+    func reportAPISuccess() {
+        DispatchQueue.main.async { [weak self] in
+            self?.lastAPISuccessTime = Date()
+            AppLogger.network("🌐 NetworkConnectivityMonitor: API success reported - preventing false disconnections")
+        }
     }
     
     // MARK: - Private Methods
@@ -181,8 +196,19 @@ final class NetworkConnectivityMonitor: ObservableObject {
                     // Currently disconnected, but got enough successes -> connected
                     newConnectedState = true
                 } else if self.isConnected && self.consecutiveFailures >= self.requiredFailures {
-                    // Currently connected, but got enough failures -> disconnected
-                    newConnectedState = false
+                    // Currently connected, but got enough failures -> check API success before disconnecting
+                    if let lastAPITime = self.lastAPISuccessTime,
+                       Date().timeIntervalSince(lastAPITime) < self.apiSuccessGracePeriod {
+                        // Recent API success - ignore the disconnection report
+                        AppLogger.network("🌐 NetworkConnectivityMonitor: Ignoring disconnection due to recent API success (\(Date().timeIntervalSince(lastAPITime).rounded())s ago)")
+                        // Reset counters to prevent repeated messages
+                        self.consecutiveFailures = 0
+                        self.consecutiveSuccesses = 0
+                        return
+                    } else {
+                        // No recent API success - proceed with disconnection
+                        newConnectedState = false
+                    }
                 }
                 
                 // Only update if the state actually changed

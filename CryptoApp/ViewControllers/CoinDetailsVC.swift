@@ -21,6 +21,9 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     // FIXED: Prevent recursive updates during landscape synchronization
     private var isUpdatingFromLandscape = false
     
+    // Prevent flicker during network reconnection
+    private var lastOfflineViewHiddenTime: Date?
+    
     // FIXED: Combine reactive state management
     private let selectedRange = CurrentValueSubject<String, Never>("24h")
     private let selectedChartType = CurrentValueSubject<ChartType, Never>(.line)
@@ -339,6 +342,12 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         // Don't show offline view if we already have one
         guard offlineErrorView == nil else { return }
         
+        // Prevent flicker: Don't show offline view if we just hid it recently (within 3 seconds)
+        if let lastHiddenTime = lastOfflineViewHiddenTime,
+           Date().timeIntervalSince(lastHiddenTime) < 3.0 {
+            return
+        }
+        
         // Clear any existing chart errors first
         clearChartErrors()
         
@@ -378,6 +387,9 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         }) { _ in
             errorView.removeFromSuperview()
             self.offlineErrorView = nil
+            
+            // Record when we hid the offline view to prevent flicker
+            self.lastOfflineViewHiddenTime = Date()
             
             // Show the table view and other content
             self.tableView.isHidden = false
@@ -515,6 +527,11 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 guard !self.isUserInteracting,
                       self.shouldUpdateChart(newPoints: newPoints) else { return }
                 
+                // Report successful API activity to prevent false disconnections
+                if !newPoints.isEmpty {
+                    self.networkMonitor.reportAPISuccess()
+                }
+                
                 self.updateChartCell(newPoints)
                 self.lastChartUpdateTime = Date()
             }
@@ -605,6 +622,12 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main) // Debounce rapid changes
             .sink { [weak self] newOHLCData in
                 guard let self = self else { return }
+                
+                // Report successful API activity to prevent false disconnections
+                if !newOHLCData.isEmpty {
+                    self.networkMonitor.reportAPISuccess()
+                }
+                
                 self.updateChartCellWithOHLC(newOHLCData)
                 // Update StatsCell when OHLC data becomes available for Low/High section
                 if !newOHLCData.isEmpty {

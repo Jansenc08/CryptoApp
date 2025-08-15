@@ -17,6 +17,7 @@ protocol NetworkConnectivityMonitorProtocol: ObservableObject {
     var connectivityPublisher: AnyPublisher<Bool, Never> { get }
     func start()
     func stop()
+    func reportAPISuccess()
 }
 
 // MARK: - Cache Service Protocol
