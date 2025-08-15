@@ -759,12 +759,31 @@ final class AddCoinsVC: UIViewController {
     @objc private func addButtonTapped() {
         guard !selectedCoinIds.isEmpty || !coinsToRemove.isEmpty else { return }
         
+        // Store selections before clearing them (to remove blue borders immediately)
+        let coinsToAdd = selectedCoinIds
+        let coinsToRemoveFromWatchlist = coinsToRemove
+        
+        // Clear selections immediately to remove blue borders from cells
+        selectedCoinIds.removeAll()
+        coinsToRemove.removeAll()
+        updateAddButtonTitle()
+        
+        // Smoothly animate out the selection borders from all visible cells
+        for cell in collectionView.visibleCells {
+            if let addCoinCell = cell as? AddCoinCell {
+                // Clear selection for both add and remove types
+                if addCoinCell.isSelectedForWatchlist {
+                    addCoinCell.setSelectedForWatchlist(false, selectionType: addCoinCell.selectionType, animated: true)
+                }
+            }
+        }
+        
         let watchlistManager = Dependencies.container.watchlistManager()
         var addedCount = 0
         var removedCount = 0
         
         // Handle additions
-        for coinId in selectedCoinIds {
+        for coinId in coinsToAdd {
             // Look in ALL available coin sources to ensure we find selected coins
             // even if they're not in the current filtered results
             let coin = allCoins.first(where: { $0.id == coinId }) ?? 
@@ -782,7 +801,7 @@ final class AddCoinsVC: UIViewController {
         }
         
         // Handle removals
-        for coinId in coinsToRemove {
+        for coinId in coinsToRemoveFromWatchlist {
             watchlistManager.removeFromWatchlist(coinId: coinId)
             removedCount += 1
         }
@@ -797,11 +816,6 @@ final class AddCoinsVC: UIViewController {
         }
         let message = messageComponents.joined(separator: " and ") + " from your watchlist"
         showSuccessFeedback(message: message)
-        
-        // Clear selections and update UI state
-        selectedCoinIds.removeAll()
-        coinsToRemove.removeAll()
-        updateAddButtonTitle()
         
         // Clear search to show all watchlist coins during animation
         searchBarComponent.text = ""
