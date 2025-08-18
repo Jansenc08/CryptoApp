@@ -716,8 +716,24 @@ final class CoinDetailsVM: ObservableObject {
             let highs = ohlcData.map { $0.high }
             let lows = ohlcData.map { $0.low }
             
-            let highPrice = highs.max()
-            let lowPrice = lows.min()
+            var highPrice = highs.max()
+            var lowPrice = lows.min()
+            
+            // CRITICAL FIX: Always include current live price in high/low calculation
+            // This prevents the bug where current price can be below the "low" or above the "high"
+            if let currentLivePrice = coinDataSubject.value.quote?["USD"]?.price {
+                if let existingHigh = highPrice {
+                    highPrice = max(existingHigh, currentLivePrice)
+                } else {
+                    highPrice = currentLivePrice
+                }
+                
+                if let existingLow = lowPrice {
+                    lowPrice = min(existingLow, currentLivePrice)
+                } else {
+                    lowPrice = currentLivePrice
+                }
+            }
             
             return (highPrice, lowPrice)
         }
@@ -739,12 +755,10 @@ final class CoinDetailsVM: ObservableObject {
         // Determine if we're in a loading state for this range
         let isLoading = loadingStates.contains(range)
         
-        // Prefer using the last close from the OHLC series for the same range to avoid
-        // discrepancies with live ticks from a different feed.
+        // FIXED: Always use live price for consistency with updated high/low calculation
+        // This ensures the current price indicator is accurate and matches the range bounds
         func currentPriceForStatsRange(_ range: String) -> Double? {
-            if let series = statsOhlcDataSubject.value[range], let last = series.last { 
-                return last.close 
-            }
+            // Always use live price to match the corrected high/low calculation
             return coinDataSubject.value.quote?["USD"]?.price
         }
         

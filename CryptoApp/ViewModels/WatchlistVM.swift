@@ -285,7 +285,14 @@ final class WatchlistVM: ObservableObject {
     func removeFromWatchlist(_ coin: Coin) {
         // Use optimized manager's O(1) remove operation
         watchlistManager.removeFromWatchlist(coinId: coin.id)
-        // No need to manually refresh - binding will handle it
+        
+        // Immediate UI update to ensure removal is reflected right away
+        let updatedCoins = currentWatchlistCoins.filter { $0.id != coin.id }
+        watchlistCoinsSubject.send(updatedCoins)
+        
+        #if DEBUG
+        print("🗑️ WatchlistVM: Immediately removed \(coin.symbol) from UI, remaining: \(updatedCoins.count) coins")
+        #endif
     }
     
     func removeFromWatchlist(at index: Int) {

@@ -519,10 +519,12 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             
             self.syncQueue.async(flags: .barrier) {
                 self.localWatchlistItems = sortedItems
+                self.localWatchlistCoinIds = Set(sortedItems.map { $0.coinId })
             }
             
             DispatchQueue.main.async {
                 self.watchlistItems = sortedItems
+                self.watchlistCoinIds = Set(sortedItems.map { $0.coinId })
             }
         }
     }
