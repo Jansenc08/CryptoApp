@@ -2,6 +2,13 @@
 //  ErrorMessageProviderTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Unit tests for ErrorMessageProvider covering:
+//  - RequestError mappings (rateLimited, throttled, duplicateRequest, castingError)
+//  - NetworkError mappings (invalidResponse, decodingError, unknown, badURL)
+//  - URL errors (URLError) and generic fallbacks
+//  - Retry info behavior (isRetryable/message/action) across contexts
+//
 
 import XCTest
 @testable import CryptoApp

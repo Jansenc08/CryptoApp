@@ -2,6 +2,17 @@
 //  CoinListVMTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Unit tests for CoinListVM focusing on core behaviors used by the Coins screen.
+//  Scope covered:
+//  - Pagination on top of fullFilteredCoins (20 per page) with filter + prefix(1) guards
+//  - Cached data path (offline) with pagination applied to cached dataset
+//  - Error state transitions (loading toggles + user-facing error message)
+//  Test patterns:
+//  - Uses MockCoinManager, MockSharedCoinDataManager, and MockPersistenceService
+//  - Expectations are guarded with Combine operators (filter/prefix) to avoid multi-fulfill
+//  - All tests avoid touching UIKit; publishers are observed directly
+//
 
 import XCTest
 import Combine

@@ -2,6 +2,17 @@
 //  SearchVMTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Unit tests for SearchVM covering search filtering logic, popular coins switching,
+//  error state transitions, and logo updates. These tests validate:
+//  - Debounced search behavior (observed via publishers, not timers)
+//  - Case-insensitive and prefix matching across name/symbol/slug
+//  - Popular coins cache validity and refresh logic
+//  - Error messages emitted from shared data manager errors
+//  Patterns:
+//  - Uses MockCoinManager, MockSharedCoinDataManager, MockPersistenceService
+//  - Expectations guarded with flags or prefix(1) to prevent multiple fulfill calls
+//
 
 import XCTest
 import Combine

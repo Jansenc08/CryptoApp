@@ -2,6 +2,13 @@
 //  UIIntegration_ChartTypeSwitchingTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Integration-style VM test for CoinDetailsVM chart type switching.
+//  Validates that:
+//  - Switching to candlestick uses cached OHLC if available
+//  - Switching to line uses cached chart points if available
+//  No UIKit dependence; validations are performed by observing publishers.
+//
 
 import XCTest
 import Combine

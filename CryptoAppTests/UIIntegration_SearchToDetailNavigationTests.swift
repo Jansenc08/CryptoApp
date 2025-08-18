@@ -2,6 +2,13 @@
 //  UIIntegration_SearchToDetailNavigationTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Integration-style VM test mimicking a user searching and then opening a coin detail screen.
+//  Steps validated:
+//  - SearchVM produces results from cached/shared data
+//  - First result is used to initialize CoinDetailsVM
+//  - Basic mapping (range to days) works for details VM
+//
 
 import XCTest
 import Combine

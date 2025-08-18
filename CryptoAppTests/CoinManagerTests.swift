@@ -2,6 +2,10 @@
 //  CoinManagerTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Unit tests for CoinManager verifying pass-through behavior and range mapping
+//  for chart and OHLC requests. Uses MockCoinService to assert data flows without network.
+//
 
 import XCTest
 import Combine

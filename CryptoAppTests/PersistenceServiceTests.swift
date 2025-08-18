@@ -2,6 +2,12 @@
 //  PersistenceServiceTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Unit tests validating PersistenceService contract semantics using MockPersistenceService:
+//  - Save/load coins and logos
+//  - Cache expiry behavior (fresh vs simulated expired)
+//  - Offline data tuple (coins/logos)
+//
 
 import XCTest
 @testable import CryptoApp

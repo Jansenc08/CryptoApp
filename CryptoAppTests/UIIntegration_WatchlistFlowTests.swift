@@ -2,6 +2,14 @@
 //  UIIntegration_WatchlistFlowTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Integration-style VM test exercising the Watchlist flow without UIKit.
+//  Verifies that add/remove operations in WatchlistManager are reflected by WatchlistVM.watchlistCoins
+//  when SharedCoinDataManager emits coins. Uses a coin that exists in shared data to ensure filtering works.
+//  Patterns:
+//  - Re-emits shared coins after add/remove to drive VM updates
+//  - Guards expectations with flags and uses modest timeouts for stability
+//
 
 import XCTest
 import Combine

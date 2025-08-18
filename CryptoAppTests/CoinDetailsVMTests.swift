@@ -2,6 +2,14 @@
 //  CoinDetailsVMTests.swift
 //  CryptoAppTests
 //
+//  Documentation:
+//  Unit tests for CoinDetailsVM focusing on chart data loading (line), OHLC loading (candlestick),
+//  cache-first behavior, price change indicator emissions, smart auto-refresh, and retry paths.
+//  Notes:
+//  - Cache is cleared in setUp() to ensure deterministic code paths for error/loading tests
+//  - Uses MockCoinManager + MockSharedCoinDataManager + MockRequestManager
+//  - Expectations use filter + prefix(1) or flags to avoid multiple-fulfill
+//
 
 import XCTest
 import Combine
