@@ -428,115 +428,42 @@ final class MockSharedCoinDataManager: SharedCoinDataManagerProtocol {
     
     // MARK: - SharedCoinDataManagerProtocol Implementation
     
-    var allCoins: AnyPublisher<[Coin], Never> {
-        coinsSubject.eraseToAnyPublisher()
-    }
-    
-    var errors: AnyPublisher<Error, Never> {
-        errorsSubject.eraseToAnyPublisher()
-    }
-    
-    var isLoading: AnyPublisher<Bool, Never> {
-        isLoadingSubject.eraseToAnyPublisher()
-    }
-    
-    var isFetchingFreshData: AnyPublisher<Bool, Never> {
-        isFetchingFreshDataSubject.eraseToAnyPublisher()
-    }
-    
-    var currentCoins: [Coin] {
-        coinsSubject.value
-    }
+    var allCoins: AnyPublisher<[Coin], Never> { coinsSubject.eraseToAnyPublisher() }
+    var errors: AnyPublisher<Error, Never> { errorsSubject.eraseToAnyPublisher() }
+    var isLoading: AnyPublisher<Bool, Never> { isLoadingSubject.eraseToAnyPublisher() }
+    var isFetchingFreshData: AnyPublisher<Bool, Never> { isFetchingFreshDataSubject.eraseToAnyPublisher() }
+    var currentCoins: [Coin] { coinsSubject.value }
     
     func forceUpdate() {
-        guard !shouldFailUpdates else {
-            print("❌ Mock shared data force update failed (configured to fail)")
-            return
-        }
-        
-        // Simulate loading states
+        guard !shouldFailUpdates else { return }
         isLoadingSubject.send(true)
-        if currentCoins.isEmpty {
-            isFetchingFreshDataSubject.send(true) // Simulate fresh data fetch
-        }
-        
-        // Simulate network delay
+        if currentCoins.isEmpty { isFetchingFreshDataSubject.send(true) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            // Simulate update with test data
             let mockCoins = TestDataFactory.createMockCoins(count: 10)
             self?.coinsSubject.send(mockCoins)
-            
-            // Reset loading states
             self?.isLoadingSubject.send(false)
             self?.isFetchingFreshDataSubject.send(false)
-            
-            print("✅ Mock shared data force update completed with \(mockCoins.count) coins")
         }
     }
     
     func startAutoUpdate() {
         autoUpdateEnabled = true
-        print("✅ Mock shared data auto-update started")
-        
-        // Send initial data
-        if currentCoins.isEmpty {
-            forceUpdate()
-        }
+        if currentCoins.isEmpty { forceUpdate() }
     }
     
     func stopAutoUpdate() {
         autoUpdateEnabled = false
-        
-        // Reset loading states
         isLoadingSubject.send(false)
         isFetchingFreshDataSubject.send(false)
-        
-        print("✅ Mock shared data auto-update stopped")
     }
     
     // MARK: - Test Helper Methods
+    func setMockCoins(_ coins: [Coin]) { coinsSubject.send(coins) }
+    func getMockCoinCount() -> Int { currentCoins.count }
+    func getCoinsForIds(_ ids: [Int]) -> [Coin] { currentCoins.filter { ids.contains($0.id) } }
     
-    func setMockCoins(_ coins: [Coin]) {
-        coinsSubject.send(coins)
-    }
-    
-    func simulatePriceUpdate(for coinId: Int, newPrice: Double) {
-        var updatedCoins = currentCoins
-        if let index = updatedCoins.firstIndex(where: { $0.id == coinId }) {
-            // Create updated quote
-            var updatedCoin = updatedCoins[index]
-            if let quote = updatedCoin.quote?["USD"] {
-                // Create new Quote instance with updated price (Quote properties are immutable)
-                let updatedQuote = Quote(
-                    price: newPrice,
-                    volume24h: quote.volume24h,
-                    volumeChange24h: quote.volumeChange24h,
-                    percentChange1h: quote.percentChange1h,
-                    percentChange24h: quote.percentChange24h,
-                    percentChange7d: quote.percentChange7d,
-                    percentChange30d: quote.percentChange30d,
-                    percentChange60d: quote.percentChange60d,
-                    percentChange90d: quote.percentChange90d,
-                    marketCap: quote.marketCap,
-                    marketCapDominance: quote.marketCapDominance,
-                    fullyDilutedMarketCap: quote.fullyDilutedMarketCap,
-                    lastUpdated: quote.lastUpdated
-                )
-                updatedCoin.quote?["USD"] = updatedQuote
-                updatedCoins[index] = updatedCoin
-                coinsSubject.send(updatedCoins)
-                print("💰 Mock price update: Coin \(coinId) → $\(newPrice)")
-            }
-        }
-    }
-    
-    func getMockCoinCount() -> Int {
-        return currentCoins.count
-    }
-    
-    func getCoinsForIds(_ ids: [Int]) -> [Coin] {
-        return currentCoins.filter { ids.contains($0.id) }
-    }
+    // New: public helper to emit errors for tests
+    func emitError(_ error: Error) { errorsSubject.send(error) }
 }
 
 // MARK: - Mock Request Manager

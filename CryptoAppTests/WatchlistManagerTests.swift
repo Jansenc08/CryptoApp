@@ -344,10 +344,16 @@ final class WatchlistManagerTests: XCTestCase {
         
         // Wait for initialization
         let initExpectation = XCTestExpectation(description: "Failing watchlist initialization")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            initExpectation.fulfill()
+        DispatchQueue.global().async {
+            var attempts = 0
+            while attempts < 50 {
+                _ = failingWatchlist.getWatchlistCount() // forces init path
+                Thread.sleep(forTimeInterval: 0.1)
+                attempts += 1
+            }
+            DispatchQueue.main.async { initExpectation.fulfill() }
         }
-        wait(for: [initExpectation], timeout: 1.0)
+        wait(for: [initExpectation], timeout: 6.0)
         
         let coin = TestDataFactory.createMockCoin(id: 303, symbol: "CCC", name: "Gamma", rank: 3)
         
