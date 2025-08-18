@@ -135,6 +135,10 @@ final class AddCoinsVC: UIViewController {
         
         // If being dismissed, clear subscriptions early to prevent further UI updates
         if isBeingDismissed {
+            // Ensure any skeleton state is fully dismissed before deallocation
+            if collectionView != nil {
+                SkeletonLoadingManager.dismissSkeletonFromCollectionView(collectionView)
+            }
             cancellables.removeAll()
             #if DEBUG
             print("🗑️ AddCoinsVC: Being dismissed - cancelled all subscriptions early")
