@@ -19,7 +19,13 @@ final class CoreDataManager: CoreDataManagerProtocol {
         let container = NSPersistentContainer(name: "WatchlistModel")
         container.loadPersistentStores { _, error in
             if let error = error as NSError? {
-                fatalError("Core Data error: \(error), \(error.userInfo)")
+                AppLogger.database("Core Data failed to load persistent stores: \(error), \(error.userInfo)", level: .error)
+                
+                // For production, we should handle this gracefully rather than crashing
+                // This could be due to first launch, disk space, permissions, etc.
+                print("⚠️ Core Data initialization failed, but app will continue. Error: \(error.localizedDescription)")
+            } else {
+                AppLogger.database("Core Data persistent stores loaded successfully", level: .info)
             }
         }
         return container
@@ -35,8 +41,10 @@ final class CoreDataManager: CoreDataManagerProtocol {
         if context.hasChanges {
             do {
                 try context.save()
+                AppLogger.database("Core Data save successful", level: .debug)
             } catch {
-                AppLogger.database("Core Data save error", level: .error)
+                AppLogger.database("Core Data save error: \(error.localizedDescription)", level: .error)
+                print("⚠️ Core Data save failed: \(error.localizedDescription)")
             }
         }
     }
@@ -51,9 +59,12 @@ final class CoreDataManager: CoreDataManagerProtocol {
         let request = NSFetchRequest<T>(entityName: entityName)
         
         do {
-            return try context.fetch(request)
+            let results = try context.fetch(request)
+            AppLogger.database("Core Data fetch successful for \(entityName): \(results.count) items", level: .debug)
+            return results
         } catch {
-            AppLogger.database("Core Data fetch error", level: .error)
+            AppLogger.database("Core Data fetch error for \(entityName): \(error.localizedDescription)", level: .error)
+            print("⚠️ Core Data fetch failed for \(entityName): \(error.localizedDescription)")
             return []
         }
     }
@@ -64,9 +75,12 @@ final class CoreDataManager: CoreDataManagerProtocol {
         request.predicate = predicate
         
         do {
-            return try context.fetch(request)
+            let results = try context.fetch(request)
+            AppLogger.database("Core Data fetch with predicate successful for \(entityName): \(results.count) items", level: .debug)
+            return results
         } catch {
-            AppLogger.database("Core Data fetch with predicate error", level: .error)
+            AppLogger.database("Core Data fetch with predicate error for \(entityName): \(error.localizedDescription)", level: .error)
+            print("⚠️ Core Data fetch with predicate failed for \(entityName): \(error.localizedDescription)")
             return []
         }
     }
@@ -76,9 +90,12 @@ final class CoreDataManager: CoreDataManagerProtocol {
         let request: NSFetchRequest<WatchlistItem> = WatchlistItem.fetchRequest()
         
         do {
-            return try context.fetch(request)
+            let results = try context.fetch(request)
+            AppLogger.database("Core Data fetch watchlist items successful: \(results.count) items", level: .debug)
+            return results
         } catch {
-            AppLogger.database("Core Data fetch watchlist items error", level: .error)
+            AppLogger.database("Core Data fetch watchlist items error: \(error.localizedDescription)", level: .error)
+            print("⚠️ Core Data fetch watchlist items failed: \(error.localizedDescription)")
             return []
         }
     }
@@ -88,9 +105,12 @@ final class CoreDataManager: CoreDataManagerProtocol {
         request.predicate = predicate
         
         do {
-            return try context.fetch(request)
+            let results = try context.fetch(request)
+            AppLogger.database("Core Data fetch watchlist items with predicate successful: \(results.count) items", level: .debug)
+            return results
         } catch {
-            AppLogger.database("Core Data fetch watchlist items with predicate error", level: .error)
+            AppLogger.database("Core Data fetch watchlist items with predicate error: \(error.localizedDescription)", level: .error)
+            print("⚠️ Core Data fetch watchlist items with predicate failed: \(error.localizedDescription)")
             return []
         }
     }
