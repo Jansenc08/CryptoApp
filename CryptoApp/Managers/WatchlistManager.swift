@@ -149,7 +149,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
         // Set<Int> gives us constant-time lookups (O(1))
         // Means we can instantly check if a coin is in the watchlist without querying Core Data.
         if isInWatchlist(coinId: coin.id) {
-            print("⚠️ Coin \(coin.symbol) is already in watchlist")
+            #if DEBUG
+            print("⚠️ Coin \(coin.symbol) (ID: \(coin.id)) is already in watchlist - skipping duplicate add")
+            #endif
             return
         }
         
@@ -174,19 +176,19 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
         // syncQueue: Used for synchronizing access to in-memory cache safely
         // Prevents race conditions between the UI and background updates
         
-        backgroundQueue.async { [weak self] in
+        // ✅ FIXED: Properly handle Core Data threading
+        let context = self.coreDataManager.context
+        context.perform { [weak self] in
             guard let self = self else { return }
             
-            let _ = CFAbsoluteTimeGetCurrent()
-            let context = self.coreDataManager.context
-            context.performAndWait {
-                let _ = WatchlistItem(context: context, coin: coin, logoURL: logoURL)
-            }
-            
             do {
+                // Create watchlist item on the correct queue
+                let _ = WatchlistItem(context: context, coin: coin, logoURL: logoURL)
+                
+                // Save on the context's queue
                 try context.save()
                 
-                // Now update the actual watchlist items after successful save
+                // Update the actual watchlist items after successful save
                 self.fetchWatchlistFromDatabase()
                 
                 DispatchQueue.main.async {
@@ -199,7 +201,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
                 }
             } catch {
                 // Rollback optimistic update on failure
+                #if DEBUG
                 print("❌ Failed to save to database: \(error)")
+                #endif
                 context.rollback()
                 self.syncQueue.async(flags: .barrier) {
                     self.localWatchlistCoinIds.remove(coin.id)
@@ -227,7 +231,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
         
         // O(1) existence check
         guard isInWatchlist(coinId: coinId) else {
-            print("⚠️ Coin with ID \(coinId) not found in watchlist")
+            #if DEBUG
+            print("⚠️ Coin with ID \(coinId) not found in watchlist - skipping remove operation")
+            #endif
             return
         }
         
@@ -252,48 +258,61 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             }
         }
         
-        backgroundQueue.async { [weak self] in
+        // ✅ FIXED: Properly handle Core Data threading
+        let context = self.coreDataManager.context
+        context.perform { [weak self] in
             guard let self = self else { return }
             
             let startTime = CFAbsoluteTimeGetCurrent()
             let predicate = NSPredicate(format: "id == %d", coinId)
-            let items = self.coreDataManager.fetchWatchlistItems(where: predicate)
             
-            guard let item = items.first else {
-                print("⚠️ Database inconsistency: coin not found")
-                return
-            }
+            // Fetch on the context's queue
+            let request: NSFetchRequest<WatchlistItem> = WatchlistItem.fetchRequest()
+            request.predicate = predicate
             
-            let context = self.coreDataManager.context
-            context.performAndWait {
-                context.delete(item)
-            }
             do {
+                let items = try context.fetch(request)
+                
+                guard let item = items.first else {
+                    #if DEBUG
+                    print("⚠️ Database inconsistency: coin not found")
+                    #endif
+                    return
+                }
+                
+                // Delete and save on the context's queue
+                context.delete(item)
                 try context.save()
+                
+                let deleteTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+                
+                // Update the actual watchlist items after successful delete
+                self.fetchWatchlistFromDatabase()
+                
+                DispatchQueue.main.async {
+                    #if DEBUG
+                    print("✅ SUCCESS: Removed coin (ID: \(coinId)) from watchlist")
+                    print("⚡ Database delete: \(String(format: "%.1f", deleteTime))ms")
+                    print("📊 New watchlist size: \(self.localWatchlistCoinIds.count) coins")
+                    self.printCurrentWatchlistCoins()
+                    print("🗑️ =====================================\n")
+                    #endif
+                    
+                    self.delegate?.watchlistDidUpdate()
+                    self.scheduleNotification(action: "remove", coinId: coinId)
+                }
             } catch {
                 // Restore optimistic removal on failure
+                #if DEBUG
+                print("❌ Failed to remove from database: \(error)")
+                #endif
                 context.rollback()
                 self.syncQueue.async(flags: .barrier) {
                     self.localWatchlistCoinIds.insert(coinId)
-                    DispatchQueue.main.async { self.watchlistCoinIds = self.localWatchlistCoinIds }
+                    DispatchQueue.main.async { 
+                        self.watchlistCoinIds = self.localWatchlistCoinIds 
+                    }
                 }
-            }
-            let deleteTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-            
-            // Update the actual watchlist items after successful delete
-            self.fetchWatchlistFromDatabase()
-            
-            DispatchQueue.main.async {
-                #if DEBUG
-                print("✅ SUCCESS: Removed coin (ID: \(coinId)) from watchlist")
-                print("⚡ Database delete: \(String(format: "%.1f", deleteTime))ms")
-                print("📊 New watchlist size: \(self.localWatchlistCoinIds.count) coins")
-                self.printCurrentWatchlistCoins()
-                print("🗑️ =====================================\n")
-                #endif
-                
-                self.delegate?.watchlistDidUpdate()
-                self.scheduleNotification(action: "remove", coinId: coinId)
             }
         }
     }
@@ -340,20 +359,20 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             }
         }
         
-        backgroundQueue.async { [weak self] in
+        // ✅ FIXED: Properly handle Core Data threading for batch operations
+        let context = self.coreDataManager.context
+        context.perform { [weak self] in
             guard let self = self else { return }
             
             let startTime = CFAbsoluteTimeGetCurrent()
-            let context = self.coreDataManager.context
             
-            // Create all items in single transaction on context queue
-            context.performAndWait {
+            do {
+                // Create all items in single transaction on context queue
                 let _ = coinsToAdd.map { coin in
                     WatchlistItem(context: context, coin: coin, logoURL: logoURLs[coin.id])
                 }
-            }
-            
-            do {
+                
+                // Save on the context's queue
                 try context.save()
                 let batchTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 
@@ -374,7 +393,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
                 }
             } catch {
                 // Rollback all optimistic updates
+                #if DEBUG
                 print("❌ Batch operation failed: \(error)")
+                #endif
                 context.rollback()
                 self.syncQueue.async(flags: .barrier) {
                     coinsToAdd.forEach { coin in
@@ -414,19 +435,25 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             }
         }
         
-        backgroundQueue.async { [weak self] in
+        // ✅ FIXED: Properly handle Core Data threading for batch removal
+        let context = self.coreDataManager.context
+        context.perform { [weak self] in
             guard let self = self else { return }
             
             let startTime = CFAbsoluteTimeGetCurrent()
             let predicate = NSPredicate(format: "id IN %@", validIds)
-            let items = self.coreDataManager.fetchWatchlistItems(where: predicate)
             
-            let context = self.coreDataManager.context
-            context.performAndWait {
-                items.forEach { context.delete($0) }
-            }
+            // Fetch on the context's queue
+            let request: NSFetchRequest<WatchlistItem> = WatchlistItem.fetchRequest()
+            request.predicate = predicate
             
             do {
+                let items = try context.fetch(request)
+                
+                // Delete all items in single transaction
+                items.forEach { context.delete($0) }
+                
+                // Save on the context's queue
                 try context.save()
                 let batchTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 
@@ -447,7 +474,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
                 }
             } catch {
                 // Rollback optimistic updates
+                #if DEBUG
                 print("❌ Batch remove failed: \(error)")
+                #endif
                 context.rollback()
                 self.syncQueue.async(flags: .barrier) {
                     validIds.forEach { coinId in
@@ -601,18 +630,23 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
             }
         }
         
-        backgroundQueue.async { [weak self] in
+        // ✅ FIXED: Properly handle Core Data threading for clear operation
+        let context = self.coreDataManager.context
+        context.perform { [weak self] in
             guard let self = self else { return }
             
             let startTime = CFAbsoluteTimeGetCurrent()
-            let items = self.coreDataManager.fetchWatchlistItems()
             
-            let context = self.coreDataManager.context
-            context.performAndWait {
-                items.forEach { context.delete($0) }
-            }
+            // Fetch all items on the context's queue
+            let request: NSFetchRequest<WatchlistItem> = WatchlistItem.fetchRequest()
             
             do {
+                let items = try context.fetch(request)
+                
+                // Delete all items in single transaction
+                items.forEach { context.delete($0) }
+                
+                // Save on the context's queue
                 try context.save()
                 let clearTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                 
@@ -633,7 +667,9 @@ final class WatchlistManager: ObservableObject, WatchlistManagerProtocol {
                 }
             } catch {
                 // Rollback on failure - restore all items by fetching from database
+                #if DEBUG
                 print("❌ Clear operation failed: \(error)")
+                #endif
                 context.rollback()
                 self.fetchWatchlistFromDatabase()
                 
