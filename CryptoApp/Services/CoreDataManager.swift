@@ -38,20 +38,39 @@ final class CoreDataManager: CoreDataManagerProtocol {
     // MARK: - Core Data Operations
     
     func save() {
-        if context.hasChanges {
-            do {
-                try context.save()
-                AppLogger.database("Core Data save successful", level: .debug)
-            } catch {
-                AppLogger.database("Core Data save error: \(error.localizedDescription)", level: .error)
-                print("⚠️ Core Data save failed: \(error.localizedDescription)")
+        // ✅ FIXED: Ensure save happens on correct context queue
+        context.perform { [weak self] in
+            guard let self = self else { return }
+            
+            if self.context.hasChanges {
+                do {
+                    try self.context.save()
+                    AppLogger.database("Core Data save successful", level: .debug)
+                } catch {
+                    AppLogger.database("Core Data save error: \(error.localizedDescription)", level: .error)
+                    print("⚠️ Core Data save failed: \(error.localizedDescription)")
+                }
             }
         }
     }
     
     func delete<T: NSManagedObject>(_ object: T) {
-        context.delete(object)
-        save()
+        // ✅ FIXED: Ensure delete happens on correct context queue
+        context.perform { [weak self] in
+            guard let self = self else { return }
+            
+            self.context.delete(object)
+            
+            if self.context.hasChanges {
+                do {
+                    try self.context.save()
+                    AppLogger.database("Core Data delete successful", level: .debug)
+                } catch {
+                    AppLogger.database("Core Data delete error: \(error.localizedDescription)", level: .error)
+                    print("⚠️ Core Data delete failed: \(error.localizedDescription)")
+                }
+            }
+        }
     }
     
     func fetch<T: NSManagedObject>(_ objectType: T.Type) -> [T] {
