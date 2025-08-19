@@ -786,29 +786,82 @@ final class AddCoinsVC: UIViewController {
         var addedCount = 0
         var removedCount = 0
         
-        // Handle additions
-        for coinId in coinsToAdd {
-            // Look in ALL available coin sources to ensure we find selected coins
-            // even if they're not in the current filtered results
-            let coin = allCoins.first(where: { $0.id == coinId }) ?? 
-                      filteredCoins.first(where: { $0.id == coinId }) ??
-                      cachedCoins.first(where: { $0.id == coinId })
+        #if DEBUG
+        print("\n🔄 AddCoinsVC: Starting batch watchlist operation")
+        print("🗑️ Coins to remove: \(coinsToRemoveFromWatchlist.count)")
+        print("➕ Coins to add: \(coinsToAdd.count)")
+        #endif
+        
+        // IMPORTANT: Handle removals FIRST to avoid conflicts
+        // This prevents race conditions between add/remove operations
+        let dispatchGroup = DispatchGroup()
+        
+        // Step 1: Process all removals first
+        if !coinsToRemoveFromWatchlist.isEmpty {
+            #if DEBUG
+            print("🗑️ Processing removals first...")
+            #endif
             
-            if let coin = coin {
-                let logoURL = viewModel.currentCoinLogos[coin.id]
-                watchlistManager.addToWatchlist(coin, logoURL: logoURL)
-                addedCount += 1
-                print("✅ AddCoinsVC: Successfully added \(coin.symbol) (\(coin.name)) to watchlist")
-            } else {
-                print("❌ AddCoinsVC: Failed to find coin with ID \(coinId) in any coin array")
+            // Use batch removal for better performance and atomicity
+            watchlistManager.removeMultipleFromWatchlist(coinIds: Array(coinsToRemoveFromWatchlist))
+            removedCount = coinsToRemoveFromWatchlist.count
+            
+            // Wait briefly to ensure removal operations complete before additions
+            dispatchGroup.enter()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                dispatchGroup.leave()
             }
         }
         
-        // Handle removals
-        for coinId in coinsToRemoveFromWatchlist {
-            watchlistManager.removeFromWatchlist(coinId: coinId)
-            removedCount += 1
+        // Step 2: Process additions after removals complete
+        dispatchGroup.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            
+            #if DEBUG
+            print("➕ Processing additions after removals completed...")
+            #endif
+            
+            // Collect coins to add for batch operation
+            var coinsToAddBatch: [Coin] = []
+            var logoURLs: [Int: String] = [:]
+            
+            for coinId in coinsToAdd {
+                // Look in ALL available coin sources to ensure we find selected coins
+                let coin = self.allCoins.first(where: { $0.id == coinId }) ?? 
+                          self.filteredCoins.first(where: { $0.id == coinId }) ??
+                          self.cachedCoins.first(where: { $0.id == coinId })
+                
+                if let coin = coin {
+                    #if DEBUG
+                    print("➕ AddCoinsVC: Preparing to add \(coin.symbol) (ID: \(coin.id))")
+                    #endif
+                    
+                    coinsToAddBatch.append(coin)
+                    logoURLs[coin.id] = self.viewModel.currentCoinLogos[coin.id]
+                    addedCount += 1
+                } else {
+                    #if DEBUG
+                    print("❌ AddCoinsVC: Failed to find coin with ID \(coinId)")
+                    #endif
+                }
+            }
+            
+            // Use batch addition for better performance
+            if !coinsToAddBatch.isEmpty {
+                watchlistManager.addMultipleToWatchlist(coinsToAddBatch, logoURLs: logoURLs)
+            }
+            
+            // Continue with UI updates
+            self.completeWatchlistOperation(addedCount: addedCount, removedCount: removedCount)
         }
+    }
+    
+    // MARK: - Complete Watchlist Operation
+    
+    private func completeWatchlistOperation(addedCount: Int, removedCount: Int) {
+        #if DEBUG
+        print("✅ AddCoinsVC: Completed batch operation - added: \(addedCount), removed: \(removedCount)")
+        #endif
         
         // Show success feedback
         var messageComponents: [String] = []
