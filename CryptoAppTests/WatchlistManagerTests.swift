@@ -64,12 +64,13 @@ final class WatchlistManagerTests: XCTestCase {
         }
         
         func save() {
-            context.performAndWait {
-                if context.hasChanges {
+            // Matches production async behavior for realistic testing
+            context.perform {
+                if self.context.hasChanges {
                     do { 
-                        try context.save() 
+                        try self.context.save() 
                     } catch { 
-                        context.rollback()
+                        self.context.rollback()
                         XCTFail("Core Data save error: \(error)") 
                     }
                 }
@@ -77,13 +78,14 @@ final class WatchlistManagerTests: XCTestCase {
         }
         
         func delete<T>(_ object: T) where T : NSManagedObject {
-            context.performAndWait {
-                context.delete(object)
-                if context.hasChanges {
+            // Matches production async behavior for realistic testing
+            context.perform {
+                self.context.delete(object)
+                if self.context.hasChanges {
                     do { 
-                        try context.save() 
+                        try self.context.save() 
                     } catch { 
-                        context.rollback()
+                        self.context.rollback()
                         XCTFail("Core Data delete save error: \(error)") 
                     }
                 }
