@@ -49,8 +49,12 @@ final class UIIntegration_SearchToDetailNavigationTests: XCTestCase {
     
     func testSearchToDetailNavigationInitializesDetailsVM() {
         // Given
+        // Test the complete user flow from search to coin detail navigation
+        // This simulates a user typing in search and selecting a result
         let exp = expectation(description: "search results then detail init")
+        // Variable to capture the first search result for detail navigation
         var firstResult: Coin?
+        // Flag to prevent multiple expectation fulfillments
         var fulfilled = false
         
         searchVM.searchResults
@@ -64,18 +68,21 @@ final class UIIntegration_SearchToDetailNavigationTests: XCTestCase {
             .store(in: &cancellables)
         
         // When - simulate user typing and selecting first result
+        // User types "COIN1" in the search field
         searchVM.updateSearchText("COIN1")
         wait(for: [exp], timeout: 2.0)
         
         // Then - init CoinDetailsVM for selected coin
+        // Verify we got a search result to navigate to
         XCTAssertNotNil(firstResult)
+        // Create details VM with the selected coin (simulates navigation)
         let detailsVM = CoinDetailsVM(
             coin: firstResult!,
             coinManager: mockCoinManager,
             sharedCoinDataManager: mockShared,
             requestManager: MockRequestManager()
         )
-        // Verify details VM can map range
+        // Verify details VM is properly initialized and can handle basic operations
         XCTAssertEqual(detailsVM.mapRangeToDays("24h"), "1")
     }
 }

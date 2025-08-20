@@ -37,11 +37,16 @@ final class RequestManagerTests: XCTestCase {
     
     func testBasicRequestExecution() {
         // Given
+        // Create expectation to wait for async request completion
         let expectation = XCTestExpectation(description: "Request should complete successfully")
+        // Define the expected result value to validate against
         let expectedValue = "test_result"
+        // Variable to capture the actual value received from the request
         var receivedValue: String?
         
         // When
+        // Execute a basic request with normal priority
+        // The request returns a delayed publisher that emits the expected value
         requestManager.executeRequest(key: "test_key", priority: .normal) {
             Just(expectedValue)
                 .setFailureType(to: Error.self)
@@ -63,6 +68,7 @@ final class RequestManagerTests: XCTestCase {
         
         // Then
         wait(for: [expectation], timeout: 2.0)
+        // Verify that the request completed successfully with the expected value
         XCTAssertEqual(receivedValue, expectedValue)
     }
     
@@ -70,17 +76,26 @@ final class RequestManagerTests: XCTestCase {
     
     func testRequestDeduplication() {
         // Given
+        // Create expectation for 3 simultaneous subscribers to the same request
         let expectation = XCTestExpectation(description: "All requests should complete with same result")
-        expectation.expectedFulfillmentCount = 3 // Three subscribers
+        expectation.expectedFulfillmentCount = 3
         
+        // Use the same key for all requests to trigger deduplication logic
         let key = "duplicate_test"
+        // Counter to verify the underlying request is only executed once
         var callCount = 0
+        // Array to collect results from all subscribers
         var results: [String] = []
+        // The result that all subscribers should receive
         let expectedResult = "shared_result"
         
+        // Factory function that creates the actual network request
+        // This simulates an expensive operation that should only be called once
         let createRequest = {
             return Future<String, Error> { promise in
+                // Increment counter to track how many times this is called
                 callCount += 1
+                // Simulate async work with a delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     promise(.success(expectedResult))
                 }
@@ -89,6 +104,7 @@ final class RequestManagerTests: XCTestCase {
         }
         
         // When - Fire three requests with same key simultaneously
+        // This tests the deduplication mechanism
         for i in 0..<3 {
             requestManager.executeRequest(key: key, priority: .normal, request: createRequest)
                 .sink(
@@ -107,8 +123,11 @@ final class RequestManagerTests: XCTestCase {
         
         // Then
         wait(for: [expectation], timeout: 2.0)
+        // Verify the underlying request was only executed once (deduplication worked)
         XCTAssertEqual(callCount, 1, "Request should only be called once due to deduplication")
+        // Verify all three subscribers received a result
         XCTAssertEqual(results.count, 3, "All three subscribers should receive the result")
+        // Verify all subscribers got the same result from the shared request
         XCTAssertTrue(results.allSatisfy { $0 == expectedResult }, "All results should be identical")
     }
     
@@ -116,19 +135,27 @@ final class RequestManagerTests: XCTestCase {
     
     func testPriorityLevels() {
         // When/Then - Test priority configurations
+        // Verify high priority has the shortest delay interval (fastest throttling reset)
         XCTAssertEqual(RequestPriority.high.delayInterval, 1.0)
+        // Verify normal priority has moderate delay interval
         XCTAssertEqual(RequestPriority.normal.delayInterval, 3.0)
+        // Verify low priority has the longest delay interval (slowest throttling reset)
         XCTAssertEqual(RequestPriority.low.delayInterval, 6.0)
     }
     
     func testHighPriorityBypassesThrottling() {
         // Given
+        // Create expectation for two consecutive high priority requests
         let expectation = XCTestExpectation(description: "High priority should bypass throttling")
         expectation.expectedFulfillmentCount = 2
         
+        // Counter to track how many requests actually complete
         var completionCount = 0
+        // Use the same key to test throttling bypass behavior
         let key = "high_priority_test"
         
+        // Factory for creating high priority requests
+        // High priority should bypass throttling and execute immediately
         let createRequest = {
             Just("high_priority_result")
                 .setFailureType(to: Error.self)
@@ -136,6 +163,7 @@ final class RequestManagerTests: XCTestCase {
         }
         
         // When - Fire two high priority requests quickly
+        // First high priority request
         requestManager.executeRequest(key: key, priority: .high, request: createRequest)
             .sink(
                 receiveCompletion: { _ in
@@ -143,6 +171,7 @@ final class RequestManagerTests: XCTestCase {
                     expectation.fulfill()
                     
                     // Immediate second request (should work for high priority)
+                    // This tests that high priority bypasses throttling
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         self.requestManager.executeRequest(key: key, priority: .high, request: createRequest)
                             .sink(
@@ -161,14 +190,19 @@ final class RequestManagerTests: XCTestCase {
         
         // Then
         wait(for: [expectation], timeout: 3.0)
+        // Verify both high priority requests completed successfully
+        // This confirms high priority bypasses throttling mechanisms
         XCTAssertEqual(completionCount, 2, "High priority should allow quick consecutive requests")
     }
     
     func testNormalPriorityThrottling() {
         // Given
+        // Test that normal priority requests are subject to throttling
         let expectation = XCTestExpectation(description: "Normal priority should be throttled")
+        // Variable to capture the throttling error
         var errorReceived: Error?
         
+        // Factory for creating normal priority requests
         let createRequest = {
             Just("result")
                 .setFailureType(to: Error.self)
@@ -177,10 +211,12 @@ final class RequestManagerTests: XCTestCase {
         
         // When - Test normal priority throttling
         let key = "normal_throttle_test"
+        // First normal priority request - should succeed
         requestManager.executeRequest(key: key, priority: .normal, request: createRequest)
             .sink(
                 receiveCompletion: { _ in 
                     // Immediate second request should be throttled
+                    // This tests that normal priority requests are subject to throttling
                     self.requestManager.executeRequest(key: key, priority: .normal, request: createRequest)
                         .sink(
                             receiveCompletion: { completion in
@@ -199,7 +235,9 @@ final class RequestManagerTests: XCTestCase {
         
         // Then
         wait(for: [expectation], timeout: 2.0)
+        // Verify that the second request was throttled
         XCTAssertNotNil(errorReceived, "Normal priority should be throttled")
+        // Verify the specific throttling error was returned
         XCTAssertEqual(errorReceived as? RequestError, .throttled)
     }
     
@@ -207,10 +245,13 @@ final class RequestManagerTests: XCTestCase {
     
     func testRequestErrorTypes() {
         // Given
+        // Test that specific RequestError types are properly handled and propagated
         let expectation = XCTestExpectation(description: "Should handle RequestError")
+        // Variable to capture the specific RequestError type
         var receivedError: RequestError?
         
         // When
+        // Execute a request that will emit a specific RequestError
         requestManager.executeRequest(key: "error_test", priority: .normal) {
             Fail<String, Error>(error: RequestError.throttled)
                 .eraseToAnyPublisher()
@@ -230,16 +271,21 @@ final class RequestManagerTests: XCTestCase {
         
         // Then
         wait(for: [expectation], timeout: 1.0)
+        // Verify the specific RequestError was properly propagated
         XCTAssertEqual(receivedError, .throttled)
     }
     
     func testNetworkErrorHandling() {
         // Given
+        // Test that generic network errors are properly handled and propagated
         let expectation = XCTestExpectation(description: "Network error should be handled")
+        // Create a realistic network error (no internet connection)
         let networkError = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: nil)
+        // Variable to capture the propagated network error
         var receivedError: Error?
         
         // When
+        // Execute a request that will emit a network error
         requestManager.executeRequest(key: "network_error_test", priority: .normal) {
             Fail<String, Error>(error: networkError)
                 .eraseToAnyPublisher()
@@ -259,7 +305,9 @@ final class RequestManagerTests: XCTestCase {
         
         // Then
         wait(for: [expectation], timeout: 1.0)
+        // Verify the network error was propagated
         XCTAssertNotNil(receivedError)
+        // Verify the error details are preserved
         let nsError = receivedError as NSError?
         XCTAssertEqual(nsError?.domain, NSURLErrorDomain)
         XCTAssertEqual(nsError?.code, NSURLErrorNotConnectedToInternet)
@@ -269,9 +317,11 @@ final class RequestManagerTests: XCTestCase {
     
     func testResetFunctionality() {
         // Given
+        // Test that the reset functionality clears internal state properly
         let expectation = XCTestExpectation(description: "Reset should work")
         
         // When - Setup some state then reset
+        // First execute a request to establish some internal state
         requestManager.executeRequest(key: "reset_test", priority: .normal) {
             Just("result").setFailureType(to: Error.self).eraseToAnyPublisher()
         }
@@ -284,9 +334,11 @@ final class RequestManagerTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
         
         // Reset and verify clean state
+        // This should clear all internal throttling and deduplication state
         requestManager.resetForTesting()
         
         // Then - Should be able to make requests again immediately
+        // After reset, the same key should be usable without throttling issues
         let postResetExpectation = XCTestExpectation(description: "Post-reset request should work")
         requestManager.executeRequest(key: "reset_test", priority: .normal) {
             Just("post_reset_result").setFailureType(to: Error.self).eraseToAnyPublisher()
@@ -298,6 +350,6 @@ final class RequestManagerTests: XCTestCase {
         .store(in: &cancellables)
         
         wait(for: [postResetExpectation], timeout: 1.0)
-        // Test passes if no errors occur
+        // Test passes if no errors occur - this confirms reset cleared all state
     }
 }

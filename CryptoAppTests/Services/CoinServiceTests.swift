@@ -46,10 +46,15 @@ final class CoinServiceTests: XCTestCase {
     
     func testFetchTopCoins_UsesCacheWhenAvailable() {
         // Given
+        // Configure mock cache to return cached data instead of hitting network
         mockCache.shouldReturnCachedData = true
+        // Create 4 fake coins and store them in the mock cache
+        // This simulates a cache hit scenario
         let coins = TestDataFactory.createMockCoins(count: 4)
         mockCache.mockCoins = coins
+        // Create expectation to wait for async operation to complete
         let exp = expectation(description: "coins from cache")
+        // Array to capture what the service returns
         var received: [Coin] = []
         
         // When
@@ -62,15 +67,23 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify that we received the exact number of cached coins
+        // This confirms the cache path was used successfully
         XCTAssertEqual(received.count, 4)
     }
     
     func testFetchTopCoins_FetchesAndCachesOnMiss() {
         // Given
+        // Simulates a Cache miss
         XCTAssertTrue(mockCache.mockCoins.isEmpty)
+        // Create 3 fake coin objects using data factory
+        // Assigns them to mockRequest
+        // When the service tries to fetch data, the request layer will return these 3 fake coins.
         let coins = TestDataFactory.createMockCoins(count: 3)
         mockRequest.mockCoins = coins
+        // Create an XCTest expectation, which allows waiting for async Combine publishers.
         let exp = expectation(description: "coins fetched and cached")
+        // Prepare an empty array 'received' to store what comes back from the service.
         var received: [Coin] = []
         
         // When
@@ -85,6 +98,7 @@ final class CoinServiceTests: XCTestCase {
         wait(for: [exp], timeout: 1.0)
         XCTAssertEqual(received.count, 3)
         // storeCoinList writes into mockCache.mockCoins
+        // Verify that the 3 coins are stored in cache after being fetched
         XCTAssertEqual(mockCache.mockCoins.count, 3)
     }
     
@@ -92,9 +106,14 @@ final class CoinServiceTests: XCTestCase {
     
     func testFetchCoinLogos_AllCachedShortCircuits() {
         // Given
+        // Configure cache to return stored data
         mockCache.shouldReturnCachedData = true
+        // Pre-populate cache with logos for coins 1 and 2
+        // This simulates all requested logos being already cached
         mockCache.mockLogos = [1: "logo1", 2: "logo2"]
+        // Create expectation for async operation
         let exp = expectation(description: "logos from cache only")
+        // Dictionary to capture returned logo mappings
         var received: [Int: String] = [:]
         
         // When
@@ -107,17 +126,25 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify we got back exactly 2 logos (no network request was made)
         XCTAssertEqual(received.count, 2)
+        // Verify the cached logo URLs were returned correctly
         XCTAssertEqual(received[1], "logo1")
         XCTAssertEqual(received[2], "logo2")
     }
     
     func testFetchCoinLogos_MergesMissingAndCachesMerged() {
-        // Given: ID 1 cached, ID 2 missing
+        // Given: Partial cache scenario - ID 1 cached, ID 2 missing
+        // Configure cache to return cached data when available
         mockCache.shouldReturnCachedData = true
+        // Only coin ID 1 has a cached logo
         mockCache.mockLogos = [1: "cached_logo_1"]
+        // Configure request manager to return logo for missing ID 2
+        // This simulates fetching the missing logo from network
         mockRequest.mockLogos = [2: "fetched_logo_2"]
+        // Create expectation for the merge operation
         let exp = expectation(description: "logos merged and cached")
+        // Dictionary to capture the merged results
         var received: [Int: String] = [:]
         
         // When
@@ -130,10 +157,13 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify we got both logos - one from cache, one from network
         XCTAssertEqual(received.count, 2)
+        // Verify the cached logo was preserved
         XCTAssertEqual(received[1], "cached_logo_1")
+        // Verify the fetched logo was included
         XCTAssertEqual(received[2], "fetched_logo_2")
-        // Cache should now contain both
+        // Cache should now contain both logos for future requests
         XCTAssertEqual(mockCache.mockLogos.count, 2)
     }
     
@@ -141,13 +171,20 @@ final class CoinServiceTests: XCTestCase {
     
     func testFetchQuotes_UsesCacheOrCachesOnFetch() {
         // Given
-        mockCache.shouldReturnCachedData = false // force fetch
+        // Force a cache miss to test the fetch-and-cache path
+        mockCache.shouldReturnCachedData = false
+        // Define coin IDs we want to fetch quotes for
         let ids = [101, 202]
+        // Create mock quote data that the request manager will return
+        // Only providing quote for ID 101 to test partial responses
         let q: [Int: Quote] = [
             101: Quote(price: 1, volume24h: 0, volumeChange24h: 0, percentChange1h: 0, percentChange24h: 0, percentChange7d: 0, percentChange30d: 0, percentChange60d: nil, percentChange90d: nil, marketCap: 0, marketCapDominance: 0, fullyDilutedMarketCap: 0, lastUpdated: "")
         ]
+        // Configure request manager to return our mock quotes
         mockRequest.mockQuotes = q
+        // Create expectation for async fetch operation
         let exp = expectation(description: "quotes fetched and cached")
+        // Dictionary to capture returned quotes
         var received: [Int: Quote] = [:]
         
         // When
@@ -160,8 +197,10 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify the fetched quote data is correct
         XCTAssertEqual(received[101]?.price, 1)
-        // Cache should have been written
+        // Cache should have been updated with the fetched data
+        // This ensures subsequent requests can use cached data
         XCTAssertEqual(mockCache.mockQuotes[101]?.price, 1)
     }
     
@@ -169,10 +208,15 @@ final class CoinServiceTests: XCTestCase {
     
     func testFetchCoinGeckoChartData_CachesOnSuccess() {
         // Given
-        mockCache.shouldReturnCachedData = false // force fetch
+        // Force network fetch by disabling cache returns
+        mockCache.shouldReturnCachedData = false
+        // Verify cache starts empty to ensure we're testing the fetch path
         XCTAssertTrue(mockCache.mockChartData.isEmpty)
+        // Configure request manager with mock chart data points
         mockRequest.mockChartData = [10, 20, 30]
+        // Create expectation for chart data fetch
         let exp = expectation(description: "chart fetched and cached")
+        // Array to capture returned chart data
         var received: [Double] = []
         
         // When
@@ -185,17 +229,25 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify the service returned the correct chart data
         XCTAssertEqual(received, [10,20,30])
+        // Verify the data was cached for future requests
         XCTAssertEqual(mockCache.mockChartData, [10,20,30])
     }
     
     func testFetchCoinGeckoOHLCData_CachesOnSuccess() {
         // Given
-        mockCache.shouldReturnCachedData = false // force fetch
+        // Force network fetch by bypassing cache
+        mockCache.shouldReturnCachedData = false
+        // Verify OHLC cache starts empty
         XCTAssertTrue(mockCache.mockOHLCData.isEmpty)
+        // Create mock OHLC candlestick data (3 candles)
         let ohlc = TestDataFactory.createMockOHLCData(candles: 3)
+        // Configure request manager to return our mock OHLC data
         mockRequest.mockOHLCData = ohlc
+        // Create expectation for OHLC data fetch
         let exp = expectation(description: "ohlc fetched and cached")
+        // Array to capture returned OHLC data
         var received: [OHLCData] = []
         
         // When
@@ -208,7 +260,9 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify we received the correct number of OHLC candles
         XCTAssertEqual(received.count, 3)
+        // Verify the OHLC data was cached for future requests
         XCTAssertEqual(mockCache.mockOHLCData.count, 3)
     }
     
@@ -216,10 +270,14 @@ final class CoinServiceTests: XCTestCase {
     
     func testFetchTopCoins_PropagatesErrorOnFailure() {
         // Given
+        // Disable cache to force network request path
         mockCache.shouldReturnCachedData = false
+        // Configure request manager to simulate a network failure
         mockRequest.shouldSucceed = false
         mockRequest.mockError = NetworkError.invalidResponse
+        // Create expectation for error propagation
         let exp = expectation(description: "top coins failure propagated")
+        // Variable to capture the error that gets propagated
         var receivedError: NetworkError?
         
         // When
@@ -234,15 +292,21 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify the network error was properly propagated to the caller
+        // This ensures error handling works throughout the service layer
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
     func testFetchQuotes_PropagatesErrorOnFailure() {
         // Given
+        // Force network path by disabling cache
         mockCache.shouldReturnCachedData = false
+        // Configure request manager to fail with network error
         mockRequest.shouldSucceed = false
         mockRequest.mockError = NetworkError.invalidResponse
+        // Create expectation for error handling
         let exp = expectation(description: "quotes failure propagated")
+        // Variable to capture propagated error
         var receivedError: NetworkError?
         
         // When
@@ -257,15 +321,20 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify quotes service properly propagates network errors
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
     func testFetchCoinGeckoChartData_PropagatesErrorOnFailure() {
         // Given
+        // Bypass cache to test network error path
         mockCache.shouldReturnCachedData = false
+        // Simulate chart data fetch failure
         mockRequest.shouldSucceed = false
         mockRequest.mockError = NetworkError.invalidResponse
+        // Create expectation for error propagation
         let exp = expectation(description: "chart failure propagated")
+        // Variable to capture the propagated error
         var receivedError: NetworkError?
         
         // When
@@ -280,15 +349,20 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify chart data service properly handles and propagates errors
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
     func testFetchCoinGeckoOHLCData_PropagatesErrorOnFailure() {
         // Given
+        // Force network request by disabling cache
         mockCache.shouldReturnCachedData = false
+        // Configure OHLC fetch to fail with network error
         mockRequest.shouldSucceed = false
         mockRequest.mockError = NetworkError.invalidResponse
+        // Create expectation for error handling
         let exp = expectation(description: "ohlc failure propagated")
+        // Variable to capture the error
         var receivedError: NetworkError?
         
         // When
@@ -303,16 +377,23 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify OHLC service properly propagates network errors
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
     func testFetchCoinLogos_ErrorReturnsCachedSubset() {
-        // Given: one cached, one missing; request fails -> should return cached subset only
+        // Given: Graceful degradation scenario - one cached, one missing
+        // When network fails, should return cached subset only
+        // Enable cache returns for the available logo
         mockCache.shouldReturnCachedData = true
+        // Only coin ID 1 has a cached logo
         mockCache.mockLogos = [1: "cached_logo_1"]
+        // Configure network request to fail when trying to fetch missing logo
         mockRequest.shouldSucceed = false
         mockRequest.mockError = NetworkError.invalidResponse
+        // Create expectation for graceful error handling
         let exp = expectation(description: "logos returns cached subset on error")
+        // Dictionary to capture partial results
         var received: [Int: String] = [:]
         
         // When
@@ -325,8 +406,11 @@ final class CoinServiceTests: XCTestCase {
         
         // Then
         wait(for: [exp], timeout: 1.0)
+        // Verify only the cached logo was returned (graceful degradation)
         XCTAssertEqual(received.count, 1)
+        // Verify the cached logo is correct
         XCTAssertEqual(received[1], "cached_logo_1")
+        // Verify the missing logo was not included (failed to fetch)
         XCTAssertNil(received[2])
     }
 }

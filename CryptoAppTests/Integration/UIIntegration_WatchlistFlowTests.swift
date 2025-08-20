@@ -52,11 +52,14 @@ final class UIIntegration_WatchlistFlowTests: XCTestCase {
     
     func testAddAndRemoveWatchlistFlowUpdatesUI() {
         // Given: choose an existing coin from shared data (ensures VM can resolve it)
+        // Test the complete watchlist flow: add coin -> verify UI update -> remove coin -> verify UI update
         guard let coin = mockShared.currentCoins.first else {
             XCTFail("No shared coins available for test"); return
         }
+        // Create separate expectations for add and remove operations
         let addExp = expectation(description: "watchlist add reflected in UI")
         let removeExp = expectation(description: "watchlist remove reflected in UI")
+        // Flags to prevent multiple expectation fulfillments
         var addFulfilled = false
         var removeFulfilled = false
         
@@ -74,13 +77,16 @@ final class UIIntegration_WatchlistFlowTests: XCTestCase {
             .store(in: &cancellables)
         
         // When - Add via manager
+        // User adds coin to watchlist (simulates tapping add button)
         mockWatchlist.addToWatchlist(coin, logoURL: nil)
-        // Re-emit shared data so VM filters and updates
+        // Re-emit shared data so VM filters and updates (simulates data refresh)
         mockShared.setMockCoins(mockShared.currentCoins)
         wait(for: [addExp], timeout: 3.0)
         
         // When - Remove via manager using coinId
+        // User removes coin from watchlist (simulates tapping remove button)
         mockWatchlist.removeFromWatchlist(coinId: coin.id)
+        // Re-emit shared data to trigger VM update
         mockShared.setMockCoins(mockShared.currentCoins)
         wait(for: [removeExp], timeout: 3.0)
     }

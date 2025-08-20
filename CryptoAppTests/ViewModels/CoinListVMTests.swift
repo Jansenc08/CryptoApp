@@ -60,8 +60,11 @@ final class CoinListVMTests: XCTestCase {
     
     func testPaginationLoadsNextPagesFromSharedData() {
         // Given: 50 coins available from shared data → VM shows 20 per page
+        // Create a large dataset to test pagination behavior
         let coins = TestDataFactory.createMockCoins(count: 50)
+        // Create expectation for receiving the first page of results
         let receivedExp = expectation(description: "received first page")
+        // Variable to capture the count of coins in the first page
         var page1Count = 0
         
         viewModel.coins
@@ -74,14 +77,18 @@ final class CoinListVMTests: XCTestCase {
             .store(in: &cancellables)
         
         // When: send shared coins to VM
+        // This triggers the VM to process the coins and emit the first page
         mockShared.setMockCoins(coins)
         wait(for: [receivedExp], timeout: 2.0)
         
         // Then: first page size should be 20
+        // Verify pagination limits the first page to 20 items
         XCTAssertEqual(page1Count, 20)
         
         // When: load more → should append next 20 (total 40)
+        // Test loading the second page of results
         let page2Exp = expectation(description: "received second page")
+        // Variable to capture total count after loading page 2
         var totalAfterPage2 = 0
         viewModel.coins
             .filter { $0.count == 40 }
@@ -91,12 +98,16 @@ final class CoinListVMTests: XCTestCase {
                 page2Exp.fulfill()
             }
             .store(in: &cancellables)
+        // Trigger loading of the second page
         viewModel.loadMoreCoins()
         wait(for: [page2Exp], timeout: 2.0)
+        // Verify total is now 40 (20 + 20)
         XCTAssertEqual(totalAfterPage2, 40)
         
         // When: load more → should append last 10 (total 50)
+        // Test loading the final page which has remaining 10 items
         let page3Exp = expectation(description: "received third page")
+        // Variable to capture final total count
         var totalAfterPage3 = 0
         viewModel.coins
             .filter { $0.count == 50 }
@@ -106,13 +117,17 @@ final class CoinListVMTests: XCTestCase {
                 page3Exp.fulfill()
             }
             .store(in: &cancellables)
+        // Trigger loading of the third page
         viewModel.loadMoreCoins()
         wait(for: [page3Exp], timeout: 2.0)
+        // Verify all 50 items are now loaded
         XCTAssertEqual(totalAfterPage3, 50)
         
         // When: load more again → should not change (no more data)
+        // Test that loadMore has no effect when all data is loaded
         viewModel.loadMoreCoins()
         wait(0.1)
+        // Verify count remains at 50 (no additional data to load)
         XCTAssertEqual(totalAfterPage3, 50)
     }
     
@@ -120,12 +135,16 @@ final class CoinListVMTests: XCTestCase {
     
     func testFetchCoinsUsesCachedOfflineData() {
         // Given: save offline data and mark cache fresh
+        // Create offline data that should be used when network is unavailable
         let cachedCoins = TestDataFactory.createMockCoins(count: 30)
         let cachedLogos = TestDataFactory.createMockLogos(for: cachedCoins.map { $0.id })
+        // Store the offline data in persistence layer
         mockPersistence.saveOfflineData(coins: cachedCoins, logos: cachedLogos)
         
         // When
+        // Create expectation for cached data retrieval
         let exp = expectation(description: "received cached first page")
+        // Array to capture the cached coins returned by the VM
         var received: [Coin] = []
         viewModel.coins
             .filter { !$0.isEmpty }
@@ -135,11 +154,14 @@ final class CoinListVMTests: XCTestCase {
                 exp.fulfill()
             }
             .store(in: &cancellables)
+        // Trigger coin fetching (should use cached data)
         viewModel.fetchCoins(convert: "USD", priority: .normal)
         wait(for: [exp], timeout: 2.0)
         
         // Then: should show first 20 from cached 30
+        // Verify pagination applies to cached data (first page of 20)
         XCTAssertEqual(received.count, 20)
+        // Verify the first coin has the expected ID from cached data
         XCTAssertEqual(received.first?.id, 1)
     }
     
@@ -147,10 +169,13 @@ final class CoinListVMTests: XCTestCase {
     
     func testFetchCoinsFailurePublishesErrorAndStopsLoading() {
         // Given
+        // Configure coin manager to simulate a network failure
         mockCoinManager.shouldSucceed = false
         
+        // Create expectation for loading state changes (should toggle twice)
         let loadingExp = expectation(description: "loading toggled")
         loadingExp.expectedFulfillmentCount = 2 // true then false
+        // Array to capture all loading state changes
         var loadingStates: [Bool] = []
         viewModel.isLoading
             .sink { isLoading in
@@ -159,7 +184,9 @@ final class CoinListVMTests: XCTestCase {
             }
             .store(in: &cancellables)
         
+        // Create expectation for error message publication
         let errorExp = expectation(description: "error message received")
+        // Variable to capture the error message
         var receivedError: String?
         viewModel.errorMessage
             .sink { message in
@@ -171,12 +198,16 @@ final class CoinListVMTests: XCTestCase {
             .store(in: &cancellables)
         
         // When
+        // Trigger fetch operation that will fail
         viewModel.fetchCoins(convert: "USD", priority: .high)
         wait(for: [loadingExp, errorExp], timeout: 3.0)
         
         // Then
+        // Verify loading state was turned on during the request
         XCTAssertTrue(loadingStates.contains(true))
+        // Verify loading state was turned off after the failure
         XCTAssertTrue(loadingStates.contains(false))
+        // Verify an error message was published for the user
         XCTAssertNotNil(receivedError)
     }
 }

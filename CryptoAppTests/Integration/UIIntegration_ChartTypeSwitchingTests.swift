@@ -44,9 +44,13 @@ final class UIIntegration_ChartTypeSwitchingTests: XCTestCase {
     
     func testSwitchLineToCandlestickUsesCacheIfAvailable() {
         // Given cached OHLC for 24h -> days "1"
+        // Test that switching chart types uses cached data when available
+        // Pre-populate cache with OHLC data for candlestick charts
         let ohlc = TestDataFactory.createMockOHLCData(candles: 4)
         CacheService.shared.storeOHLCData(ohlc, for: "btc", currency: "usd", days: "1")
+        // Create expectation for cached data usage
         let exp = expectation(description: "candlestick shows cached ohlc")
+        // Flag to prevent multiple expectation fulfillments
         var fulfilled = false
         
         vm.ohlcData
@@ -59,14 +63,18 @@ final class UIIntegration_ChartTypeSwitchingTests: XCTestCase {
             .store(in: &cancellables)
         
         // When
+        // User switches from line chart to candlestick chart
         vm.setChartType(.candlestick)
         wait(for: [exp], timeout: 2.0)
     }
     
     func testSwitchCandlestickToLineShowsChartPoints() {
         // Given chart data in cache for line
+        // Test switching from candlestick back to line chart using cached data
         CacheService.shared.storeChartData([1,2,3,4,5], for: "btc", currency: "usd", days: "1")
+        // Create expectation for cached line chart data
         let exp = expectation(description: "line shows cached points")
+        // Flag to prevent multiple expectation fulfillments
         var fulfilled = false
         
         vm.chartPoints
@@ -79,6 +87,7 @@ final class UIIntegration_ChartTypeSwitchingTests: XCTestCase {
             .store(in: &cancellables)
         
         // When
+        // User switches from candlestick back to line chart
         vm.setChartType(.line)
         wait(for: [exp], timeout: 2.0)
     }

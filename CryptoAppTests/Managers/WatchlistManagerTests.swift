@@ -264,31 +264,43 @@ final class WatchlistManagerTests: XCTestCase {
     
     func testAddAndFetchWatchlistItem() {
         // Given
+        // Create a test coin to add to the watchlist
         let coin = TestDataFactory.createMockCoin(id: 101, symbol: "AAA", name: "Alpha", rank: 1)
         
         // When
+        // Add the coin to the watchlist (this should persist to Core Data)
         watchlistManager.addToWatchlist(coin)
+        // Wait for the async Core Data operation to complete
         waitForOperationCompletion()
         
         // Then
+        // Verify the coin is now tracked as being in the watchlist
         XCTAssertTrue(watchlistManager.isInWatchlist(coinId: 101))
+        // Verify the manager's internal count matches the Core Data count
         XCTAssertEqual(watchlistManager.getWatchlistCount(), coreDataManager.fetchWatchlistItems().count)
+        // Verify exactly one item was persisted to Core Data
         XCTAssertEqual(coreDataManager.fetchWatchlistItems().count, 1)
     }
     
     func testRemoveWatchlistItem() {
         // Given
+        // Create and add a coin to establish initial state
         let coin = TestDataFactory.createMockCoin(id: 202, symbol: "BBB", name: "Beta", rank: 2)
         watchlistManager.addToWatchlist(coin)
         waitForOperationCompletion()
+        // Verify the coin was successfully added before testing removal
         XCTAssertTrue(watchlistManager.isInWatchlist(coinId: 202))
         
         // When
+        // Remove the coin from the watchlist by its ID
         watchlistManager.removeFromWatchlist(coinId: 202)
+        // Wait for the async Core Data deletion to complete
         waitForOperationCompletion()
         
         // Then
+        // Verify the coin is no longer tracked as being in the watchlist
         XCTAssertFalse(watchlistManager.isInWatchlist(coinId: 202))
+        // Verify the Core Data store is now empty
         XCTAssertEqual(coreDataManager.fetchWatchlistItems().count, 0)
     }
     
@@ -296,41 +308,58 @@ final class WatchlistManagerTests: XCTestCase {
     
     func testBatchAddAndRemoveWatchlistItems() {
         // Given
+        // Create 5 test coins for batch operations (IDs 1000-1004)
         let coinsToAdd = makeCoins(5, startId: 1000)
         
         // When - Batch add
+        // Add all 5 coins to the watchlist in a single batch operation
         watchlistManager.addMultipleToWatchlist(coinsToAdd)
+        // Wait for the batch Core Data operation to complete
         waitForOperationCompletion()
         
         // Then
+        // Verify all 5 coins were persisted to Core Data
         XCTAssertEqual(coreDataManager.fetchWatchlistItems().count, 5)
+        // Verify the manager's internal count is accurate
         XCTAssertEqual(watchlistManager.getWatchlistCount(), 5)
+        // Verify each coin is tracked as being in the watchlist
         XCTAssertTrue(coinsToAdd.allSatisfy { watchlistManager.isInWatchlist(coinId: $0.id) })
         
         // When - Batch remove subset
+        // Remove 3 out of 5 coins (every other coin: 1000, 1002, 1004)
         let idsToRemove = [1000, 1002, 1004]
         watchlistManager.removeMultipleFromWatchlist(coinIds: idsToRemove)
+        // Wait for the batch removal operation to complete
         waitForOperationCompletion()
         
         // Then - Remaining should be 2
+        // Verify only 2 items remain in Core Data (1001, 1003)
         XCTAssertEqual(coreDataManager.fetchWatchlistItems().count, 2)
+        // Verify the manager's count reflects the removals
         XCTAssertEqual(watchlistManager.getWatchlistCount(), 2)
+        // Verify the removed coins are no longer tracked in the watchlist
         XCTAssertFalse(idsToRemove.contains { watchlistManager.isInWatchlist(coinId: $0) })
     }
     
     func testClearWatchlist() {
         // Given
+        // Create 3 test coins and add them to establish state
         let coins = makeCoins(3, startId: 2000)
         watchlistManager.addMultipleToWatchlist(coins)
         waitForOperationCompletion()
+        // Verify initial state has 3 items
         XCTAssertEqual(watchlistManager.getWatchlistCount(), 3)
         
         // When
+        // Clear the entire watchlist (should remove all Core Data entries)
         watchlistManager.clearWatchlist()
+        // Wait for the bulk deletion operation to complete
         waitForOperationCompletion()
         
         // Then
+        // Verify the manager reports zero items
         XCTAssertEqual(watchlistManager.getWatchlistCount(), 0)
+        // Verify Core Data store is completely empty
         XCTAssertEqual(coreDataManager.fetchWatchlistItems().count, 0)
     }
     
@@ -338,6 +367,8 @@ final class WatchlistManagerTests: XCTestCase {
     
     func testAddRollbackOnSaveFailure() {
         // Given - Failing context
+        // Create a special Core Data stack that will fail on save operations
+        // This tests the optimistic update rollback mechanism
         guard let failingStack = InMemoryCoreDataStack() else { XCTFail("Failed to create failing stack"); return }
         let failingManager = TestCoreDataManager(context: failingStack.makeFailingContext())
         let failingWatchlist = WatchlistManager(coreDataManager: failingManager,
@@ -345,6 +376,7 @@ final class WatchlistManagerTests: XCTestCase {
                                                 persistenceService: persistenceService)
         
         // Wait for initialization
+        // The failing watchlist manager needs to initialize before we can test rollback
         let initExpectation = XCTestExpectation(description: "Failing watchlist initialization")
         DispatchQueue.global().async {
             var attempts = 0
@@ -357,12 +389,15 @@ final class WatchlistManagerTests: XCTestCase {
         }
         wait(for: [initExpectation], timeout: 6.0)
         
+        // Create a test coin for the rollback scenario
         let coin = TestDataFactory.createMockCoin(id: 303, symbol: "CCC", name: "Gamma", rank: 3)
         
         // When
+        // Attempt to add coin - this will trigger optimistic update followed by save failure
         failingWatchlist.addToWatchlist(coin)
         
         // Wait longer for rollback to occur
+        // The manager should detect the save failure and rollback the optimistic update
         let rollbackExpectation = XCTestExpectation(description: "Rollback completion")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             rollbackExpectation.fulfill()
@@ -370,13 +405,17 @@ final class WatchlistManagerTests: XCTestCase {
         wait(for: [rollbackExpectation], timeout: 2.0)
         
         // Then - Should rollback optimistic update
+        // Verify the coin is NOT in the watchlist (optimistic update was rolled back)
         XCTAssertFalse(failingWatchlist.isInWatchlist(coinId: 303))
+        // Verify Core Data remains empty (save failure prevented persistence)
         XCTAssertEqual(failingManager.fetchWatchlistItems().count, 0)
         _ = failingWatchlist // keep alive until test completes
     }
     
     func testBatchAddRollbackOnFailure() {
         // Given - Failing context
+        // Test batch add operation rollback when Core Data save fails
+        // This ensures multiple optimistic updates are all rolled back together
         guard let failingStack = InMemoryCoreDataStack() else { XCTFail("Failed to create failing stack"); return }
         let failingManager = TestCoreDataManager(context: failingStack.makeFailingContext())
         let failingWatchlist = WatchlistManager(coreDataManager: failingManager,
@@ -390,12 +429,15 @@ final class WatchlistManagerTests: XCTestCase {
         }
         wait(for: [initExpectation], timeout: 1.0)
         
+        // Create 4 test coins for batch operation testing
         let coins = makeCoins(4, startId: 4000)
         
         // When
+        // Attempt batch add - all coins should be optimistically added then rolled back
         failingWatchlist.addMultipleToWatchlist(coins)
         
         // Wait longer for batch rollback to occur
+        // Batch operations take slightly longer to rollback due to multiple IDs
         let rollbackExpectation = XCTestExpectation(description: "Batch rollback completion")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             rollbackExpectation.fulfill()
@@ -403,8 +445,11 @@ final class WatchlistManagerTests: XCTestCase {
         wait(for: [rollbackExpectation], timeout: 2.5)
         
         // Then - Should rollback all optimistic IDs
+        // Verify Core Data remains empty (batch save failed)
         XCTAssertEqual(failingManager.fetchWatchlistItems().count, 0)
+        // Verify manager reports zero count (all optimistic updates rolled back)
         XCTAssertEqual(failingWatchlist.getWatchlistCount(), 0)
+        // Verify none of the coins are tracked as being in watchlist
         XCTAssertFalse(coins.contains { failingWatchlist.isInWatchlist(coinId: $0.id) })
         _ = failingWatchlist // keep alive until test completes
     }

@@ -65,9 +65,13 @@ final class CoinDetailsVMTests: XCTestCase {
     
     func testFetchChartDataSuccess() {
         // Given
+        // Configure coin manager to simulate successful chart data fetch
         mockCoinManager.shouldSucceed = true
+        // Provide mock chart data points representing price over time
         mockCoinManager.mockChartData = [100.0, 101.5, 102.3]
+        // Create expectation for receiving chart data
         let exp = expectation(description: "chart points received")
+        // Array to capture the chart points returned by the VM
         var received: [Double] = []
         
         viewModel.chartPoints
@@ -84,13 +88,17 @@ final class CoinDetailsVMTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
         
         // Then
+        // Verify that chart data was successfully received
         XCTAssertFalse(received.isEmpty)
     }
     
     func testFetchChartDataErrorPublishesErrorState() {
         // Given (no cache due to setUp)
+        // Configure coin manager to simulate chart data fetch failure
         mockCoinManager.shouldSucceed = false
+        // Create expectation for error state publication
         let exp = expectation(description: "error state published")
+        // Flag to track if an error state was received
         var gotError = false
         
         viewModel.chartLoadingState
@@ -106,18 +114,24 @@ final class CoinDetailsVMTests: XCTestCase {
             .store(in: &cancellables)
         
         // When
+        // Trigger chart data fetch that will fail
         viewModel.fetchChartData(for: "24h")
         wait(for: [exp], timeout: 3.0)
         
         // Then
+        // Verify that an error state was published to inform the UI
         XCTAssertTrue(gotError)
     }
     
     func testChartDataUsesCachePathWithoutLoading() {
         // Given: Seed cache for btc 24h -> days "1"
+        // Pre-populate cache with chart data to test cache-first behavior
         CacheService.shared.storeChartData([200.0, 201.0], for: "btc", currency: "usd", days: "1")
+        // Create expectation for cached data retrieval
         let exp = expectation(description: "cached chart used")
+        // Array to capture chart data from cache
         var received: [Double] = []
+        // Array to track loading states (should not show loading when using cache)
         var loadingStates: [Bool] = []
         
         viewModel.isLoading
@@ -138,7 +152,9 @@ final class CoinDetailsVMTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
         
         // Then
+        // Verify cached data was returned (first point should be 200.0)
         XCTAssertEqual(received.first, 200.0)
+        // Verify no loading state was triggered (cache hit should be instant)
         XCTAssertFalse(loadingStates.contains(true))
     }
     
@@ -146,10 +162,15 @@ final class CoinDetailsVMTests: XCTestCase {
     
     func testOHLCDataFetchTriggeredAfterChart() {
         // Given
+        // Configure successful responses for both chart and OHLC data
         mockCoinManager.shouldSucceed = true
+        // Provide basic chart data that will trigger OHLC fetch
         mockCoinManager.mockChartData = [1, 2, 3]
+        // Provide mock OHLC (candlestick) data for testing
         mockCoinManager.mockOHLCData = TestDataFactory.createMockOHLCData(candles: 5)
+        // Create expectation for OHLC data reception
         let exp = expectation(description: "ohlc received")
+        // Array to capture OHLC candlestick data
         var candles: [OHLCData] = []
         
         viewModel.ohlcData
@@ -166,14 +187,18 @@ final class CoinDetailsVMTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
         
         // Then
+        // Verify OHLC data was automatically fetched and contains expected candles
         XCTAssertEqual(candles.count, 5)
     }
     
     func testSetChartTypeCandlestickUsesCachedOHLC() {
         // Given: Seed cached OHLC for btc 24h -> days "1"
+        // Pre-populate cache with OHLC data to test cache usage for chart type switching
         let cached = TestDataFactory.createMockOHLCData(candles: 3)
         CacheService.shared.storeOHLCData(cached, for: "btc", currency: "usd", days: "1")
+        // Create expectation for cached OHLC retrieval
         let exp = expectation(description: "ohlc from cache")
+        // Array to capture OHLC data from cache
         var candles: [OHLCData] = []
         
         viewModel.ohlcData
@@ -186,10 +211,12 @@ final class CoinDetailsVMTests: XCTestCase {
             .store(in: &cancellables)
         
         // When
+        // Switch to candlestick chart type (should use cached OHLC data)
         viewModel.setChartType(.candlestick)
         wait(for: [exp], timeout: 1.5)
         
         // Then
+        // Verify cached OHLC data was used for candlestick chart
         XCTAssertEqual(candles.count, 3)
     }
     
@@ -197,7 +224,9 @@ final class CoinDetailsVMTests: XCTestCase {
     
     func testPriceChangeIndicatorPublishedOnSharedUpdate() {
         // Given
+        // Test that price change indicators are published when shared data updates
         let exp = expectation(description: "price change indicator")
+        // Flag to prevent multiple fulfillments of the expectation
         var fulfilled = false
         
         viewModel.priceChange
@@ -210,9 +239,11 @@ final class CoinDetailsVMTests: XCTestCase {
             .store(in: &cancellables)
         
         // When: update shared with new price for BTC
+        // Create an updated version of the base coin with a higher price
         var updated = [baseCoin!]
         if var coin = updated.first,
            let old = coin.quote?["USD"] {
+            // Create a new quote with a price increase of $100
             let newQuote = Quote(
                 price: (old.price ?? 0) + 100.0,
                 volume24h: old.volume24h,
@@ -231,6 +262,7 @@ final class CoinDetailsVMTests: XCTestCase {
             coin.quote?["USD"] = newQuote
             updated[0] = coin
         }
+        // Update shared data manager with the new coin data
         mockShared.setMockCoins(updated)
         
         // Then
@@ -241,8 +273,11 @@ final class CoinDetailsVMTests: XCTestCase {
     
     func testSmartAutoRefreshFetchesWhenNoCacheAndNoCooldown() {
         // Given (no cache due to setUp)
+        // Test that smart auto-refresh triggers when there's no cached data
         mockCoinManager.shouldSucceed = true
+        // Provide fresh chart data for the auto-refresh
         mockCoinManager.mockChartData = [10, 11, 12]
+        // Create expectation for auto-refresh completion
         let exp = expectation(description: "auto refresh chart")
         
         viewModel.chartPoints
@@ -252,6 +287,7 @@ final class CoinDetailsVMTests: XCTestCase {
             .store(in: &cancellables)
         
         // When
+        // Trigger smart auto-refresh which should fetch data since cache is empty
         viewModel.smartAutoRefresh(for: "24h")
         wait(for: [exp], timeout: 3.0)
     }
@@ -260,8 +296,11 @@ final class CoinDetailsVMTests: XCTestCase {
     
     func testRetryChartDataCallsFetch() {
         // Given
+        // Test that retry mechanism properly re-attempts chart data fetch
         mockCoinManager.shouldSucceed = true
+        // Provide chart data for the retry attempt
         mockCoinManager.mockChartData = [9, 8, 7]
+        // Create expectation for retry completion
         let exp = expectation(description: "retry chart")
         
         viewModel.chartPoints
@@ -271,6 +310,7 @@ final class CoinDetailsVMTests: XCTestCase {
             .store(in: &cancellables)
         
         // When
+        // Trigger retry mechanism (typically called after an error)
         viewModel.retryChartData()
         wait(for: [exp], timeout: 2.0)
     }
