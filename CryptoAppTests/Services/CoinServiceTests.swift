@@ -44,7 +44,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - Top Coins
     
-    func testFetchTopCoins_UsesCacheWhenAvailable() {
+    func testFetchTopCoinsUsesCacheWhenAvailable() {
         // Given
         // Configure mock cache to return cached data instead of hitting network
         mockCache.shouldReturnCachedData = true
@@ -72,7 +72,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(received.count, 4)
     }
     
-    func testFetchTopCoins_FetchesAndCachesOnMiss() {
+    func testFetchTopCoinsFetchesAndCachesOnMiss() {
         // Given
         // Simulates a Cache miss
         XCTAssertTrue(mockCache.mockCoins.isEmpty)
@@ -104,7 +104,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - Logos (partial cache merge)
     
-    func testFetchCoinLogos_AllCachedShortCircuits() {
+    func testFetchCoinLogosAllCachedShortCircuits() {
         // Given
         // Configure cache to return stored data
         mockCache.shouldReturnCachedData = true
@@ -133,7 +133,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(received[2], "logo2")
     }
     
-    func testFetchCoinLogos_MergesMissingAndCachesMerged() {
+    func testFetchCoinLogosMergesMissingAndCachesMerged() {
         // Given: Partial cache scenario - ID 1 cached, ID 2 missing
         // Configure cache to return cached data when available
         mockCache.shouldReturnCachedData = true
@@ -169,7 +169,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - Quotes
     
-    func testFetchQuotes_UsesCacheOrCachesOnFetch() {
+    func testFetchQuotesUsesCacheOrCachesOnFetch() {
         // Given
         // Force a cache miss to test the fetch-and-cache path
         mockCache.shouldReturnCachedData = false
@@ -206,7 +206,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - CoinGecko Chart/OHLC
     
-    func testFetchCoinGeckoChartData_CachesOnSuccess() {
+    func testFetchCoinGeckoChartDataCachesOnSuccess() {
         // Given
         // Force network fetch by disabling cache returns
         mockCache.shouldReturnCachedData = false
@@ -235,7 +235,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(mockCache.mockChartData, [10,20,30])
     }
     
-    func testFetchCoinGeckoOHLCData_CachesOnSuccess() {
+    func testFetchCoinGeckoOHLCDataCachesOnSuccess() {
         // Given
         // Force network fetch by bypassing cache
         mockCache.shouldReturnCachedData = false
@@ -268,7 +268,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - Negative paths (error propagation)
     
-    func testFetchTopCoins_PropagatesErrorOnFailure() {
+    func testFetchTopCoinsPropagatesErrorOnFailure() {
         // Given
         // Disable cache to force network request path
         mockCache.shouldReturnCachedData = false
@@ -297,7 +297,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchQuotes_PropagatesErrorOnFailure() {
+    func testFetchQuotesPropagatesErrorOnFailure() {
         // Given
         // Force network path by disabling cache
         mockCache.shouldReturnCachedData = false
@@ -325,7 +325,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchCoinGeckoChartData_PropagatesErrorOnFailure() {
+    func testFetchCoinGeckoChartDataPropagatesErrorOnFailure() {
         // Given
         // Bypass cache to test network error path
         mockCache.shouldReturnCachedData = false
@@ -353,7 +353,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchCoinGeckoOHLCData_PropagatesErrorOnFailure() {
+    func testFetchCoinGeckoOHLCDataPropagatesErrorOnFailure() {
         // Given
         // Force network request by disabling cache
         mockCache.shouldReturnCachedData = false
@@ -381,7 +381,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchCoinLogos_ErrorReturnsCachedSubset() {
+    func testFetchCoinLogosErrorReturnsCachedSubset() {
         // Given: Graceful degradation scenario - one cached, one missing
         // When network fails, should return cached subset only
         // Enable cache returns for the available logo
