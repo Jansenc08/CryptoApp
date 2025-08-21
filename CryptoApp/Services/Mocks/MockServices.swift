@@ -2,8 +2,14 @@ import Foundation
 import Combine
 import CoreData
 
-// MARK: - Mock Cache Service
+// MARK: - Mock services:
+/**
+* MockCacheService, MockPersistenceService,
+* MockCoreDataManager, MockRequestManager, MockCoinService,
+* MockCoinManager, MockWatchlistManager, MockSharedCoinDataManager.
+*/
 
+// MARK: - Mock Cache Service
 /**
  * MOCK CACHE SERVICE
  * 
