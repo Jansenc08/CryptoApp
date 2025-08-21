@@ -22,39 +22,12 @@ class FilterModalVC: UIViewController {
     
     // MARK: - UI Components
     
-    private lazy var containerView: UIView = {
-        let view = UIView()
-        view.backgroundColor = .systemBackground
-        view.layer.cornerRadius = 16
-        view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private lazy var handleView: UIView = {
-        let view = UIView()
-        view.backgroundColor = .systemGray3
-        view.layer.cornerRadius = 2
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private lazy var closeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "xmark"), for: .normal)
-        button.tintColor = .systemGray
-        button.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
     private lazy var titleLabel: UILabel = {
         let label = UILabel()
         label.font = .systemFont(ofSize: 18, weight: .semibold)
         label.textColor = .label
         label.numberOfLines = 1
-        label.setContentHuggingPriority(.required, for: .horizontal)
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -76,9 +49,6 @@ class FilterModalVC: UIViewController {
         self.filterType = filterType
         self.currentState = currentState
         super.init(nibName: nil, bundle: nil)
-        
-        modalPresentationStyle = .overFullScreen
-        modalTransitionStyle = .crossDissolve
     }
     
     required init?(coder: NSCoder) {
@@ -90,63 +60,39 @@ class FilterModalVC: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        setupGestures()
         setupFilterOptions()
-        animateIn()
     }
     
     // MARK: - Setup
     
     private func setupUI() {
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        view.backgroundColor = .systemBackground
         
         titleLabel.text = filterType.title
         
-        view.addSubview(containerView)
-        containerView.addSubviews(handleView, closeButton, titleLabel, tableView)
+        // Add close button to navigation bar to match AddCoinsVC
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "xmark"),
+            style: .plain,
+            target: self,
+            action: #selector(closeButtonTapped)
+        )
+        navigationItem.rightBarButtonItem?.tintColor = .systemGray
+        
+        view.addSubviews(titleLabel, tableView)
         
         NSLayoutConstraint.activate([
-            // Container view
-            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            containerView.heightAnchor.constraint(equalToConstant: 400),
-            
-            // Handle view
-            handleView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
-            handleView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            handleView.widthAnchor.constraint(equalToConstant: 40),
-            handleView.heightAnchor.constraint(equalToConstant: 4),
-            
-            // Close button
-            closeButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
-            closeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
-            closeButton.widthAnchor.constraint(equalToConstant: 30),
-            closeButton.heightAnchor.constraint(equalToConstant: 30),
-            
             // Title label
-            titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 20),
-            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -16),
-            titleLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 22),
+            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             
             // Table view
             tableView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 24),
-            tableView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-    }
-    
-    private func setupGestures() {
-        // Tap to dismiss
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
-        tapGesture.delegate = self
-        view.addGestureRecognizer(tapGesture)
-        
-        // Pan to dismiss
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        containerView.addGestureRecognizer(panGesture)
     }
     
     private func setupFilterOptions() {
@@ -168,67 +114,17 @@ class FilterModalVC: UIViewController {
         }
     }
     
-    // MARK: - Animations
-    
-    private func animateIn() {
-        containerView.transform = CGAffineTransform(translationX: 0, y: containerView.frame.height)
-        
-        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0, options: .curveEaseInOut) {
-            self.containerView.transform = .identity
-        }
-    }
-    
-    private func animateOut(completion: @escaping () -> Void) {
-        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseInOut) {
-            self.containerView.transform = CGAffineTransform(translationX: 0, y: self.containerView.frame.height)
-            self.view.alpha = 0
-        } completion: { _ in
-            completion()
-        }
-    }
-    
     // MARK: - Actions
     
     @objc private func closeButtonTapped() {
         dismiss(cancelled: true)
     }
     
-    @objc private func backgroundTapped() {
-        dismiss(cancelled: true)
-    }
-    
-    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        let translation = gesture.translation(in: view)
-        let velocity = gesture.velocity(in: view)
-        
-        switch gesture.state {
-        case .changed:
-            if translation.y > 0 {
-                containerView.transform = CGAffineTransform(translationX: 0, y: translation.y)
-            }
-        case .ended:
-            let shouldDismiss = translation.y > 100 || velocity.y > 1000
-            
-            if shouldDismiss {
-                dismiss(cancelled: true)
-            } else {
-                UIView.animate(withDuration: 0.3) { [weak self] in
-                    self?.containerView.transform = .identity
-                }
-            }
-        default:
-            break
-        }
-    }
-    
     private func dismiss(cancelled: Bool) {
-        animateOut { [weak self] in
-            guard let self = self else { return }
-            if cancelled && !self.wasSelectionMade {
-                self.delegate?.filterModalVCDidCancel(self)
-            }
-            self.dismiss(animated: false)
+        if cancelled && !wasSelectionMade {
+            delegate?.filterModalVCDidCancel(self)
         }
+        dismiss(animated: true)
     }
 }
 
@@ -287,11 +183,3 @@ extension FilterModalVC: UITableViewDelegate {
         return 50
     }
 }
-
-// MARK: - UIGestureRecognizerDelegate
-
-extension FilterModalVC: UIGestureRecognizerDelegate {
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        return touch.view == view
-    }
-} 

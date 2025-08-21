@@ -17,7 +17,7 @@ import Combine
 final class CoinService: CoinServiceProtocol {
 
     private let baseURL = "https://pro-api.coinmarketcap.com/v1"
-    private let apiKey = "75a2f1e1-2522-4937-8d50-4e1d80b80b8b"       // CoinMarketCap Demo API Key
+    private let apiKey = "033a44f7-443b-4729-995c-2ca07f5bdaff"       // CoinMarketCap Demo API Key
     private let coinGeckoBaseURL = "https://api.coingecko.com/api/v3" // CoinGecko Base URL
     private let coinGeckoApiKey = "CG-yzBqmCqY8VybDQbMxbRZhaL9"       // CoinGecko Demo API Key
     

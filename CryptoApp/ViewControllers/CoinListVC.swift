@@ -1259,13 +1259,27 @@ extension CoinListVC: FilterHeaderViewDelegate {
     func filterHeaderView(_ headerView: FilterHeaderView, didTapPriceChangeButton button: FilterButton) {
         let modalVC = FilterModalVC(filterType: .priceChange, currentState: viewModel.currentFilterState)
         modalVC.delegate = self
-        present(modalVC, animated: true)
+        let nav = UINavigationController(rootViewController: modalVC)
+        nav.modalPresentationStyle = .pageSheet
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.custom { _ in return 350 }] //custom height
+            sheet.prefersGrabberVisible = true
+            sheet.preferredCornerRadius = 16
+        }
+        present(nav, animated: true)
     }
     
     func filterHeaderView(_ headerView: FilterHeaderView, didTapTopCoinsButton button: FilterButton) {
         let modalVC = FilterModalVC(filterType: .topCoins, currentState: viewModel.currentFilterState)
         modalVC.delegate = self
-        present(modalVC, animated: true)
+        let nav = UINavigationController(rootViewController: modalVC)
+        nav.modalPresentationStyle = .pageSheet
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.custom { _ in return 350 }] //custom height
+            sheet.prefersGrabberVisible = true
+            sheet.preferredCornerRadius = 16
+        }
+        present(nav, animated: true)
     }
     
     func filterHeaderView(_ headerView: FilterHeaderView, didTapAddCoinsButton button: UIButton) {
