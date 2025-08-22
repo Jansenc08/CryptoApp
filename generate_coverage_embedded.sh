@@ -588,8 +588,8 @@ html_content = f'''<!DOCTYPE html>
         </div>
         
         <div class="actions">
-            <a href="../coverage.json" class="btn" download> Download JSON Report</a>
-            <a href="coverage_summary.txt" class="btn" download> Download Summary</a>
+            <a href="../coverage.json" class="btn" download> View JSON Report</a>
+            <a href="coverage_summary.txt" class="btn" download> View Summary</a>
         </div>
         
         <div class="timestamp">
