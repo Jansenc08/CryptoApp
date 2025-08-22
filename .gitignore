@@ -30,6 +30,10 @@ playground.xcworkspace
 # Code coverage
 *.gcov
 *.lcov
+coverage_reports/
+*.xccovreport
+*.profdata
+*.profraw
 
 # AppCode
 .idea/ 
