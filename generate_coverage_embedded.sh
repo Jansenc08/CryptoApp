@@ -195,6 +195,59 @@ total_tests = sys.argv[4]
 with open(json_file, 'r') as f:
     coverage_data = json.load(f)
 
+# Filter out UI files from the coverage data
+def should_exclude_file(filename):
+    name = filename.lower()
+    return (name.endswith('viewcontroller.swift') or 
+            name.endswith('vc.swift') or
+            'appdelegate' in name or 
+            'scenedelegate' in name or
+            'storyboard' in name or
+            name.endswith('view.swift') or
+            name.endswith('cell.swift') or
+            'tableview' in name or
+            'collectionview' in name or
+            name.endswith('.m') or  # Exclude Objective-C implementation files
+            name.endswith('.h') or  # Exclude Objective-C header files
+            'mock' in name or       # Exclude mock services and test utilities
+            'stub' in name or       # Exclude stub implementations
+            'fake' in name or       # Exclude fake implementations
+            'marker' in name or     # Exclude chart markers (UI components)
+            'button' in name or     # Exclude UI buttons
+            'skeleton' in name or   # Exclude skeleton loading views
+            'balloon' in name or    # Exclude balloon markers
+            'icon' in name or       # Exclude icon generators
+            'theme' in name or      # Exclude theme/styling files
+            'statitem' in name)     # Exclude simple UI model structs
+
+# Filter the coverage data to exclude UI files
+for target in coverage_data.get('targets', []):
+    if target.get('files'):
+        # Filter out UI files
+        original_files = target['files']
+        filtered_files = [f for f in original_files if not should_exclude_file(f.get('name', ''))]
+        target['files'] = filtered_files
+        
+        # Recalculate target totals based on filtered files
+        total_executable = sum(f.get('executableLines', 0) for f in filtered_files)
+        total_covered = sum(f.get('coveredLines', 0) for f in filtered_files)
+        
+        target['executableLines'] = total_executable
+        target['coveredLines'] = total_covered
+        target['lineCoverage'] = total_covered / total_executable if total_executable > 0 else 0
+
+# Also update root level totals
+all_files = []
+for target in coverage_data.get('targets', []):
+    all_files.extend(target.get('files', []))
+
+root_executable = sum(f.get('executableLines', 0) for f in all_files)
+root_covered = sum(f.get('coveredLines', 0) for f in all_files)
+
+coverage_data['executableLines'] = root_executable
+coverage_data['coveredLines'] = root_covered
+coverage_data['lineCoverage'] = root_covered / root_executable if root_executable > 0 else 0
+
 # Generate the HTML with embedded data
 html_content = f'''<!DOCTYPE html>
 <html lang="en">
@@ -556,7 +609,7 @@ html_content = f'''<!DOCTYPE html>
     <div class="container">
         <div class="header">
             <h1>🛡️ Test Coverage Report</h1>
-            <p class="subtitle">CryptoApp iOS Application</p>
+            <p class="subtitle">CryptoApp iOS Application (Core Logic Only)</p>
         </div>
         
         <div class="stats-grid" id="statsGrid">
@@ -620,11 +673,49 @@ html_content = f'''<!DOCTYPE html>
                 return;
             }}
             
-            // Calculate stats from the app target
-            const totalLines = appTarget.executableLines || 0;
-            const coveredLines = appTarget.coveredLines || 0;
-            const fileCount = appTarget.files ? appTarget.files.length : 0;
-            const overallCoverage = totalLines > 0 ? Math.round((coveredLines / totalLines) * 100) : 0;
+            // Calculate stats from important files only (exclude VCs, delegates, views)
+            let totalLines = 0;
+            let coveredLines = 0;
+            let fileCount = 0;
+            
+            if (appTarget.files) {{
+                appTarget.files
+                    .filter(file => file.name && !file.name.includes('Test'))
+                    .filter(file => {{
+                        const name = file.name.toLowerCase();
+                        // Exclude UI components, Objective-C files, and test utilities
+                        return !name.includes('viewcontroller') && 
+                               !name.includes('vc.swift') &&
+                               !name.includes('appdelegate') && 
+                               !name.includes('scenedelegate') &&
+                               !name.includes('storyboard') &&
+                               !name.includes('view.swift') &&
+                               !name.includes('cell.swift') &&
+                               !name.includes('tableview') &&
+                               !name.includes('collectionview') &&
+                               !name.endsWith('.m') &&      // Exclude Objective-C
+                               !name.endsWith('.h') &&      // Exclude Objective-C headers
+                               !name.includes('mock') &&    // Exclude mock services
+                               !name.includes('stub') &&    // Exclude stub implementations
+                               !name.includes('fake') &&    // Exclude fake implementations
+                               !name.includes('marker') &&  // Exclude chart markers
+                               !name.includes('button') &&  // Exclude UI buttons
+                               !name.includes('skeleton') && // Exclude skeleton views
+                               !name.includes('balloon') && // Exclude balloon markers
+                               !name.includes('icon') &&    // Exclude icon generators
+                               !name.includes('theme') &&   // Exclude theme files
+                               !name.includes('statitem');
+                    }})
+                    .forEach(file => {{
+                        totalLines += file.executableLines || 0;
+                        coveredLines += file.coveredLines || 0;
+                        fileCount++;
+                    }});
+            }}
+            
+            // Use the same calculation method as the terminal output for consistency
+            const overallCoverage = totalLines > 0 ? 
+                Math.round((coveredLines / totalLines) * 10000) / 100 : 0;
             
             // Update stats
             document.getElementById('overallCoverage').textContent = overallCoverage + '%';
@@ -654,6 +745,31 @@ html_content = f'''<!DOCTYPE html>
             
             const files = appTarget.files
                 .filter(file => file.name && !file.name.includes('Test'))
+                .filter(file => {{
+                    const name = file.name.toLowerCase();
+                    // Exclude UI components, Objective-C files, and test utilities
+                    return !name.includes('viewcontroller') && 
+                           !name.includes('vc.swift') &&
+                           !name.includes('appdelegate') && 
+                           !name.includes('scenedelegate') &&
+                           !name.includes('storyboard') &&
+                           !name.includes('view.swift') &&
+                           !name.includes('cell.swift') &&
+                           !name.includes('tableview') &&
+                           !name.includes('collectionview') &&
+                           !name.endsWith('.m') &&      // Exclude Objective-C
+                           !name.endsWith('.h') &&      // Exclude Objective-C headers
+                           !name.includes('mock') &&    // Exclude mock services
+                           !name.includes('stub') &&    // Exclude stub implementations
+                           !name.includes('fake') &&    // Exclude fake implementations
+                           !name.includes('marker') &&  // Exclude chart markers
+                           !name.includes('button') &&  // Exclude UI buttons
+                           !name.includes('skeleton') && // Exclude skeleton views
+                           !name.includes('balloon') && // Exclude balloon markers
+                           !name.includes('icon') &&    // Exclude icon generators
+                           !name.includes('theme') &&   // Exclude theme files
+                           !name.includes('statitem');
+                }})
                 .sort((a, b) => {{
                     const aCoverage = a.lineCoverage || 0;
                     const bCoverage = b.lineCoverage || 0;
@@ -695,7 +811,37 @@ html_content = f'''<!DOCTYPE html>
 with open(html_file, 'w') as f:
     f.write(html_content)
 
+# Save the filtered JSON data
+filtered_json_file = json_file.replace('.json', '_filtered.json')
+with open(filtered_json_file, 'w') as f:
+    json.dump(coverage_data, f, indent=2)
+
 print("✅ Embedded HTML coverage report generated successfully")
+print(f"✅ Filtered JSON report saved as: {filtered_json_file}")
+
+# Generate filtered text summary
+app_target = next((t for t in coverage_data['targets'] if 'CryptoApp.app' in t.get('name', '')), None)
+if app_target:
+    summary_lines = []
+    summary_lines.append("Filtered Coverage Report (Core Logic Only)")
+    summary_lines.append("=" * 50)
+    summary_lines.append(f"Overall: {app_target['lineCoverage']:.2%} ({app_target['coveredLines']}/{app_target['executableLines']})")
+    summary_lines.append("")
+    summary_lines.append("File Details:")
+    summary_lines.append("-" * 50)
+    
+    for file in sorted(app_target.get('files', []), key=lambda f: f.get('lineCoverage', 0), reverse=True):
+        name = file.get('name', '').split('/')[-1]
+        coverage = file.get('lineCoverage', 0)
+        covered = file.get('coveredLines', 0)
+        total = file.get('executableLines', 0)
+        summary_lines.append(f"{name:<40} {coverage:>6.1%} ({covered}/{total})")
+    
+    filtered_summary_file = html_file.replace('index.html', 'coverage_summary_filtered.txt')
+    with open(filtered_summary_file, 'w') as f:
+        f.write('\n'.join(summary_lines))
+    
+    print(f"✅ Filtered text summary saved as: {filtered_summary_file}")
 EOF
 
 echo -e "${GREEN}✅ Coverage reports generated successfully!${NC}"
