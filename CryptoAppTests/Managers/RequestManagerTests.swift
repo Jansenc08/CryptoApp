@@ -353,3 +353,132 @@ final class RequestManagerTests: XCTestCase {
         // Test passes if no errors occur - this confirms reset cleared all state
     }
 }
+
+// MARK: - Additional coverage for wrappers and casting paths
+extension RequestManagerTests {
+    func testFetchTopCoinsWrapperReturnsData() {
+        // Given
+        let coins = TestDataFactory.createMockCoins(count: 3)
+        let exp = expectation(description: "top coins")
+        var received: [Coin] = []
+        
+        // When
+        requestManager.fetchTopCoins(
+            limit: 3,
+            convert: "USD",
+            start: 1,
+            sortType: "market_cap",
+            sortDir: "desc",
+            priority: .normal,
+            apiCall: {
+                Just(coins)
+                    .setFailureType(to: NetworkError.self)
+                    .eraseToAnyPublisher()
+            }
+        )
+        .sink(
+            receiveCompletion: { _ in exp.fulfill() },
+            receiveValue: { received = $0 }
+        )
+        .store(in: &cancellables)
+        
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(received.count, 3)
+        XCTAssertEqual(received.first?.id, 1)
+    }
+    
+    func testFetchCoinLogosWrapperReturnsData() {
+        // Given
+        let ids = [1,2,3]
+        let logos = TestDataFactory.createMockLogos(for: ids)
+        let exp = expectation(description: "logos")
+        var received: [Int:String] = [:]
+        
+        // When
+        requestManager.fetchCoinLogos(ids: ids, priority: .low) {
+            Just(logos).eraseToAnyPublisher()
+        }
+        .sink(
+            receiveCompletion: { _ in exp.fulfill() },
+            receiveValue: { received = $0 }
+        )
+        .store(in: &cancellables)
+        
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(received.count, 3)
+        XCTAssertEqual(received[1]?.contains("logo1"), true)
+    }
+    
+    func testFetchQuotesWrapperSuccess() {
+        // Given
+        let ids = [1,2]
+        let q1 = Quote(price: 1.0, volume24h: nil, volumeChange24h: nil, percentChange1h: nil, percentChange24h: 1, percentChange7d: nil, percentChange30d: nil, percentChange60d: nil, percentChange90d: nil, marketCap: nil, marketCapDominance: nil, fullyDilutedMarketCap: nil, lastUpdated: nil)
+        let q2 = Quote(price: 2.0, volume24h: nil, volumeChange24h: nil, percentChange1h: nil, percentChange24h: -1, percentChange7d: nil, percentChange30d: nil, percentChange60d: nil, percentChange90d: nil, marketCap: nil, marketCapDominance: nil, fullyDilutedMarketCap: nil, lastUpdated: nil)
+        let quotes = [1:q1, 2:q2]
+        let exp = expectation(description: "quotes")
+        var received: [Int:Quote] = [:]
+        
+        // When
+        requestManager.fetchQuotes(ids: ids, convert: "USD", priority: .normal) {
+            Just(quotes)
+                .setFailureType(to: NetworkError.self)
+                .eraseToAnyPublisher()
+        }
+        .sink(
+            receiveCompletion: { _ in exp.fulfill() },
+            receiveValue: { received = $0 }
+        )
+        .store(in: &cancellables)
+        
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(received[1]?.price, 1.0)
+        XCTAssertEqual(received[2]?.price, 2.0)
+    }
+    
+    func testExecuteRequestCastingErrorWhenTypeMismatchOnDedup() {
+        // Given: start a request that publishes Int for a key and stays active for a short time
+        // Use high priority and delay output so throttling doesn't trigger and activeRequests contains the publisher
+        let key = "cast_mismatch"
+        requestManager.executeRequest(key: key, priority: .high) {
+            Just(123)
+                .setFailureType(to: Error.self)
+                .delay(for: .milliseconds(200), scheduler: DispatchQueue.main)
+                .eraseToAnyPublisher()
+        }
+        .sink(
+            receiveCompletion: { _ in },
+            receiveValue: { (_: Int) in }
+        )
+        .store(in: &cancellables)
+
+        // When: while first request is still active, request the same key expecting a different type
+        let secondDone = expectation(description: "second")
+        var receivedError: RequestError?
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            self.requestManager.executeRequest(key: key, priority: .high) {
+                Just("abc")
+                    .setFailureType(to: Error.self)
+                    .eraseToAnyPublisher()
+            }
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let err) = completion {
+                        receivedError = err as? RequestError
+                    }
+                    secondDone.fulfill()
+                },
+                receiveValue: { (_: String) in
+                    XCTFail("Should not succeed with mismatched type")
+                }
+            )
+            .store(in: &self.cancellables)
+        }
+        
+        // Then
+        wait(for: [secondDone], timeout: 2.0)
+        XCTAssertEqual(receivedError, .castingError)
+    }
+}

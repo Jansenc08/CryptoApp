@@ -490,10 +490,10 @@ html_content = f'''<!DOCTYPE html>
             display: inline-block;
         }}
         
-        .good {{ 
-            color: #BCFF2F; 
-            background: rgba(188, 255, 47, 0.1);
-            border-color: #BCFF2F;
+                .good {{ 
+            color: #BCFF2F;
+            background: transparent;
+            border: none;
         }}
         .coverage-fill.good {{ 
             background: linear-gradient(90deg, #BCFF2F 0%, #9FE82A 100%) !important;
@@ -503,8 +503,8 @@ html_content = f'''<!DOCTYPE html>
         
         .medium {{ 
             color: #FFA500;
-            background: rgba(255, 165, 0, 0.1);
-            border-color: #FFA500;
+            background: transparent;
+            border: none;
         }}
         .coverage-fill.medium {{ 
             background: linear-gradient(90deg, #FFA500 0%, #FF8C00 100%) !important;
@@ -514,8 +514,8 @@ html_content = f'''<!DOCTYPE html>
         
         .poor {{ 
             color: #FF4444;
-            background: rgba(255, 68, 68, 0.1);
-            border-color: #FF4444;
+            background: transparent;
+            border: none;
         }}
         .coverage-fill.poor {{ 
             background: linear-gradient(90deg, #FF5A5A 0%, #CC3A3A 100%) !important;

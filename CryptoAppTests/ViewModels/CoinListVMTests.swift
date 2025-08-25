@@ -211,3 +211,91 @@ final class CoinListVMTests: XCTestCase {
         XCTAssertNotNil(receivedError)
     }
 }
+
+// MARK: - Additional behavior tests merged here for cohesion
+extension CoinListVMTests {
+    func testUpdateSortingByPriceAscendingAndDescending() {
+        // Given: create coins with different prices
+        var coins = TestDataFactory.createMockCoins(count: 5)
+        func setPrice(_ id: Int, _ price: Double) {
+            if let old = coins[id-1].quote?["USD"] {
+                let q = Quote(
+                    price: price,
+                    volume24h: old.volume24h,
+                    volumeChange24h: old.volumeChange24h,
+                    percentChange1h: old.percentChange1h,
+                    percentChange24h: old.percentChange24h,
+                    percentChange7d: old.percentChange7d,
+                    percentChange30d: old.percentChange30d,
+                    percentChange60d: old.percentChange60d,
+                    percentChange90d: old.percentChange90d,
+                    marketCap: old.marketCap,
+                    marketCapDominance: old.marketCapDominance,
+                    fullyDilutedMarketCap: old.fullyDilutedMarketCap,
+                    lastUpdated: old.lastUpdated
+                )
+                coins[id-1].quote?["USD"] = q
+            }
+        }
+        setPrice(1, 10)
+        setPrice(2, 50)
+        setPrice(3, 30)
+        setPrice(4, 5)
+        setPrice(5, 80)
+
+        // Seed shared data
+        mockShared.setMockCoins(coins)
+
+        // Wait initial publish (count < 20 so all 5 arrive)
+        let initial = expectation(description: "initial coins")
+        viewModel.coins.filter { !$0.isEmpty }.prefix(1).sink { _ in initial.fulfill() }.store(in: &cancellables)
+        wait(for: [initial], timeout: 1.0)
+
+        // When: sort ASC
+        viewModel.updateSorting(column: .price, order: .ascending)
+        XCTAssertEqual(viewModel.currentCoins.first?.id, 4) // lowest price first
+
+        // When: sort DESC
+        viewModel.updateSorting(column: .price, order: .descending)
+        XCTAssertEqual(viewModel.currentCoins.first?.id, 5) // highest price first
+    }
+
+    func testFetchPriceUpdatesPublishesUpdatedCoinIds() {
+        // Given
+        let coins = TestDataFactory.createMockCoins(count: 10)
+        mockShared.setMockCoins(coins)
+
+        let updateExp = expectation(description: "updated ids")
+        var updatedIds: Set<Int> = []
+        viewModel.updatedCoinIds.sink { ids in
+            if !ids.isEmpty { updatedIds = ids; updateExp.fulfill() }
+        }.store(in: &cancellables)
+
+        // Prepare updated quotes for first two coins
+        let q1 = Quote(price: 60000, volume24h: nil, volumeChange24h: nil, percentChange1h: nil, percentChange24h: 1.0, percentChange7d: nil, percentChange30d: nil, percentChange60d: nil, percentChange90d: nil, marketCap: nil, marketCapDominance: nil, fullyDilutedMarketCap: nil, lastUpdated: nil)
+        let q2 = Quote(price: 100, volume24h: nil, volumeChange24h: nil, percentChange1h: nil, percentChange24h: -2.0, percentChange7d: nil, percentChange30d: nil, percentChange60d: nil, percentChange90d: nil, marketCap: nil, marketCapDominance: nil, fullyDilutedMarketCap: nil, lastUpdated: nil)
+        mockCoinManager.mockQuotes = [1: q1, 2: q2]
+
+        let done = expectation(description: "done")
+        viewModel.fetchPriceUpdates { done.fulfill() }
+        wait(for: [updateExp, done], timeout: 2.0)
+
+        XCTAssertTrue(updatedIds.contains(1))
+        XCTAssertTrue(updatedIds.contains(2))
+    }
+
+    func testUpdateTopCoinsFilterTriggersRecompute() {
+        // Given
+        let coins = TestDataFactory.createMockCoins(count: 150)
+        mockShared.setMockCoins(coins)
+        let initial = expectation(description: "initial")
+        viewModel.coins.filter { !$0.isEmpty }.prefix(1).sink { _ in initial.fulfill() }.store(in: &cancellables)
+        wait(for: [initial], timeout: 1.0)
+
+        // When: change top coins filter
+        viewModel.updateTopCoinsFilter(.top200)
+
+        // Then: still paginates to 20 on first page
+        XCTAssertEqual(viewModel.currentCoins.count, 20)
+    }
+}
