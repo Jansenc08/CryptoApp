@@ -104,7 +104,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - Logos (partial cache merge)
     
-    func testFetchCoinLogosAllCachedShortCircuits() {
+    func testFetchCoinLogos_whenAllRequestedIdsCached_returnsCachedLogosOnly() {
         // Given
         // Configure cache to return stored data
         mockCache.shouldReturnCachedData = true
@@ -133,7 +133,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(received[2], "logo2")
     }
     
-    func testFetchCoinLogosMergesMissingAndCachesMerged() {
+    func testFetchCoinLogos_whenPartiallyCached_fetchesMissingMergesAndCaches() {
         // Given: Partial cache scenario - ID 1 cached, ID 2 missing
         // Configure cache to return cached data when available
         mockCache.shouldReturnCachedData = true
@@ -169,7 +169,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - Quotes
     
-    func testFetchQuotesUsesCacheOrCachesOnFetch() {
+    func testFetchQuotes_onCacheMiss_fetchesThenCaches() {
         // Given
         // Force a cache miss to test the fetch-and-cache path
         mockCache.shouldReturnCachedData = false
@@ -206,7 +206,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - CoinGecko Chart/OHLC
     
-    func testFetchCoinGeckoChartDataCachesOnSuccess() {
+    func testFetchCoinGeckoChartData_onSuccess_cachesResult() {
         // Given
         // Force network fetch by disabling cache returns
         mockCache.shouldReturnCachedData = false
@@ -235,7 +235,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(mockCache.mockChartData, [10,20,30])
     }
     
-    func testFetchCoinGeckoOHLCDataCachesOnSuccess() {
+    func testFetchCoinGeckoOHLCData_onSuccess_cachesResult() {
         // Given
         // Force network fetch by bypassing cache
         mockCache.shouldReturnCachedData = false
@@ -268,7 +268,7 @@ final class CoinServiceTests: XCTestCase {
     
     // MARK: - Negative paths (error propagation)
     
-    func testFetchTopCoinsPropagatesErrorOnFailure() {
+    func testFetchTopCoins_onFailure_propagatesNetworkError() {
         // Given
         // Disable cache to force network request path
         mockCache.shouldReturnCachedData = false
@@ -297,7 +297,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchQuotesPropagatesErrorOnFailure() {
+    func testFetchQuotes_onFailure_propagatesNetworkError() {
         // Given
         // Force network path by disabling cache
         mockCache.shouldReturnCachedData = false
@@ -325,7 +325,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchCoinGeckoChartDataPropagatesErrorOnFailure() {
+    func testFetchCoinGeckoChartData_onFailure_propagatesNetworkError() {
         // Given
         // Bypass cache to test network error path
         mockCache.shouldReturnCachedData = false
@@ -353,7 +353,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchCoinGeckoOHLCDataPropagatesErrorOnFailure() {
+    func testFetchCoinGeckoOHLCData_onFailure_propagatesNetworkError() {
         // Given
         // Force network request by disabling cache
         mockCache.shouldReturnCachedData = false
@@ -381,7 +381,7 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertEqual(receivedError, .invalidResponse)
     }
     
-    func testFetchCoinLogosErrorReturnsCachedSubset() {
+    func testFetchCoinLogos_whenNetworkFails_returnsOnlyCachedSubset() {
         // Given: Graceful degradation scenario - one cached, one missing
         // When network fails, should return cached subset only
         // Enable cache returns for the available logo
@@ -414,3 +414,285 @@ final class CoinServiceTests: XCTestCase {
         XCTAssertNil(received[2])
     }
 }
+
+// MARK: - Additional cache-first and merge behavior tests (readable naming)
+extension CoinServiceTests {
+    func testChartDataUsesCacheWhenAvailableEvenIfNetworkFails() {
+        // Given: chart data is cached
+        mockCache.shouldReturnCachedData = true
+        mockCache.mockChartData = [1, 2, 3]
+        // Simulate network failure to ensure cache path short-circuits network
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NetworkError.invalidResponse
+
+        let exp = expectation(description: "chart data from cache")
+        var received: [Double] = []
+
+        // When
+        service.fetchCoinGeckoChartData(for: "bitcoin", currency: "usd", days: "7")
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { XCTFail("Should not fail when cache is available: \(err)") }
+            }, receiveValue: { data in
+                received = data
+                exp.fulfill()
+            })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(received, [1,2,3])
+    }
+
+    func testOHLCDataUsesCacheWhenAvailableEvenIfNetworkFails() {
+        // Given: OHLC data is cached
+        mockCache.shouldReturnCachedData = true
+        mockCache.mockOHLCData = TestDataFactory.createMockOHLCData(candles: 2)
+        // Simulate network failure
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NetworkError.invalidResponse
+
+        let exp = expectation(description: "ohlc from cache")
+        var receivedCount = 0
+
+        // When
+        service.fetchCoinGeckoOHLCData(for: "bitcoin", currency: "usd", days: "1")
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { XCTFail("Should not fail when cache is available: \(err)") }
+            }, receiveValue: { data in
+                receivedCount = data.count
+                exp.fulfill()
+            })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(receivedCount, 2)
+    }
+
+    func testFetchCoinLogosSecondCallUsesMergedCacheWithoutNetwork() {
+        // Given: first call fetches missing logos and caches merged result
+        mockCache.shouldReturnCachedData = true
+        mockCache.mockLogos = [1: "cached_1"] // partially cached
+        mockRequest.shouldSucceed = true
+        mockRequest.mockLogos = [2: "fetched_2"] // network provides missing
+
+        let first = expectation(description: "first merge")
+        service.fetchCoinLogos(forIDs: [1,2])
+            .sink { _ in first.fulfill() }
+            .store(in: &cancellables)
+        wait(for: [first], timeout: 1.0)
+
+        // Now cache should contain both 1 and 2
+        XCTAssertEqual(mockCache.mockLogos.count, 2)
+
+        // When: simulate network failure; second call should return fully from cache
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NetworkError.invalidResponse
+
+        let second = expectation(description: "second uses cache only")
+        var received: [Int:String] = [:]
+        service.fetchCoinLogos(forIDs: [1,2])
+            .sink { logos in
+                received = logos
+                second.fulfill()
+            }
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [second], timeout: 1.0)
+        XCTAssertEqual(received[1], "cached_1")
+        XCTAssertEqual(received[2], "fetched_2")
+    }
+
+    func testChartDataCachesAfterFetchThenNextCallIsCacheHit() {
+        // Given: start with cache miss
+        mockCache.shouldReturnCachedData = false
+        mockCache.mockChartData = []
+        mockRequest.shouldSucceed = true
+        mockRequest.mockChartData = [7, 8, 9]
+
+        let first = expectation(description: "first fetch caches")
+        service.fetchCoinGeckoChartData(for: "bitcoin", currency: "usd", days: "7")
+            .sink(receiveCompletion: { _ in }, receiveValue: { _ in first.fulfill() })
+            .store(in: &cancellables)
+        wait(for: [first], timeout: 1.0)
+
+        // Ensure cached
+        XCTAssertEqual(mockCache.mockChartData, [7,8,9])
+
+        // When: force cache path and fail network
+        mockCache.shouldReturnCachedData = true
+        mockRequest.shouldSucceed = false
+
+        let second = expectation(description: "second uses cache")
+        var received: [Double] = []
+        service.fetchCoinGeckoChartData(for: "bitcoin", currency: "usd", days: "7")
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { XCTFail("Should use cache on second: \(err)") }
+            }, receiveValue: { data in
+                received = data
+                second.fulfill()
+            })
+            .store(in: &cancellables)
+
+        wait(for: [second], timeout: 1.0)
+        XCTAssertEqual(received, [7,8,9])
+    }
+
+    func testTopCoinsMapsNonNetworkErrorToUnknown() {
+        // Given: network path with generic NSError
+        mockCache.shouldReturnCachedData = false
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NSError(domain: "Test", code: -123)
+
+        let exp = expectation(description: "top coins unknown error mapping")
+        var receivedError: NetworkError?
+
+        // When
+        service.fetchTopCoins(limit: 2, convert: "USD", start: 1)
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { receivedError = err; exp.fulfill() }
+            }, receiveValue: { _ in XCTFail("Should not succeed") })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        if case .unknown = receivedError { } else { XCTFail("Expected .unknown mapping") }
+    }
+
+    func testQuotesMapsNonNetworkErrorToUnknown() {
+        // Given
+        mockCache.shouldReturnCachedData = false
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NSError(domain: "Test", code: -1)
+
+        let exp = expectation(description: "quotes unknown error mapping")
+        var receivedError: NetworkError?
+
+        // When
+        service.fetchQuotes(for: [1,2], convert: "USD")
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { receivedError = err; exp.fulfill() }
+            }, receiveValue: { _ in XCTFail("Should not succeed") })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        if case .unknown = receivedError { } else { XCTFail("Expected .unknown mapping") }
+    }
+
+    func testChartMapsNonNetworkErrorToUnknown() {
+        // Given
+        mockCache.shouldReturnCachedData = false
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NSError(domain: "Test", code: -2)
+
+        let exp = expectation(description: "chart unknown error mapping")
+        var receivedError: NetworkError?
+
+        // When
+        service.fetchCoinGeckoChartData(for: "bitcoin", currency: "usd", days: "7")
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { receivedError = err; exp.fulfill() }
+            }, receiveValue: { _ in XCTFail("Should not succeed") })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        if case .unknown = receivedError { } else { XCTFail("Expected .unknown mapping") }
+    }
+
+    func testOHLCMapsNonNetworkErrorToUnknown() {
+        // Given
+        mockCache.shouldReturnCachedData = false
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NSError(domain: "Test", code: -3)
+
+        let exp = expectation(description: "ohlc unknown error mapping")
+        var receivedError: NetworkError?
+
+        // When
+        service.fetchCoinGeckoOHLCData(for: "bitcoin", currency: "usd", days: "7")
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { receivedError = err; exp.fulfill() }
+            }, receiveValue: { _ in XCTFail("Should not succeed") })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        if case .unknown = receivedError { } else { XCTFail("Expected .unknown mapping") }
+    }
+
+    func testFetchCoinLogosErrorWithNoCacheReturnsEmpty() {
+        // Given: no cache available, network fails
+        mockCache.shouldReturnCachedData = false
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NetworkError.invalidResponse
+
+        let exp = expectation(description: "logos empty on error without cache")
+        var received: [Int:String] = [ : ]
+
+        // When
+        service.fetchCoinLogos(forIDs: [42])
+            .sink { logos in
+                received = logos
+                exp.fulfill()
+            }
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertTrue(received.isEmpty)
+    }
+
+    func testFetchCoinLogosReturnsOnlyRequestedIdsFromCache() {
+        // Given: cache has more logos than requested
+        mockCache.shouldReturnCachedData = true
+        mockCache.mockLogos = [1: "a", 2: "b", 3: "c"]
+
+        let exp = expectation(description: "logos only requested ids")
+        var received: [Int:String] = [:]
+
+        // When: request subset [1,3]
+        service.fetchCoinLogos(forIDs: [1,3])
+            .sink { logos in
+                received = logos
+                exp.fulfill()
+            }
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(received.count, 2)
+        XCTAssertEqual(received[1], "a")
+        XCTAssertEqual(received[3], "c")
+        XCTAssertNil(received[2])
+    }
+
+    func testFetchTopCoinsCacheHitShortCircuitsWhenNetworkFails() {
+        // Given: cache has coins
+        mockCache.shouldReturnCachedData = true
+        mockCache.mockCoins = TestDataFactory.createMockCoins(count: 2)
+        // And simulate network failure
+        mockRequest.shouldSucceed = false
+        mockRequest.mockError = NetworkError.invalidResponse
+
+        let exp = expectation(description: "top coins from cache on failure")
+        var receivedCount = 0
+
+        // When
+        service.fetchTopCoins(limit: 2, convert: "USD", start: 1)
+            .sink(receiveCompletion: { completion in
+                if case .failure(let err) = completion { XCTFail("Should not fail when cache exists: \(err)") }
+            }, receiveValue: { list in
+                receivedCount = list.count
+                exp.fulfill()
+            })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(receivedCount, 2)
+    }
+}
+

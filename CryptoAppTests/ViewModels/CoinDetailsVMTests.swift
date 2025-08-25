@@ -63,7 +63,7 @@ final class CoinDetailsVMTests: XCTestCase {
     
     // MARK: - Chart Data
     
-    func testFetchChartDataSuccess() {
+    func testFetchChartData_whenSuccess_emitsChartPoints() {
         // Given
         // Configure coin manager to simulate successful chart data fetch
         mockCoinManager.shouldSucceed = true
@@ -92,7 +92,7 @@ final class CoinDetailsVMTests: XCTestCase {
         XCTAssertFalse(received.isEmpty)
     }
     
-    func testFetchChartDataErrorPublishesErrorState() {
+    func testFetchChartData_whenFailure_publishesErrorState() {
         // Given (no cache due to setUp)
         // Configure coin manager to simulate chart data fetch failure
         mockCoinManager.shouldSucceed = false
@@ -123,7 +123,7 @@ final class CoinDetailsVMTests: XCTestCase {
         XCTAssertTrue(gotError)
     }
     
-    func testChartDataUsesCachePathWithoutLoading() {
+    func testFetchChartData_whenCacheHit_doesNotToggleLoading() {
         // Given: Seed cache for btc 24h -> days "1"
         // Pre-populate cache with chart data to test cache-first behavior
         CacheService.shared.storeChartData([200.0, 201.0], for: "btc", currency: "usd", days: "1")
@@ -160,7 +160,7 @@ final class CoinDetailsVMTests: XCTestCase {
     
     // MARK: - OHLC Data
     
-    func testOHLCDataFetchTriggeredAfterChart() {
+    func testFetchChartData_whenSuccess_triggersOHLCDataFetch() {
         // Given
         // Configure successful responses for both chart and OHLC data
         mockCoinManager.shouldSucceed = true
@@ -191,7 +191,7 @@ final class CoinDetailsVMTests: XCTestCase {
         XCTAssertEqual(candles.count, 5)
     }
     
-    func testSetChartTypeCandlestickUsesCachedOHLC() {
+    func testSetChartType_whenCandlestick_usesCachedOHLCIfAvailable() {
         // Given: Seed cached OHLC for btc 24h -> days "1"
         // Pre-populate cache with OHLC data to test cache usage for chart type switching
         let cached = TestDataFactory.createMockOHLCData(candles: 3)
@@ -222,7 +222,7 @@ final class CoinDetailsVMTests: XCTestCase {
     
     // MARK: - Price Change Indicator
     
-    func testPriceChangeIndicatorPublishedOnSharedUpdate() {
+    func testPriceChangeIndicator_whenSharedPriceUpdates_emitsIndicator() {
         // Given
         // Test that price change indicators are published when shared data updates
         let exp = expectation(description: "price change indicator")
@@ -271,7 +271,7 @@ final class CoinDetailsVMTests: XCTestCase {
     
     // MARK: - Smart Auto-Refresh
     
-    func testSmartAutoRefreshFetchesWhenNoCacheAndNoCooldown() {
+    func testSmartAutoRefresh_whenNoCacheAndNoCooldown_fetchesChartData() {
         // Given (no cache due to setUp)
         // Test that smart auto-refresh triggers when there's no cached data
         mockCoinManager.shouldSucceed = true
@@ -294,7 +294,7 @@ final class CoinDetailsVMTests: XCTestCase {
     
     // MARK: - Retry
     
-    func testRetryChartDataCallsFetch() {
+    func testRetryChartData_callsFetchForCurrentRange() {
         // Given
         // Test that retry mechanism properly re-attempts chart data fetch
         mockCoinManager.shouldSucceed = true
@@ -313,5 +313,218 @@ final class CoinDetailsVMTests: XCTestCase {
         // Trigger retry mechanism (typically called after an error)
         viewModel.retryChartData()
         wait(for: [exp], timeout: 2.0)
+    }
+
+    // MARK: - Additional Coverage
+
+    func testMapRangeToDays_returnsExpectedDayStrings() {
+        XCTAssertEqual(viewModel.mapRangeToDays("24h"), "1")
+        XCTAssertEqual(viewModel.mapRangeToDays("7d"), "7")
+        XCTAssertEqual(viewModel.mapRangeToDays("30d"), "30")
+        XCTAssertEqual(viewModel.mapRangeToDays("1y"), "365")
+        XCTAssertEqual(viewModel.mapRangeToDays("365d"), "365")
+        XCTAssertEqual(viewModel.mapRangeToDays("All"), "365")
+        XCTAssertEqual(viewModel.mapRangeToDays("unknown"), "7")
+    }
+
+    func testSetChartType_whenLine_usesCachedChartDataAndClearsError() {
+        // Given: seed cache for 7d => days "7"
+        let cached = [3.0, 2.0, 1.0]
+        CacheService.shared.storeChartData(cached, for: "btc", currency: "usd", days: "7")
+
+        let dataExp = expectation(description: "line chart points from cache")
+        var received: [Double] = []
+        var errorMessages: [String?] = []
+
+        viewModel.errorMessage
+            .sink { errorMessages.append($0) }
+            .store(in: &cancellables)
+
+        viewModel.chartPoints
+            .filter { !$0.isEmpty }
+            .prefix(1)
+            .sink { points in
+                received = points
+                dataExp.fulfill()
+            }
+            .store(in: &cancellables)
+
+        // When: switch to line for 7d
+        viewModel.setChartType(.line, for: "7d")
+        wait(for: [dataExp], timeout: 2.0)
+
+        // Then
+        XCTAssertFalse(received.isEmpty)
+        // Should have cleared any error message on success path
+        XCTAssertTrue(errorMessages.contains(nil))
+    }
+
+    func testSetSmoothingEnabled_persistsFlag_andRefetchesUsingCache() {
+        // Given: clean defaults and seed 24h (1 day) cache
+        UserDefaults.standard.removeObject(forKey: "ChartSmoothingEnabled")
+        CacheService.shared.storeChartData([1.0, 2.0, 3.0], for: "btc", currency: "usd", days: "1")
+
+        let exp = expectation(description: "chart points after smoothing toggle")
+        viewModel.chartPoints
+            .filter { !$0.isEmpty }
+            .prefix(1)
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+
+        // When
+        viewModel.setSmoothingEnabled(false)
+        wait(for: [exp], timeout: 2.0)
+
+        // Then: persisted and a fetch happened (points emitted)
+        XCTAssertEqual(UserDefaults.standard.bool(forKey: "ChartSmoothingEnabled"), false)
+    }
+
+    func testCancelAllRequests_resetsLoadingStates() {
+        // Given (no cache so a fetch will set loading)
+        mockCoinManager.shouldSucceed = false
+
+        let loadingExp = expectation(description: "loading toggled on")
+        var sawLoadingTrue = false
+        viewModel.isLoading
+            .sink { isLoading in
+                if isLoading { sawLoadingTrue = true; loadingExp.fulfill() }
+            }
+            .store(in: &cancellables)
+
+        viewModel.fetchChartData(for: "24h")
+        wait(for: [loadingExp], timeout: 2.0)
+
+        // When: cancel all
+        let resetExp = expectation(description: "loading reset and stats loading cleared")
+        var finalLoading = true
+        var finalStatsLoading: Set<String> = ["24h"]
+        var fulfilled = false
+
+        func tryFulfill() {
+            if !fulfilled && finalStatsLoading.isEmpty && finalLoading == false {
+                fulfilled = true
+                resetExp.fulfill()
+            }
+        }
+
+        viewModel.isLoading
+            .dropFirst()
+            .sink { isLoading in
+                finalLoading = isLoading
+                tryFulfill()
+            }
+            .store(in: &cancellables)
+
+        viewModel.statsLoadingState
+            .dropFirst()
+            .sink { state in
+                finalStatsLoading = state
+                tryFulfill()
+            }
+            .store(in: &cancellables)
+
+        viewModel.cancelAllRequests()
+        wait(for: [resetExp], timeout: 2.0)
+
+        // Then
+        XCTAssertTrue(sawLoadingTrue)
+        XCTAssertFalse(finalLoading)
+        XCTAssertTrue(finalStatsLoading.isEmpty)
+    }
+
+    func testChartLoadingState_whenDataExists_remainsLoadedEvenIfLaterError() {
+        // Given: seed 24h cache so we have data
+        CacheService.shared.storeChartData([5.0, 6.0], for: "btc", currency: "usd", days: "1")
+        let dataExp = expectation(description: "initial data loaded")
+        viewModel.chartLoadingState
+            .dropFirst() // First state might be .empty
+            .sink { state in
+                if case .loaded = state { dataExp.fulfill() }
+            }
+            .store(in: &cancellables)
+        viewModel.fetchChartData(for: "24h")
+        wait(for: [dataExp], timeout: 2.0)
+
+        // When: induce an error on a subsequent fetch (different range, no cache)
+        mockCoinManager.shouldSucceed = false
+        let stateExp = expectation(description: "state remains loaded despite error")
+        var observedLoaded = false
+        viewModel.chartLoadingState
+            .sink { state in
+                if case .loaded = state { observedLoaded = true; stateExp.fulfill() }
+            }
+            .store(in: &cancellables)
+        viewModel.fetchChartData(for: "7d")
+        wait(for: [stateExp], timeout: 3.0)
+
+        // Then
+        XCTAssertTrue(observedLoaded)
+    }
+
+    func testCurrentStats_containsCoreItemsIncludingMaxSupply() {
+        // Given: using base coin from factory with rich quote
+        // When
+        let stats = viewModel.currentStats
+
+        // Then: Should include core items
+        let titles = Set(stats.map { $0.title })
+        XCTAssertTrue(titles.contains("Market Cap"))
+        XCTAssertTrue(titles.contains("Volume (24h)"))
+        XCTAssertTrue(titles.contains("Market Dominance"))
+        XCTAssertTrue(titles.contains("Circulating Supply"))
+        XCTAssertTrue(titles.contains("Total Supply"))
+        XCTAssertTrue(titles.contains("Market Pairs"))
+        XCTAssertTrue(titles.contains("Rank"))
+        XCTAssertTrue(titles.contains("Max Supply"))
+    }
+
+    func testUpdateStatsRange_whenOHLCDataAvailable_emitsHighLowItem() {
+        // Given: provide OHLC cache for 7d so stats range switch consumes cache quickly
+        let ohlc = TestDataFactory.createMockOHLCData(candles: 4)
+        CacheService.shared.storeOHLCData(ohlc, for: "btc", currency: "usd", days: "7")
+
+        let exp = expectation(description: "stats emit with high/low item")
+        var receivedStats: [StatItem] = []
+
+        viewModel.stats
+            .filter { items in items.contains(where: { $0.title == "Low / High" }) }
+            .prefix(1)
+            .sink { items in
+                receivedStats = items
+                exp.fulfill()
+            }
+            .store(in: &cancellables)
+
+        // When
+        viewModel.updateStatsRange("7d")
+        wait(for: [exp], timeout: 2.0)
+
+        // Then: should include Low / High when data exists
+        XCTAssertTrue(receivedStats.contains(where: { $0.title == "Low / High" }))
+    }
+
+    func testHighLowCalculation_includesLivePriceWithinBounds() {
+        // Given: seed OHLC for 24h where highs are below current live price
+        let lowHighBelowLive = (0..<6).map { _ in
+            OHLCData(timestamp: Date(), open: 47000, high: 48000, low: 46000, close: 47000)
+        }
+        CacheService.shared.storeOHLCData(lowHighBelowLive, for: "btc", currency: "usd", days: "1")
+
+        // Recreate VM to consume cached stats OHLC at init
+        viewModel.cancelAllRequests()
+        viewModel = CoinDetailsVM(
+            coin: baseCoin,
+            coinManager: mockCoinManager,
+            sharedCoinDataManager: mockShared,
+            requestManager: mockRequest
+        )
+
+        // When
+        let stats = viewModel.currentStats
+        let highLow = stats.first(where: { $0.title == "Low / High" })
+
+        // Then: high should be at least current live price (50000 from factory)
+        XCTAssertNotNil(highLow)
+        XCTAssertEqual(highLow?.highLowPayload?.high, baseCoin.quote?["USD"]?.price)
     }
 }

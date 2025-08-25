@@ -218,6 +218,7 @@ def should_exclude_file(filename):
             'balloon' in name or    # Exclude balloon markers
             'icon' in name or       # Exclude icon generators
             'theme' in name or      # Exclude theme/styling files
+            'chartdatacache.swift' in name or  # Exclude simple cache struct from coverage
             'statitem' in name)     # Exclude simple UI model structs
 
 # Filter the coverage data to exclude UI files

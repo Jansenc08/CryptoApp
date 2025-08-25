@@ -35,7 +35,7 @@ final class RequestManagerTests: XCTestCase {
     
     // MARK: - Core Functionality Tests
     
-    func testBasicRequestExecution() {
+    func testExecuteRequest_whenSuccess_emitsValue() {
         // Given
         // Create expectation to wait for async request completion
         let expectation = XCTestExpectation(description: "Request should complete successfully")
@@ -74,7 +74,7 @@ final class RequestManagerTests: XCTestCase {
     
     // MARK: - Request Deduplication Tests
     
-    func testRequestDeduplication() {
+    func testExecuteRequest_whenDuplicateKeys_deduplicatesUnderlyingCall() {
         // Given
         // Create expectation for 3 simultaneous subscribers to the same request
         let expectation = XCTestExpectation(description: "All requests should complete with same result")
@@ -133,7 +133,7 @@ final class RequestManagerTests: XCTestCase {
     
     // MARK: - Priority System Tests
     
-    func testPriorityLevels() {
+    func testRequestPriority_delayIntervals_areConfiguredAsExpected() {
         // When/Then - Test priority configurations
         // Verify high priority has the shortest delay interval (fastest throttling reset)
         XCTAssertEqual(RequestPriority.high.delayInterval, 1.0)
@@ -143,7 +143,7 @@ final class RequestManagerTests: XCTestCase {
         XCTAssertEqual(RequestPriority.low.delayInterval, 6.0)
     }
     
-    func testHighPriorityBypassesThrottling() {
+    func testExecuteRequest_highPriority_bypassesThrottlingBetweenRapidCalls() {
         // Given
         // Create expectation for two consecutive high priority requests
         let expectation = XCTestExpectation(description: "High priority should bypass throttling")
@@ -195,7 +195,7 @@ final class RequestManagerTests: XCTestCase {
         XCTAssertEqual(completionCount, 2, "High priority should allow quick consecutive requests")
     }
     
-    func testNormalPriorityThrottling() {
+    func testExecuteRequest_normalPriority_isThrottledOnImmediateRepeat() {
         // Given
         // Test that normal priority requests are subject to throttling
         let expectation = XCTestExpectation(description: "Normal priority should be throttled")
@@ -243,7 +243,7 @@ final class RequestManagerTests: XCTestCase {
     
     // MARK: - Error Handling Tests
     
-    func testRequestErrorTypes() {
+    func testExecuteRequest_whenRequestError_isPropagated() {
         // Given
         // Test that specific RequestError types are properly handled and propagated
         let expectation = XCTestExpectation(description: "Should handle RequestError")
@@ -275,7 +275,7 @@ final class RequestManagerTests: XCTestCase {
         XCTAssertEqual(receivedError, .throttled)
     }
     
-    func testNetworkErrorHandling() {
+    func testExecuteRequest_whenNetworkError_isPropagated() {
         // Given
         // Test that generic network errors are properly handled and propagated
         let expectation = XCTestExpectation(description: "Network error should be handled")
@@ -315,7 +315,7 @@ final class RequestManagerTests: XCTestCase {
     
     // MARK: - Cleanup Tests
     
-    func testResetFunctionality() {
+    func testResetForTesting_clearsInternalState_andAllowsNewRequests() {
         // Given
         // Test that the reset functionality clears internal state properly
         let expectation = XCTestExpectation(description: "Reset should work")
@@ -356,7 +356,7 @@ final class RequestManagerTests: XCTestCase {
 
 // MARK: - Additional coverage for wrappers and casting paths
 extension RequestManagerTests {
-    func testFetchTopCoinsWrapperReturnsData() {
+    func testFetchTopCoinsWrapper_whenSuccess_returnsCoins() {
         // Given
         let coins = TestDataFactory.createMockCoins(count: 3)
         let exp = expectation(description: "top coins")
@@ -388,7 +388,7 @@ extension RequestManagerTests {
         XCTAssertEqual(received.first?.id, 1)
     }
     
-    func testFetchCoinLogosWrapperReturnsData() {
+    func testFetchCoinLogosWrapper_whenSuccess_returnsLogos() {
         // Given
         let ids = [1,2,3]
         let logos = TestDataFactory.createMockLogos(for: ids)
@@ -411,7 +411,7 @@ extension RequestManagerTests {
         XCTAssertEqual(received[1]?.contains("logo1"), true)
     }
     
-    func testFetchQuotesWrapperSuccess() {
+    func testFetchQuotesWrapper_whenSuccess_returnsQuotes() {
         // Given
         let ids = [1,2]
         let q1 = Quote(price: 1.0, volume24h: nil, volumeChange24h: nil, percentChange1h: nil, percentChange24h: 1, percentChange7d: nil, percentChange30d: nil, percentChange60d: nil, percentChange90d: nil, marketCap: nil, marketCapDominance: nil, fullyDilutedMarketCap: nil, lastUpdated: nil)
@@ -438,7 +438,7 @@ extension RequestManagerTests {
         XCTAssertEqual(received[2]?.price, 2.0)
     }
     
-    func testExecuteRequestCastingErrorWhenTypeMismatchOnDedup() {
+    func testExecuteRequest_whenTypeMismatchOnDedup_emitsCastingError() {
         // Given: start a request that publishes Int for a key and stays active for a short time
         // Use high priority and delay output so throttling doesn't trigger and activeRequests contains the publisher
         let key = "cast_mismatch"
@@ -480,5 +480,161 @@ extension RequestManagerTests {
         // Then
         wait(for: [secondDone], timeout: 2.0)
         XCTAssertEqual(receivedError, .castingError)
+    }
+
+    func testExecuteRequest_lowPriority_isThrottledOnImmediateRepeat() {
+        // Given
+        let throttled = expectation(description: "low priority throttled")
+        var errorReceived: RequestError?
+
+        let key = "low_throttle_test"
+        let createRequest = {
+            Just("ok").setFailureType(to: Error.self).eraseToAnyPublisher()
+        }
+
+        // First low priority request succeeds
+        requestManager.executeRequest(key: key, priority: .low, request: createRequest)
+            .sink(receiveCompletion: { _ in
+                // Immediate second should be throttled
+                self.requestManager.executeRequest(key: key, priority: .low, request: createRequest)
+                    .sink(
+                        receiveCompletion: { completion in
+                            if case .failure(let error) = completion { errorReceived = error as? RequestError }
+                            throttled.fulfill()
+                        },
+                        receiveValue: { _ in }
+                    )
+                    .store(in: &self.cancellables)
+            }, receiveValue: { _ in })
+            .store(in: &cancellables)
+
+        // Then
+        wait(for: [throttled], timeout: 2.0)
+        XCTAssertEqual(errorReceived, .throttled)
+    }
+
+    func testCooldown_onInvalidResponse_entersCooldownAndPrefersCache() {
+        // Given: failing API call to trigger cooldown via executeWithRetry path
+        let exp = expectation(description: "cooldown entered")
+
+        requestManager.fetchChartData(
+            coinId: "btc",
+            currency: "usd",
+            days: "1",
+            priority: .high,
+            apiCall: {
+                Fail<[Double], NetworkError>(error: .invalidResponse).eraseToAnyPublisher()
+            }
+        )
+        .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+        .store(in: &cancellables)
+
+        // When: allow a brief moment for internal queue to set cooldown
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            let status = self.requestManager.getCooldownStatus()
+            XCTAssertTrue(status.isInCooldown)
+            XCTAssertTrue(self.requestManager.shouldPreferCache())
+            exp.fulfill()
+        }
+
+        wait(for: [exp], timeout: 2.0)
+    }
+
+    func testFetchOHLCData_whenInCooldown_returnsRateLimitedError() {
+        // Given: force cooldown as above
+        let setup = expectation(description: "setup cooldown")
+        requestManager.fetchChartData(
+            coinId: "btc",
+            currency: "usd",
+            days: "1",
+            priority: .high,
+            apiCall: { Fail<[Double], NetworkError>(error: .invalidResponse).eraseToAnyPublisher() }
+        )
+        .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+        .store(in: &cancellables)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { setup.fulfill() }
+        wait(for: [setup], timeout: 2.0)
+
+        // When: call OHLC while cooldown active
+        let exp = expectation(description: "rate limited returned")
+        var receivedError: RequestError?
+
+        requestManager.fetchOHLCData(
+            coinId: "btc",
+            currency: "usd",
+            days: "1",
+            priority: .normal,
+            apiCall: { Just([]).setFailureType(to: NetworkError.self).eraseToAnyPublisher() }
+        )
+        .sink(
+            receiveCompletion: { completion in
+                if case .failure(let error) = completion { receivedError = error as? RequestError }
+                exp.fulfill()
+            },
+            receiveValue: { (_: [OHLCData]) in }
+        )
+        .store(in: &cancellables)
+
+        // Then
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertEqual(receivedError, .rateLimited)
+    }
+
+    func testCancelAllRequests_clearsPriorityQueues() {
+        // Given: enqueue a few requests of different priorities
+        requestManager.fetchChartData(
+            coinId: "btc", currency: "usd", days: "1", priority: .low,
+            apiCall: { Just([1.0]).setFailureType(to: NetworkError.self).eraseToAnyPublisher() }
+        ).sink(receiveCompletion: { _ in }, receiveValue: { _ in }).store(in: &cancellables)
+
+        requestManager.fetchChartData(
+            coinId: "eth", currency: "usd", days: "7", priority: .normal,
+            apiCall: { Just([2.0]).setFailureType(to: NetworkError.self).eraseToAnyPublisher() }
+        ).sink(receiveCompletion: { _ in }, receiveValue: { _ in }).store(in: &cancellables)
+
+        requestManager.fetchChartData(
+            coinId: "sol", currency: "usd", days: "30", priority: .high,
+            apiCall: { Just([3.0]).setFailureType(to: NetworkError.self).eraseToAnyPublisher() }
+        ).sink(receiveCompletion: { _ in }, receiveValue: { _ in }).store(in: &cancellables)
+
+        // Immediately cancel all to clear queues
+        requestManager.cancelAllRequests()
+
+        // Then: after a brief moment, queues should be empty
+        let exp = expectation(description: "queues cleared")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let status = self.requestManager.getQueueStatus()
+            XCTAssertEqual(status.high, 0)
+            XCTAssertEqual(status.normal, 0)
+            XCTAssertEqual(status.low, 0)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 1.0)
+    }
+
+    func testGetActiveRequestsCount_increasesWhileRequestIsInFlight() {
+        // Given: a delayed request to ensure it stays active briefly
+        let key = "active_count"
+        let done = expectation(description: "done")
+
+        requestManager.executeRequest(key: key, priority: .high) {
+            Just("value")
+                .setFailureType(to: Error.self)
+                .delay(for: .milliseconds(150), scheduler: DispatchQueue.main)
+                .eraseToAnyPublisher()
+        }
+        .sink(receiveCompletion: { _ in done.fulfill() }, receiveValue: { _ in })
+        .store(in: &cancellables)
+
+        // When: check active count shortly after starting
+        let check = expectation(description: "active > 0")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            let count = self.requestManager.getActiveRequestsCount()
+            XCTAssertGreaterThanOrEqual(count, 1)
+            check.fulfill()
+        }
+
+        wait(for: [check, done], timeout: 2.0)
     }
 }
