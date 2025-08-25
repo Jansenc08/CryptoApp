@@ -79,23 +79,43 @@
 }
 
 - (void)touchDown:(UIButton *)sender {
+    // Use weak reference to prevent retain cycle in animation block
+    __weak typeof(self) weakSelf = self;
     [UIView animateWithDuration:0.1 animations:^{
-        self.transform = CGAffineTransformMakeScale(0.95, 0.95);
-        self.alpha = 0.8;
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf) {
+            strongSelf.transform = CGAffineTransformMakeScale(0.95, 0.95);
+            strongSelf.alpha = 0.8;
+        }
     }];
 }
 
 - (void)touchUp:(UIButton *)sender {
+    // Use weak reference to prevent retain cycle in animation block
+    __weak typeof(self) weakSelf = self;
     [UIView animateWithDuration:0.1 animations:^{
-        self.transform = CGAffineTransformIdentity;
-        self.alpha = 1.0;
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf) {
+            strongSelf.transform = CGAffineTransformIdentity;
+            strongSelf.alpha = 1.0;
+        }
     }];
 }
 
 - (void)updateTitle:(NSString *)title {
+    // Use weak reference to prevent retain cycle in animation block
+    __weak typeof(self) weakSelf = self;
     [UIView animateWithDuration:0.2 animations:^{
-        self.customTitleLabel.text = title;
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf) {
+            strongSelf.customTitleLabel.text = title;
+        }
     }];
+}
+
+- (void)dealloc {
+    // Clean up target-action connections to prevent potential retain cycles
+    [self removeTarget:self action:NULL forControlEvents:UIControlEventAllEvents];
 }
 
 @end 

@@ -251,8 +251,13 @@
     self.underlineWidthConstraint.active = YES;
     
     if (animated) {
+        // Use weak reference to prevent retain cycle in animation block
+        __weak typeof(self) weakSelf = self;
         [UIView animateWithDuration:0.3 delay:0.0 usingSpringWithDamping:0.8 initialSpringVelocity:0.2 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-            [self layoutIfNeeded];
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (strongSelf) {
+                [strongSelf layoutIfNeeded];
+            }
         } completion:nil];
     } else {
         [self layoutIfNeeded];
@@ -374,6 +379,20 @@
     CGFloat interpolatedA = fromA + (toA - fromA) * progress;
     
     return [UIColor colorWithRed:interpolatedR green:interpolatedG blue:interpolatedB alpha:interpolatedA];
+}
+
+- (void)dealloc {
+    // Clean up delegate and gesture recognizer to prevent potential retain cycles
+    self.delegate = nil;
+    if (self.panGestureRecognizer) {
+        [self removeGestureRecognizer:self.panGestureRecognizer];
+        self.panGestureRecognizer = nil;
+    }
+    
+    // Clean up button targets
+    for (UIButton *button in self.segmentButtons) {
+        [button removeTarget:self action:NULL forControlEvents:UIControlEventAllEvents];
+    }
 }
 
 @end 

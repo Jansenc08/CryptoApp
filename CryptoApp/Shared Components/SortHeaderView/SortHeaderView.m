@@ -174,15 +174,38 @@
 #pragma mark - Touch Effects
 
 - (void)columnButtonTouchDown:(UIButton *)sender {
+    // Use weak reference to prevent retain cycle in animation block
+    __weak typeof(sender) weakSender = sender;
     [UIView animateWithDuration:0.1 animations:^{
-        sender.alpha = 0.6;
+        __strong typeof(weakSender) strongSender = weakSender;
+        if (strongSender) {
+            strongSender.alpha = 0.6;
+        }
     }];
 }
 
 - (void)columnButtonTouchUp:(UIButton *)sender {
+    // Use weak reference to prevent retain cycle in animation block
+    __weak typeof(sender) weakSender = sender;
     [UIView animateWithDuration:0.1 animations:^{
-        sender.alpha = 1.0;
+        __strong typeof(weakSender) strongSender = weakSender;
+        if (strongSender) {
+            strongSender.alpha = 1.0;
+        }
     }];
+}
+
+- (void)dealloc {
+    // Clean up delegate reference to prevent potential retain cycles
+    self.delegate = nil;
+    
+    // Clean up button targets
+    NSArray<UIButton *> *buttons = @[self.rankButton, self.marketCapButton, self.priceButton, self.priceChangeButton];
+    for (UIButton *button in buttons) {
+        if (button) {
+            [button removeTarget:self action:NULL forControlEvents:UIControlEventAllEvents];
+        }
+    }
 }
 
 @end 

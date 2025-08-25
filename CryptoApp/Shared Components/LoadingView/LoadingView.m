@@ -24,8 +24,13 @@
 
     [parentView addSubview:loadingView];
 
+    // Use weak reference to prevent retain cycle in animation block
+    __weak typeof(loadingView) weakLoadingView = loadingView;
     [UIView animateWithDuration:0.25 animations:^{
-        loadingView.alpha = 0.8;
+        __strong typeof(weakLoadingView) strongLoadingView = weakLoadingView;
+        if (strongLoadingView) {
+            strongLoadingView.alpha = 0.8;
+        }
     }];
 
     [indicator startAnimating];
@@ -36,10 +41,18 @@
 + (void)dismissFromView:(UIView *)parentView {
     for (UIView *subview in parentView.subviews) {
         if ([subview isKindOfClass:[LoadingView class]]) {
+            // Use weak reference to prevent retain cycle in animation blocks
+            __weak typeof(subview) weakSubview = subview;
             [UIView animateWithDuration:0.25 animations:^{
-                subview.alpha = 0.0;
+                __strong typeof(weakSubview) strongSubview = weakSubview;
+                if (strongSubview) {
+                    strongSubview.alpha = 0.0;
+                }
             } completion:^(BOOL finished) {
-                [subview removeFromSuperview];
+                __strong typeof(weakSubview) strongSubview = weakSubview;
+                if (strongSubview) {
+                    [strongSubview removeFromSuperview];
+                }
             }];
         }
     }
