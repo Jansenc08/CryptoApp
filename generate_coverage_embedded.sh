@@ -236,13 +236,18 @@ for target in coverage_data.get('targets', []):
         target['coveredLines'] = total_covered
         target['lineCoverage'] = total_covered / total_executable if total_executable > 0 else 0
 
-# Also update root level totals
-all_files = []
-for target in coverage_data.get('targets', []):
-    all_files.extend(target.get('files', []))
-
-root_executable = sum(f.get('executableLines', 0) for f in all_files)
-root_covered = sum(f.get('coveredLines', 0) for f in all_files)
+# Also update root level totals - only count app target, not test targets
+app_target = next((t for t in coverage_data.get('targets', []) if 'CryptoApp.app' in t.get('buildProductPath', '')), None)
+if app_target:
+    root_executable = app_target.get('executableLines', 0)
+    root_covered = app_target.get('coveredLines', 0)
+else:
+    # Fallback: sum all targets if app target not found
+    all_files = []
+    for target in coverage_data.get('targets', []):
+        all_files.extend(target.get('files', []))
+    root_executable = sum(f.get('executableLines', 0) for f in all_files)
+    root_covered = sum(f.get('coveredLines', 0) for f in all_files)
 
 coverage_data['executableLines'] = root_executable
 coverage_data['coveredLines'] = root_covered
@@ -811,13 +816,25 @@ html_content = f'''<!DOCTYPE html>
 with open(html_file, 'w') as f:
     f.write(html_content)
 
-# Save the filtered JSON data
+# Save the filtered JSON data as the main JSON file
+# First, rename the original unfiltered file
+import shutil
+unfiltered_json_file = json_file.replace('.json', '_unfiltered.json')
+shutil.move(json_file, unfiltered_json_file)
+
+# Save the filtered data as the main JSON file
+with open(json_file, 'w') as f:
+    json.dump(coverage_data, f, indent=2)
+
+# Also save a copy with the _filtered suffix for clarity
 filtered_json_file = json_file.replace('.json', '_filtered.json')
 with open(filtered_json_file, 'w') as f:
     json.dump(coverage_data, f, indent=2)
 
 print("✅ Embedded HTML coverage report generated successfully")
-print(f"✅ Filtered JSON report saved as: {filtered_json_file}")
+print(f"✅ Main JSON report (filtered) saved as: {json_file}")
+print(f"✅ Filtered JSON copy saved as: {filtered_json_file}")
+print(f"✅ Unfiltered JSON backup saved as: {unfiltered_json_file}")
 
 # Generate filtered text summary
 app_target = next((t for t in coverage_data['targets'] if 'CryptoApp.app' in t.get('name', '')), None)
