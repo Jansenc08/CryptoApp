@@ -16,3 +16,7 @@
 #import "SegmentControl.h"
 #import "AddCoinCell.h"
 #import "SearchBarComponent.h"
+#import "SkeletonView.h"
+#import "CoinCellSkeleton.h"
+#import "AddCoinCellSkeleton.h"
+#import "ChartSkeleton.h"

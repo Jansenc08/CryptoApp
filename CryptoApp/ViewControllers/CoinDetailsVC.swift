@@ -577,18 +577,18 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                     chartCell.updateLoadingState(true)
                 case .loaded:
                     chartCell.updateLoadingState(false)
-                case .error(_):
+                case .error(let retryInfo):
                     // Only show chart errors if we're online, otherwise show offline screen
                     if self.networkMonitor.isConnected {
-                        chartCell.updateLoadingState(false)
+                        chartCell.showRetryableError(retryInfo)
                     } else {
                         // Network is offline, show offline screen instead of chart error
                         self.showOfflineErrorView()
                     }
-                case .nonRetryableError(_):
+                case .nonRetryableError(let message):
                     // Only show chart errors if we're online, otherwise show offline screen
                     if self.networkMonitor.isConnected {
-                        chartCell.updateLoadingState(false)
+                        chartCell.showNonRetryableError(message)
                     } else {
                         // Network is offline, show offline screen instead of chart error
                         self.showOfflineErrorView()

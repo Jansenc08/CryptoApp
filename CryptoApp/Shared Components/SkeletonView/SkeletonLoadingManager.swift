@@ -14,9 +14,9 @@ final class SkeletonLoadingManager {
         // Register skeleton cell types
         switch cellType {
         case .coinCell:
-            collectionView.register(CoinCellSkeleton.self, forCellWithReuseIdentifier: CoinCellSkeleton.reuseID)
+            collectionView.register(CoinCellSkeleton.self, forCellWithReuseIdentifier: CoinCellSkeleton.reuseID())
         case .addCoinCell:
-            collectionView.register(AddCoinCellSkeleton.self, forCellWithReuseIdentifier: AddCoinCellSkeleton.reuseID)
+            collectionView.register(AddCoinCellSkeleton.self, forCellWithReuseIdentifier: AddCoinCellSkeleton.reuseID())
         }
         
         // Create and set skeleton data source
@@ -131,11 +131,11 @@ private class SkeletonCollectionViewDataSource: NSObject, UICollectionViewDataSo
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         switch cellType {
         case .coinCell:
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: CoinCellSkeleton.reuseID, for: indexPath) as! CoinCellSkeleton
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: CoinCellSkeleton.reuseID(), for: indexPath) as! CoinCellSkeleton
             cell.startShimmering()
             return cell
         case .addCoinCell:
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: AddCoinCellSkeleton.reuseID, for: indexPath) as! AddCoinCellSkeleton
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: AddCoinCellSkeleton.reuseID(), for: indexPath) as! AddCoinCellSkeleton
             cell.startShimmering()
             return cell
         }
