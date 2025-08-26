@@ -82,6 +82,9 @@ final class ChartView: LineChartView {
         ChartConfigurationHelper.configureBasicSettings(for: self)
         ChartConfigurationHelper.configureAxes(for: self)
         
+        // Enable dynamic Y-axis autoscaling so axis adapts when zooming/panning
+        autoScaleMinMaxEnabled = true
+        
         // Enable drag highlighting for dynamic value updates
         highlightPerDragEnabled = true
         
@@ -297,52 +300,69 @@ final class ChartView: LineChartView {
         
         guard !entries.isEmpty else { return }
 
-        guard let minY = allDataPoints.min(), let maxY = allDataPoints.max() else { return }
-
-        // Setup y-axis buffer (using right axis) with NaN validation
-        let range = maxY - minY
-        // FIXED: Prevent NaN in CoreGraphics when all values are identical
-        let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
-        let minRange = max(range, fallbackRange) // Ensure at least 1% range
-        let buffer = minRange * 0.05
-        var axisMin = minY - buffer
-        var axisMax = maxY + buffer
-        // Never show negative price on Y-axis
-        if axisMin < 0 {
-            axisMin = 0
-            // Ensure non-zero range
-            if axisMax <= axisMin {
-                axisMax = axisMin + max(minRange, 1e-12)
+        // Calculate Y-axis range from price data plus SMA/EMA if visible
+        if autoScaleMinMaxEnabled {
+            // When autoscale is on, include technical indicators in range calculation
+            var allValues: [Double] = allDataPoints
+            
+            // This is proper behavior - we want to see the full range including indicators
+            rightAxis.resetCustomAxisMin()
+            rightAxis.resetCustomAxisMax()
+            
+            // IMPORTANT: Set label properties for autoscale mode
+            rightAxis.labelCount = 6
+            rightAxis.forceLabelsEnabled = false
+            rightAxis.granularityEnabled = false
+            rightAxis.valueFormatter = PriceFormatter()
+            rightAxis.minWidth = 60
+        } else {
+            // When autoscale is off, only consider price data for Y-axis range
+            guard let minY = allDataPoints.min(), let maxY = allDataPoints.max() else { return }
+            // Setup y-axis buffer (using right axis) with NaN validation
+            let range = maxY - minY
+            // FIXED: Prevent NaN in CoreGraphics when all values are identical
+            let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
+            let minRange = max(range, fallbackRange) // Ensure at least 1% range
+            let buffer = minRange * 0.05
+            var axisMin = minY - buffer
+            var axisMax = maxY + buffer
+            // Never show negative price on Y-axis
+            if axisMin < 0 {
+                axisMin = 0
+                // Ensure non-zero range
+                if axisMax <= axisMin {
+                    axisMax = axisMin + max(minRange, 1e-12)
+                }
             }
+            
+            // CRITICAL: Validate axis values before setting to prevent NaN errors
+            guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
+                print("⚠️ Invalid axis values in ChartView - skipping axis configuration")
+                print("axisMin: \(axisMin), axisMax: \(axisMax), minY: \(minY), maxY: \(maxY)")
+                return
+            }
+            
+            rightAxis.axisMinimum = axisMin
+            rightAxis.axisMaximum = axisMax
+            // Ensure labels render for very small price spans
+            let span = axisMax - axisMin
+            let targetTickCount = 6.0
+            let rawGranularity = max(span / targetTickCount, 1e-12)
+            let exponent = floor(log10(rawGranularity))
+            let base = pow(10.0, exponent)
+            let mantissa = rawGranularity / base
+            let niceMantissa: Double
+            if mantissa < 1.5 { niceMantissa = 1 }
+            else if mantissa < 3.5 { niceMantissa = 2 }
+            else if mantissa < 7.5 { niceMantissa = 5 }
+            else { niceMantissa = 10 }
+            rightAxis.granularityEnabled = true
+            rightAxis.granularity = niceMantissa * base
+            // Use adaptive price formatter for Y-axis
+            rightAxis.valueFormatter = PriceFormatter()
+            rightAxis.labelCount = 6
+            rightAxis.minWidth = 60
         }
-        
-        // CRITICAL: Validate axis values before setting to prevent NaN errors
-        guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
-            print("⚠️ Invalid axis values in ChartView - skipping axis configuration")
-            print("axisMin: \(axisMin), axisMax: \(axisMax), minY: \(minY), maxY: \(maxY)")
-            return
-        }
-        
-        rightAxis.axisMinimum = axisMin
-        rightAxis.axisMaximum = axisMax
-        // Ensure labels render for very small price spans
-        let span = axisMax - axisMin
-        let targetTickCount = 6.0
-        let rawGranularity = max(span / targetTickCount, 1e-12)
-        let exponent = floor(log10(rawGranularity))
-        let base = pow(10.0, exponent)
-        let mantissa = rawGranularity / base
-        let niceMantissa: Double
-        if mantissa < 1.5 { niceMantissa = 1 }
-        else if mantissa < 3.5 { niceMantissa = 2 }
-        else if mantissa < 7.5 { niceMantissa = 5 }
-        else { niceMantissa = 10 }
-        rightAxis.granularityEnabled = true
-        rightAxis.granularity = niceMantissa * base
-        // Use adaptive price formatter for Y-axis
-        rightAxis.valueFormatter = PriceFormatter()
-        rightAxis.labelCount = 6
-        rightAxis.minWidth = 60
 
         // Color based on price trend
         // Green if lastprice >= firstPrice(Positive) else red.

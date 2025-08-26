@@ -268,7 +268,7 @@ class ChartLabelManager {
     func updateCurrentPrice(price: Double, isBullish: Bool) {
         guard let label = currentPriceLabel else { return }
         
-        // Adaptive price formatting for micro-priced coins
+        // Adaptive price formatting for micro-priced coins (non-abbreviated)
         let formattedPrice: String
         if price >= 1 {
             let formatter = NumberFormatter()

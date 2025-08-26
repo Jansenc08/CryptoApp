@@ -273,6 +273,8 @@ final class CandlestickChartView: CombinedChartView {
         doubleTapToZoomEnabled = true
         highlightPerTapEnabled = true
         highlightPerDragEnabled = true  // Enable drag highlighting for dynamic value updates
+        // Enable dynamic Y-axis autoscaling so axis adapts when zooming/panning
+        autoScaleMinMaxEnabled = true
         
         // Configure axes for combined chart
         leftAxis.enabled = false
@@ -568,36 +570,49 @@ final class CandlestickChartView: CombinedChartView {
         guard let minY = allOHLCData.map({ min($0.low, min($0.open, $0.close)) }).min(),
               let maxY = allOHLCData.map({ max($0.high, max($0.open, $0.close)) }).max() else { return }
         
-        // Setup y-axis - main price chart only (RSI will have separate scaling)
-        let range = maxY - minY
-        // FIXED: Prevent NaN in CoreGraphics when all OHLC values are identical
-        let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
-        let minRange = max(range, fallbackRange) // Ensure at least 1% range
-        
-        // Main chart area - price data only
-        let baseBuffer = minRange * 0.15  // Standard buffer for price context
-        
-        // Calculate axis bounds
-        var axisMin = minY - baseBuffer
-        var axisMax = maxY + baseBuffer
-        // Never show negative price on Y-axis for price section
-        if axisMin < 0 {
-            axisMin = 0
-            if axisMax <= axisMin {
-                axisMax = axisMin + max(minRange, 1e-12)
+        // Setup Y-axis handling: autoscale when enabled, otherwise fixed bounds
+        if autoScaleMinMaxEnabled {
+            rightAxis.resetCustomAxisMin()
+            rightAxis.resetCustomAxisMax()
+            
+            // IMPORTANT: Set label properties for autoscale mode
+            rightAxis.labelCount = 6
+            rightAxis.forceLabelsEnabled = false
+            rightAxis.granularityEnabled = false
+            rightAxis.valueFormatter = PriceFormatter()
+            rightAxis.minWidth = 60
+        } else {
+            // Setup y-axis - main price chart only (RSI will have separate scaling)
+            let range = maxY - minY
+            // FIXED: Prevent NaN in CoreGraphics when all OHLC values are identical
+            let fallbackRange = max(abs(maxY), 1.0) * 0.01 // Fallback for zero/near-zero prices
+            let minRange = max(range, fallbackRange) // Ensure at least 1% range
+            
+            // Main chart area - price data only
+            let baseBuffer = minRange * 0.15  // Standard buffer for price context
+            
+            // Calculate axis bounds
+            var axisMin = minY - baseBuffer
+            var axisMax = maxY + baseBuffer
+            // Never show negative price on Y-axis for price section
+            if axisMin < 0 {
+                axisMin = 0
+                if axisMax <= axisMin {
+                    axisMax = axisMin + max(minRange, 1e-12)
+                }
             }
+            
+            // CRITICAL: Validate axis values before setting to prevent NaN errors
+            guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
+                print("⚠️ Invalid axis values in CandlestickChartView - skipping axis configuration")
+                print("axisMin: \(axisMin), axisMax: \(axisMax), minY: \(minY), maxY: \(maxY)")
+                return
+            }
+            
+            // Price chart axis (RSI will use separate coordinate space)
+            rightAxis.axisMinimum = axisMin
+            rightAxis.axisMaximum = axisMax
         }
-        
-        // CRITICAL: Validate axis values before setting to prevent NaN errors
-        guard axisMin.isFinite && axisMax.isFinite && axisMax > axisMin else {
-            print("⚠️ Invalid axis values in CandlestickChartView - skipping axis configuration")
-            print("axisMin: \(axisMin), axisMax: \(axisMax), minY: \(minY), maxY: \(maxY)")
-            return
-        }
-        
-        // Price chart axis (RSI will use separate coordinate space)
-        rightAxis.axisMinimum = axisMin
-        rightAxis.axisMaximum = axisMax
         
         let dataSet = CandleChartDataSet(entries: entries, label: "")
         
@@ -1504,37 +1519,54 @@ extension CandlestickChartView {
                 return
             }
             
-            // Set axis to include both price data and RSI section
-            self.rightAxis.axisMinimum = axisMinimum
-            self.rightAxis.axisMaximum = axisMaximum
-            
-            // Disable auto-scaling to prevent zoom issues
-            self.rightAxis.granularityEnabled = true
-            // Dynamically compute granularity so micro-priced coins still show labels
-            let span = axisMaximum - axisMinimum
-            let targetTickCount = 6.0
-            let rawGranularity = max(span / targetTickCount, 1e-12)
-            // Round to 1-2-5 scaling for pleasant ticks
-            let exponent = floor(log10(rawGranularity))
-            let base = pow(10.0, exponent)
-            let mantissa = rawGranularity / base
-            let niceMantissa: Double
-            if mantissa < 1.5 { niceMantissa = 1 }
-            else if mantissa < 3.5 { niceMantissa = 2 }
-            else if mantissa < 7.5 { niceMantissa = 5 }
-            else { niceMantissa = 10 }
-            let dynamicGranularity = niceMantissa * base
-            self.rightAxis.granularity = dynamicGranularity
-            self.rightAxis.labelCount = 6
-            self.rightAxis.minWidth = 60
-            self.rightAxis.valueFormatter = PriceFormatter()
-            
-            // Use custom formatter for RSI section (only if all values are valid)
-            self.rightAxis.valueFormatter = RSISeparateAxisFormatter(
-                rsiStart: rsiBottom,
-                rsiEnd: rsiBottom + rsiSectionHeight,
-                priceStart: minPrice
-            )
+            if self.autoScaleMinMaxEnabled {
+                // When autoscaling, avoid forcing axis min/max; just ensure formatter handles price + RSI
+                self.rightAxis.resetCustomAxisMin()
+                self.rightAxis.resetCustomAxisMax()
+                
+                // IMPORTANT: Configure labels properly for autoscale
+                self.rightAxis.labelCount = 6
+                self.rightAxis.forceLabelsEnabled = false
+                self.rightAxis.granularityEnabled = false
+                self.rightAxis.minWidth = 60
+                self.rightAxis.valueFormatter = RSISeparateAxisFormatter(
+                    rsiStart: rsiBottom,
+                    rsiEnd: rsiBottom + rsiSectionHeight,
+                    priceStart: minPrice
+                )
+            } else {
+                // Set axis to include both price data and RSI section
+                self.rightAxis.axisMinimum = axisMinimum
+                self.rightAxis.axisMaximum = axisMaximum
+                
+                // Disable auto-scaling to prevent zoom issues
+                self.rightAxis.granularityEnabled = true
+                // Dynamically compute granularity so micro-priced coins still show labels
+                let span = axisMaximum - axisMinimum
+                let targetTickCount = 6.0
+                let rawGranularity = max(span / targetTickCount, 1e-12)
+                // Round to 1-2-5 scaling for pleasant ticks
+                let exponent = floor(log10(rawGranularity))
+                let base = pow(10.0, exponent)
+                let mantissa = rawGranularity / base
+                let niceMantissa: Double
+                if mantissa < 1.5 { niceMantissa = 1 }
+                else if mantissa < 3.5 { niceMantissa = 2 }
+                else if mantissa < 7.5 { niceMantissa = 5 }
+                else { niceMantissa = 10 }
+                let dynamicGranularity = niceMantissa * base
+                self.rightAxis.granularity = dynamicGranularity
+                self.rightAxis.labelCount = 6
+                self.rightAxis.minWidth = 60
+                self.rightAxis.valueFormatter = PriceFormatter()
+                
+                // Use custom formatter for RSI section (only if all values are valid)
+                self.rightAxis.valueFormatter = RSISeparateAxisFormatter(
+                    rsiStart: rsiBottom,
+                    rsiEnd: rsiBottom + rsiSectionHeight,
+                    priceStart: minPrice
+                )
+            }
         }
         
         return dataSets
