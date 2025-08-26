@@ -46,6 +46,12 @@
     return self;
 }
 
+// MARK: - Deallocation
+
+- (void)dealloc {
+    [self stopShimmering];
+}
+
 // MARK: - Setup
 
 - (void)setupUI {
@@ -136,14 +142,18 @@
 // MARK: - Public Methods
 
 - (void)startShimmering {
-    for (SkeletonView *skeletonView in self.skeletonViews) {
-        [skeletonView startShimmering];
+    if (self.skeletonViews) {
+        for (SkeletonView *skeletonView in self.skeletonViews) {
+            [skeletonView startShimmering];
+        }
     }
 }
 
 - (void)stopShimmering {
-    for (SkeletonView *skeletonView in self.skeletonViews) {
-        [skeletonView stopShimmering];
+    if (self.skeletonViews) {
+        for (SkeletonView *skeletonView in self.skeletonViews) {
+            [skeletonView stopShimmering];
+        }
     }
 }
 

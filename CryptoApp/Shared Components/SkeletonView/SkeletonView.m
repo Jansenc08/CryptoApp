@@ -34,6 +34,12 @@
     return self;
 }
 
+// MARK: - Deallocation
+
+- (void)dealloc {
+    [self stopShimmering];
+}
+
 // MARK: - Setup
 
 - (void)setupSkeleton {
@@ -76,7 +82,9 @@
 
 - (void)stopShimmering {
     self.isAnimating = NO;
-    [self.gradientLayer removeAnimationForKey:@"shimmer"];
+    if (self.gradientLayer) {
+        [self.gradientLayer removeAnimationForKey:@"shimmer"];
+    }
 }
 
 // MARK: - Convenience Factory Methods
@@ -148,6 +156,13 @@
     return self;
 }
 
+// MARK: - Deallocation
+
+- (void)dealloc {
+    [self stopShimmering];
+    [self removeAllSkeletons];
+}
+
 - (void)addSkeletonViews:(NSArray<SkeletonView *> *)views {
     [self.skeletonViews addObjectsFromArray:views];
     for (SkeletonView *view in views) {
@@ -168,10 +183,13 @@
 }
 
 - (void)removeAllSkeletons {
-    for (SkeletonView *skeletonView in self.skeletonViews) {
-        [skeletonView removeFromSuperview];
+    if (self.skeletonViews) {
+        for (SkeletonView *skeletonView in self.skeletonViews) {
+            [skeletonView stopShimmering];
+            [skeletonView removeFromSuperview];
+        }
+        [self.skeletonViews removeAllObjects];
     }
-    [self.skeletonViews removeAllObjects];
 }
 
 @end

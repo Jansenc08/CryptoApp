@@ -42,18 +42,25 @@ final class ChartSkeletonTests: XCTestCase {
     func testChartSkeletonInitWithCoder() {
         // Given
         let data = NSMutableData()
-        let archiver = NSKeyedArchiver(forWritingWith: data)
+        let archiver = NSKeyedArchiver(requiringSecureCoding: false)
+        archiver.outputFormat = .binary
         archiver.finishEncoding()
-        let unarchiver = NSKeyedUnarchiver(forReadingWith: data as Data)
+        let archivedData = archiver.encodedData
         
-        // When
-        let skeletonFromCoder = ChartSkeleton(coder: unarchiver)
-        
-        // Then
-        XCTAssertNotNil(skeletonFromCoder, "ChartSkeleton should initialize from coder")
-        if let skeleton = skeletonFromCoder {
-            XCTAssertEqual(skeleton.backgroundColor, .systemBackground,
-                          "ChartSkeleton from coder should have correct background")
+        do {
+            let unarchiver = try NSKeyedUnarchiver(forReadingFrom: archivedData)
+            
+            // When
+            let skeletonFromCoder = ChartSkeleton(coder: unarchiver)
+            
+            // Then
+            XCTAssertNotNil(skeletonFromCoder, "ChartSkeleton should initialize from coder")
+            if let skeleton = skeletonFromCoder {
+                XCTAssertEqual(skeleton.backgroundColor, .systemBackground,
+                              "ChartSkeleton from coder should have correct background")
+            }
+        } catch {
+            XCTFail("Failed to create unarchiver: \(error)")
         }
     }
     

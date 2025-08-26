@@ -157,9 +157,15 @@ class ChartLabelManager {
                 smaLabel.text = "SMA(\(period)): \(formattedValue)"
                 smaLabel.textColor = color
             } else {
-                // Show intelligent message for insufficient data
-                smaLabel.text = getInsufficientDataMessage(for: "SMA", period: period, availableDataCount: dataCount)
-                smaLabel.textColor = UIColor.systemGray2
+                // Check if we have sufficient data but the line is just not visible at current position
+                if dataCount >= period {
+                    smaLabel.text = "SMA(\(period)): Not visible"
+                    smaLabel.textColor = UIColor.systemGray2
+                } else {
+                    // Show intelligent message for insufficient data
+                    smaLabel.text = getInsufficientDataMessage(for: "SMA", period: period, availableDataCount: dataCount)
+                    smaLabel.textColor = UIColor.systemGray2
+                }
             }
         }
     }
@@ -176,9 +182,15 @@ class ChartLabelManager {
                 emaLabel.text = "EMA(\(period)): \(formattedValue)"
                 emaLabel.textColor = color
             } else {
-                // Show intelligent message for insufficient data
-                emaLabel.text = getInsufficientDataMessage(for: "EMA", period: period, availableDataCount: dataCount)
-                emaLabel.textColor = UIColor.systemGray2
+                // Check if we have sufficient data but the line is just not visible at current position
+                if dataCount >= period {
+                    emaLabel.text = "EMA(\(period)): Not visible"
+                    emaLabel.textColor = UIColor.systemGray2
+                } else {
+                    // Show intelligent message for insufficient data
+                    emaLabel.text = getInsufficientDataMessage(for: "EMA", period: period, availableDataCount: dataCount)
+                    emaLabel.textColor = UIColor.systemGray2
+                }
             }
         }
     }
@@ -304,6 +316,14 @@ class ChartLabelManager {
         if settings.showSMA {
             if let smaDataSet = smaDataSet {
                 smaValue = getValueAtIndex(xIndex, from: smaDataSet)
+                // If no value found but SMA is enabled, provide helpful context
+                if smaValue == nil {
+                    // Check if we're before the SMA warm-up period
+                    if let firstValidIndex = getFirstValidIndicatorIndex(from: smaDataSet), xIndex < firstValidIndex {
+                        // User is viewing a time period before SMA calculation begins
+                        print("📍 User scrolled to index \(xIndex), but SMA line starts at index \(firstValidIndex)")
+                    }
+                }
             }
             let smaColor = TechnicalIndicators.getIndicatorColor(for: "sma", theme: theme)
             updateSMALabel(value: smaValue, period: settings.smaPeriod, color: smaColor, isVisible: true, dataCount: dataPointCount)
@@ -315,6 +335,14 @@ class ChartLabelManager {
         if settings.showEMA {
             if let emaDataSet = emaDataSet {
                 emaValue = getValueAtIndex(xIndex, from: emaDataSet)
+                // If no value found but EMA is enabled, provide helpful context
+                if emaValue == nil {
+                    // Check if we're before the EMA warm-up period
+                    if let firstValidIndex = getFirstValidIndicatorIndex(from: emaDataSet), xIndex < firstValidIndex {
+                        // User is viewing a time period before EMA calculation begins
+                        print("📍 User scrolled to index \(xIndex), but EMA line starts at index \(firstValidIndex)")
+                    }
+                }
             }
             let emaColor = TechnicalIndicators.getIndicatorColor(for: "ema", theme: theme)
             updateEMALabel(value: emaValue, period: settings.emaPeriod, color: emaColor, isVisible: true, dataCount: dataPointCount)
@@ -352,23 +380,52 @@ class ChartLabelManager {
     /// Gets value from dataset at specific index, accounting for dataset offset
     private func getValueAtIndex(_ index: Int, from dataSet: LineChartDataSet) -> Double? {
         // For SMA/EMA datasets that start later due to warm-up period,
-        // we need to find the corresponding entry by matching x values (timestamps)
+        // we need to find the corresponding entry by matching x values (timestamps or indices)
         
         guard !dataSet.entries.isEmpty else { 
             print("⚠️ Dataset is empty")
             return nil 
         }
         
-        // If index is within bounds, use direct indexing
-        if index >= 0 && index < dataSet.entries.count {
-            let entry = dataSet.entries[index]
-            let value = entry.y
-            print("🎯 Direct: Retrieved \(String(format: "%.2f", value)) at index \(index) (x: \(entry.x)) from dataset with \(dataSet.entries.count) entries")
-            return value
+        // ENHANCEMENT: Check if the indicator line is actually visible at this index
+        // SMA/EMA lines have a warm-up period and don't start from index 0
+        let isIndexInVisibleRange = isIndicatorVisibleAtIndex(index, in: dataSet)
+        guard isIndexInVisibleRange else {
+            print("📍 SMA/EMA line not visible at index \(index) - line starts at index \(getFirstValidIndicatorIndex(from: dataSet) ?? -1)")
+            return nil
         }
         
-        // Otherwise, find the entry with the closest x value to the target index
-        let targetX = Double(index)
+        // Detect coordinate system: check if X values are timestamps (large numbers) or indices (small numbers)
+        let firstEntry = dataSet.entries.first!
+        let usesTimestamps = firstEntry.x > 10000 // Timestamps are much larger than indices
+        
+        if usesTimestamps {
+            // For timestamp-based datasets (line charts), find entry by index position in the original array
+            // Account for nil values filtered out during dataset creation
+            let warmupPeriod = getWarmupPeriodFromLabel(dataSet.label)
+            let adjustedIndex = index - warmupPeriod
+            
+            // Ensure adjusted index is valid for the filtered entries array
+            if adjustedIndex >= 0 && adjustedIndex < dataSet.entries.count {
+                let entry = dataSet.entries[adjustedIndex]
+                let value = entry.y
+                print("🎯 Timestamp-based: Retrieved \(String(format: "%.2f", value)) at adjusted index \(adjustedIndex) (original index: \(index), warmup: \(warmupPeriod), x: \(String(format: "%.0f", entry.x))) from dataset with \(dataSet.entries.count) entries")
+                return value
+            }
+        } else {
+            // For index-based datasets (candlestick charts), use direct X value matching
+            let targetX = Double(index)
+            
+            // Try exact match first
+            if let exactEntry = dataSet.entries.first(where: { abs($0.x - targetX) < 0.1 }) {
+                let value = exactEntry.y
+                print("🎯 Index-based exact: Retrieved \(String(format: "%.2f", value)) at index \(index) (x: \(exactEntry.x)) from dataset with \(dataSet.entries.count) entries")
+                return value
+            }
+        }
+        
+        // Fallback: Find the entry with the closest x value
+        let targetX = usesTimestamps ? firstEntry.x + (Double(index) * 3600) : Double(index) // Rough timestamp estimation for fallback
         var closestEntry: ChartDataEntry?
         var closestDistance = Double.infinity
         
@@ -380,13 +437,84 @@ class ChartLabelManager {
             }
         }
         
-        if let entry = closestEntry, closestDistance <= 1.0 { // Allow 1 unit tolerance
-            print("🎯 Matched: Retrieved \(String(format: "%.2f", entry.y)) for target index \(index) (actual x: \(entry.x), distance: \(String(format: "%.1f", closestDistance))) from dataset with \(dataSet.entries.count) entries")
+        let tolerance = usesTimestamps ? 7200.0 : 1.0 // 2 hours for timestamps, 1 unit for indices
+        if let entry = closestEntry, closestDistance <= tolerance {
+            print("🎯 Fallback: Retrieved \(String(format: "%.2f", entry.y)) for target index \(index) (actual x: \(entry.x), distance: \(String(format: "%.1f", closestDistance)), uses timestamps: \(usesTimestamps)) from dataset with \(dataSet.entries.count) entries")
             return entry.y
         }
         
-        print("⚠️ No matching entry found for index \(index) in dataset with \(dataSet.entries.count) entries")
+        print("⚠️ No matching entry found for index \(index) in dataset with \(dataSet.entries.count) entries (uses timestamps: \(usesTimestamps))")
         return nil
+    }
+    
+    /// Checks if the indicator line is actually visible/drawn at the given index
+    private func isIndicatorVisibleAtIndex(_ index: Int, in dataSet: LineChartDataSet) -> Bool {
+        guard !dataSet.entries.isEmpty else { return false }
+        
+        // Find the first index where the indicator actually has data
+        guard let firstValidIndex = getFirstValidIndicatorIndex(from: dataSet) else { return false }
+        
+        // The indicator is only visible from its first valid data point onwards
+        return index >= firstValidIndex
+    }
+    
+    /// Gets the first index where the indicator has valid data (accounts for warm-up period)
+    private func getFirstValidIndicatorIndex(from dataSet: LineChartDataSet) -> Int? {
+        guard !dataSet.entries.isEmpty else { return nil }
+        
+        // For SMA/EMA datasets created with X values as timestamps,
+        // find the first entry's X value and convert it to an index
+        let firstEntry = dataSet.entries.first!
+        
+        // If X values are timestamps, we need to find the corresponding index
+        // If X values are direct indices, we can use them directly
+        let firstX = firstEntry.x
+        
+        // Check if X values appear to be timestamps (large numbers) or indices (small numbers)
+        if firstX > 10000 { // Likely timestamp
+            // For timestamp-based X values, we need a different approach
+            // The warm-up period means SMA(20) starts at index 19, etc.
+            // We can infer this from the dataset label
+            if let label = dataSet.label {
+                if label.contains("SMA") {
+                    // Extract period from label like "SMA(20)"
+                    let period = extractPeriodFromLabel(label) ?? 20
+                    return period - 1  // SMA(20) starts at index 19
+                } else if label.contains("EMA") {
+                    // Extract period from label like "EMA(12)"
+                    let period = extractPeriodFromLabel(label) ?? 12
+                    return period - 1  // EMA(12) starts at index 11
+                }
+            }
+            return 19 // Default warm-up for typical 20-period indicators
+        } else {
+            // X values are likely indices, use directly
+            return Int(firstX)
+        }
+    }
+    
+    /// Extracts the period number from indicator labels like "SMA(20)" or "EMA(12)"
+    private func extractPeriodFromLabel(_ label: String) -> Int? {
+        // Simple string parsing approach - more reliable than regex for this case
+        guard let startIndex = label.firstIndex(of: "("),
+              let endIndex = label.firstIndex(of: ")"),
+              startIndex < endIndex else {
+            return nil
+        }
+        
+        let numberString = String(label[label.index(after: startIndex)..<endIndex])
+        return Int(numberString)
+    }
+    
+    /// Gets the warmup period from dataset label (period - 1)
+    private func getWarmupPeriodFromLabel(_ label: String?) -> Int {
+        guard let label = label else { return 19 } // Default for typical 20-period indicators
+        
+        if let period = extractPeriodFromLabel(label) {
+            return period - 1 // SMA(20) needs 19 warmup periods, starts at index 19
+        }
+        
+        return 19 // Default warmup period
     }
     
     /// Gets RSI value at specific index
