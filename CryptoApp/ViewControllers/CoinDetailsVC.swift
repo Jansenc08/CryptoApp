@@ -209,36 +209,28 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         navigationController?.navigationBar.prefersLargeTitles = false
         navigationItem.largeTitleDisplayMode = .never
         
-        stopParentTimers()
-        isViewVisible = true
-        
-        // Clear any previous error states to prevent flashing
-        viewModel.clearPreviousStates()
-        
-        // Simple UI synchronization
-        synchronizeUIWithCurrentState()
-        
-        startSmartAutoRefresh()
+        stopParentTimers()              // Prevent conflicts from parent view's auto-refresh or timers
+        isViewVisible = true            // Mark this VC as active/visible
+        viewModel.clearPreviousStates() // Clear any previous error states to prevent flashing
+        synchronizeUIWithCurrentState() // Update UI to reflect latest data - UI synchronization
+        startSmartAutoRefresh()         // Begin autoRefresh
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         isViewVisible = false
-        refreshTimer?.invalidate()
+        refreshTimer?.invalidate()                         // Stop refreshing
         refreshTimer = nil
-        
-        // Reset any loading states in offline view
-        offlineErrorView?.setRetryButtonLoading(false)
-        
-        resumeParentTimers()
+        offlineErrorView?.setRetryButtonLoading(false)    // Reset any loading states in offline view
+        resumeParentTimers()                              // Allow parent VC timers to resume
     }
     
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         
+        // Cancel all API calls
         if isMovingFromParent || isBeingDismissed {
             viewModel.cancelAllRequests()
-            // Cancel all API calls
         }
     }
 
@@ -536,31 +528,6 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
                 self.lastChartUpdateTime = Date()
             }
             .store(in: &cancellables)
-        
-
-        
-        // Error handling
-        // DISABLED: Redundant with network banner - user feedback requested removal
-        /*
-        viewModel.errorMessage
-            .receive(on: DispatchQueue.main)
-            .compactMap { $0 }
-            .removeDuplicates()
-            .sink { [weak self] errorMessage in
-                guard let self = self else { return }
-                
-                // Only show alerts for non-chart errors
-                let isChartError = errorMessage.contains("chart") || 
-                                   errorMessage.contains("data") || 
-                                   errorMessage.contains("rate limit") ||
-                                   errorMessage.contains("cooldown")
-                
-                if !isChartError {
-                    self.showErrorAlert(message: errorMessage)
-                }
-            }
-            .store(in: &cancellables)
-        */
         
         // Combined loading state for sophisticated UI updates
         viewModel.chartLoadingState

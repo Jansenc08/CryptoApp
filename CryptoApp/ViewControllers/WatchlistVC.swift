@@ -43,21 +43,19 @@ final class WatchlistVC: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureView()
-        configureCollectionView()
-        configureDataSource()
-        bindViewModel()
-        setupEmptyState()
+        configureView()           // Setup basic UI
+        configureCollectionView() // Setup collection view layout & cells
+        configureDataSource()     // Setup diffable datasource
+        bindViewModel()           // Connect ViewModel publishers → UI
+        setupEmptyState()         // Prepare placeholder for when no data exists
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
-        // Resume periodic price updates when tab becomes active
-        viewModel.startPeriodicUpdates()
+        viewModel.startPeriodicUpdates()                // Resume periodic price updates when tab becomes active
         
-        // Only refresh if data is empty (first time) - for seamless tab switching
-        if viewModel.currentWatchlistCoins.isEmpty {
+        if viewModel.currentWatchlistCoins.isEmpty {    // Only refresh if data is empty (first time) - for seamless tab switching
             viewModel.refreshWatchlist()
         }
         
@@ -66,18 +64,15 @@ final class WatchlistVC: UIViewController {
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        
-        // Stop periodic price updates when tab becomes inactive
-        viewModel.stopPeriodicUpdates()
-        
-        // Cancel any in-flight API requests to save resources
-        viewModel.cancelAllRequests()
+       
+        viewModel.stopPeriodicUpdates()   // Stop periodic price updates when tab becomes inactive
+        viewModel.cancelAllRequests()    // Cancel any API requests to save resources and avoid race conditions
         
         AppLogger.ui("Leaving Watchlist Tab")
     }
     
     deinit {
-        cancellables.removeAll()
+        cancellables.removeAll()  // cleanup — release observers, timers, cancellables
     }
     
     // MARK: - Container View Controller Lifecycle
