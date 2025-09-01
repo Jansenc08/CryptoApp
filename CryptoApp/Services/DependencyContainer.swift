@@ -20,7 +20,7 @@ import Combine
 final class DependencyContainer {
     
     // MARK: - Singleton Services (Thread-Safe Lazy Initialization)
-    
+    // Services initialized only when needed
     private lazy var _cacheService: CacheServiceProtocol = CacheService()
     private lazy var _requestManager: RequestManagerProtocol = RequestManager()
     private lazy var _persistenceService: PersistenceServiceProtocol = PersistenceService()

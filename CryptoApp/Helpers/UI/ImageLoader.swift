@@ -68,7 +68,7 @@ import Foundation
             return
         }
 
-        // 2. If an operation is already in-flight, coalesce completion and promote priority
+       // 2. If download is in progress, attach completion and raise its priority
         var shouldStartDownload = false
         syncQueue.sync {
             // Queue completion

@@ -191,7 +191,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
     }
     
     // MARK: - Lifecycle
-    
+    // This runs once when the view loads into memory.
     override func viewDidLoad() {
         super.viewDidLoad()
         setupNavigationBar()
@@ -203,6 +203,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         checkInitialConnectivity()
     }
     
+    // This runs every time the view is about to appear on screen.
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
@@ -216,6 +217,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         startSmartAutoRefresh()         // Begin autoRefresh
     }
     
+    // This runs when you’re leaving the screen (but before it’s gone)
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         isViewVisible = false
@@ -225,6 +227,7 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
         resumeParentTimers()                              // Allow parent VC timers to resume
     }
     
+    // This runs after the screen is fully gone.
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         
@@ -233,11 +236,12 @@ final class CoinDetailsVC: UIViewController, ChartSettingsDelegate {
             viewModel.cancelAllRequests()
         }
     }
-
+    
+    // This runs after the screen is fully visible.
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
-        // BEST PRACTICE: Double-check synchronization after transition completes
+        // Double-check synchronization after transition completes
         // Only needed if there was an animated transition
         if animated {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
