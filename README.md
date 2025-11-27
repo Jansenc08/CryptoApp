@@ -806,18 +806,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 📸 Screenshots
-
-<div align="center">
-
-| Markets | Coin Details | Watchlist | Search |
-|---------|--------------|-----------|--------|
-| ![Markets](screenshots/markets.png) | ![Details](screenshots/details.png) | ![Watchlist](screenshots/watchlist.png) | ![Search](screenshots/search.png) |
-
-</div>
-
----
-
 <div align="center">
 
 **⭐ Star this repo if you find it helpful!**
