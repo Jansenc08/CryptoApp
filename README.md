@@ -793,7 +793,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Jansen Castillo**
 
 - GitHub: [@jansen](https://github.com/Jansenc08)
-- LinkedIn: [Jansen Castillo]([https://linkedin.com/in/jansen](https://www.linkedin.com/in/jansen-castillo-1a8200266/])
+- LinkedIn: [Jansen Castillo]([https://linkedin.com/in/jansen](https://www.linkedin.com/in/jansen-castillo-1a8200266/]))
 
 ---
 
