@@ -810,6 +810,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ Star this repo if you find it helpful!**
 
-Made with by Jansen Castillo
+Made by Jansen Castillo
 
 </div>
