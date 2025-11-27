@@ -28,6 +28,18 @@ CryptoApp is a professional-grade iOS application that provides real-time crypto
 
 ---
 
+## 📱 Screenshots
+
+<div align="center">
+
+| Marketplace | Coin Details | Watchlist | Popular Coins |
+|:---:|:---:|:---:|:---:|
+| ![Marketplace](assets/screenshots/MarketPlace.png) | ![Coin Details](assets/screenshots/CoinDetails.png) | ![Watchlist](assets/screenshots/WatchList.png) | ![Popular Coins](assets/screenshots/PopularCoins.png) |
+
+</div>
+
+---
+
 ## ✨ Key Features
 
 ### 1. 🏪 **Marketplace (Markets Tab)**
