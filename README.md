@@ -163,7 +163,7 @@ func processChartData(_ rawData: [Double]) -> [Double] {
 
 ### 3. ⭐ **Watchlist (Favourites Tab)**
 
-A personalized cryptocurrency watchlist with Core Data persistence and swipe-to-remove functionality.
+A personalized cryptocurrency watchlist with Core Data persistence and long hold to remove or access coin details page functionality.
 
 #### Features:
 
